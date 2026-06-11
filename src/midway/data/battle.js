@@ -510,9 +510,9 @@ export const sides = {
     name: '大日本帝國海軍',
     color: 0xd9442e,
     commanders: [
-      { name: '山本五十六', nameEn: 'Yamamoto Isoroku', role: '聯合艦隊司令長官（旗艦大和，後方 300 浬）' },
-      { name: '南雲忠一', nameEn: 'Nagumo Chūichi', role: '第一航空艦隊司令長官（赤城）' },
-      { name: '山口多聞', nameEn: 'Yamaguchi Tamon', role: '第二航空戰隊司令官（飛龍）' },
+      { id: 'yamamoto', name: '山本五十六', nameEn: 'Yamamoto Isoroku', role: '聯合艦隊司令長官（旗艦大和，後方 300 浬）' },
+      { id: 'nagumo', name: '南雲忠一', nameEn: 'Nagumo Chūichi', role: '第一航空艦隊司令長官（赤城）' },
+      { id: 'yamaguchi', name: '山口多聞', nameEn: 'Yamaguchi Tamon', role: '第二航空戰隊司令官（飛龍）' },
     ],
     formations: [
       {
@@ -528,9 +528,9 @@ export const sides = {
     name: '美國海軍',
     color: 0x2e7bd9,
     commanders: [
-      { name: '切斯特・尼米茲', nameEn: 'Chester W. Nimitz', role: '太平洋艦隊總司令（珍珠港）' },
-      { name: '法蘭克・傑克・佛萊徹', nameEn: 'Frank Jack Fletcher', role: 'TF17 司令・戰術總指揮（約克鎮號）' },
-      { name: '雷蒙・史普魯恩斯', nameEn: 'Raymond A. Spruance', role: 'TF16 司令（企業號）' },
+      { id: 'nimitz', name: '切斯特・尼米茲', nameEn: 'Chester W. Nimitz', role: '太平洋艦隊總司令（珍珠港）' },
+      { id: 'fletcher', name: '法蘭克・傑克・佛萊徹', nameEn: 'Frank Jack Fletcher', role: 'TF17 司令・戰術總指揮（約克鎮號）' },
+      { id: 'spruance', name: '雷蒙・史普魯恩斯', nameEn: 'Raymond A. Spruance', role: 'TF16 司令（企業號）' },
     ],
     formations: [
       {

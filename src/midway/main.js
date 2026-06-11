@@ -106,6 +106,7 @@ for (const ag of airGroups) {
 // ── 王牌飛行員座機(個人行動) ─────────────────────────
 const aceObjs = aces.map((ace) => {
   const group = createAcePlane(ace.side);
+  group.userData.figureId = ace.id;
   scene.add(group);
   const label = makeLabel('★ ' + ace.name, { side: ace.side });
   label.position.y = 20;
@@ -189,6 +190,29 @@ const hud = createHUD({
     hud.setPlaying(true);
     triggerEventsBetween(TIME_START - 1, battleT);
   },
+});
+
+// 點擊 3D 中可見的王牌座機/標籤 → 開啟人物小卡(以拖曳門檻區分旋轉)
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+let downX = 0;
+let downY = 0;
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  downX = e.clientX;
+  downY = e.clientY;
+});
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return; // 視為旋轉/平移
+  const rect = renderer.domElement.getBoundingClientRect();
+  ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(ndc, camera);
+  const targets = aceObjs.filter((a) => a.group.visible).map((a) => a.group);
+  const hits = raycaster.intersectObjects(targets, true);
+  if (!hits.length) return;
+  let o = hits[0].object;
+  while (o && !o.userData.figureId) o = o.parent;
+  if (o && o.userData.figureId) hud.openFigure(o.userData.figureId);
 });
 
 function unitObjPos(id) {

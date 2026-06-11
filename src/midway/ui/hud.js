@@ -1,5 +1,6 @@
 // HUD:標題列、時間軸控制、部隊面板、事件字卡、圖例、開場畫面
 import { TIME_START, TIME_END, formatClock, sides, units, events, outcome } from '../data/battle.js';
+import { figures, figureById, captainOf } from '../data/figures.js';
 
 const STATUS_ICON = { normal: '', burning: ' 🔥', sunk: ' ✚沉沒' };
 
@@ -71,6 +72,22 @@ export function createHUD(callbacks) {
         </div>
       </div>
     </div>
+
+    <div id="figure-card" class="hidden">
+      <div class="figure-box">
+        <button class="fig-close" id="fig-close" aria-label="關閉">✕</button>
+        <div class="fig-head">
+          <div class="fig-avatar" id="fig-avatar"></div>
+          <div class="fig-headtext">
+            <div class="fig-name" id="fig-name"></div>
+            <div class="fig-en" id="fig-en"></div>
+            <div class="fig-meta" id="fig-meta"></div>
+          </div>
+        </div>
+        <p class="fig-bio" id="fig-bio"></p>
+        <div class="fig-fate"><span class="fl">結局</span><span id="fig-fate"></span></div>
+      </div>
+    </div>
   `;
 
   // 事件刻度
@@ -136,6 +153,37 @@ export function createHUD(callbacks) {
   buildSummary();
   document.getElementById('btn-replay').addEventListener('click', () => callbacks.onReplay());
 
+  // 人物小卡
+  const figureCard = document.getElementById('figure-card');
+  function openFigure(id) {
+    const f = figureById[id];
+    if (!f) return;
+    const av = document.getElementById('fig-avatar');
+    av.textContent = f.avatar;
+    av.className = 'fig-avatar ' + f.side;
+    document.getElementById('fig-name').textContent = f.name;
+    document.getElementById('fig-en').textContent = f.nameEn;
+    document.getElementById('fig-meta').textContent = `${f.rank}　${f.affil}`;
+    document.getElementById('fig-bio').textContent = f.bio;
+    document.getElementById('fig-fate').textContent = f.fate;
+    figureCard.classList.remove('hidden');
+    figureCard.classList.remove('animate');
+    void figureCard.offsetWidth;
+    figureCard.classList.add('animate');
+  }
+  function closeFigure() {
+    figureCard.classList.add('hidden');
+  }
+  document.getElementById('fig-close').addEventListener('click', closeFigure);
+  figureCard.addEventListener('click', (e) => {
+    if (e.target === figureCard) closeFigure();
+  });
+  // 點面板中帶 data-fig 的項目即開啟小卡
+  root.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-fig]');
+    if (el) openFigure(el.dataset.fig);
+  });
+
   function buildSummary() {
     const unitFor = (k) => (k === 'aircraft' ? '架' : k === 'killed' ? '人' : '艘');
     const approx = (k) => k === 'aircraft' || k === 'killed';
@@ -174,6 +222,7 @@ export function createHUD(callbacks) {
     const s = sides[side];
     const en = side === 'blue'; // 美軍:英文在前,繁中在後
     const el = document.getElementById(`panel-${side}`);
+    const aceList = figures.filter((f) => f.type === 'ace' && f.side === side);
     el.innerHTML = `
       <h2>${s.name}</h2>
       <div class="cmdrs">
@@ -181,7 +230,8 @@ export function createHUD(callbacks) {
           .map((c) => {
             const primary = en ? c.nameEn : c.name;
             const secondary = en ? `${c.name}・${c.role}` : c.role;
-            return `<div class="cmdr"><b>${primary}</b><small>${secondary}</small></div>`;
+            const fig = c.id ? ` data-fig="${c.id}"` : '';
+            return `<div class="cmdr${c.id ? ' clickable' : ''}"${fig}><b>${primary}</b><small>${secondary}</small></div>`;
           })
           .join('')}
       </div>
@@ -196,6 +246,19 @@ export function createHUD(callbacks) {
           })
           .join('')}
       </div>
+      ${
+        aceList.length
+          ? `<div class="aces-block">
+        <div class="strength-title">關鍵飛行員</div>
+        ${aceList
+          .map(
+            (f) =>
+              `<div class="fig-row clickable" data-fig="${f.id}"><span class="fr-star">★</span><span class="fr-name">${f.name}</span><span class="fr-go">›</span></div>`
+          )
+          .join('')}
+      </div>`
+          : ''
+      }
       <div class="strength">
         <div class="strength-title">主力艦艇 / 航空戰力</div>
         ${s.unitIds
@@ -205,7 +268,9 @@ export function createHUD(callbacks) {
               en && u.nameEn
                 ? `<span class="en">${u.nameEn}</span><span class="zh">${u.name}</span>`
                 : `<span class="zh">${u.name}</span>`;
-            return `<div class="unit-row" id="row-${id}">
+            const capId = captainOf[id];
+            const fig = capId ? ` data-fig="${capId}"` : '';
+            return `<div class="unit-row${capId ? ' clickable' : ''}" id="row-${id}"${fig}>
               <span class="u-name">${nameHtml}</span>
               <span class="u-status" id="status-${id}"></span>
               <span class="u-count" id="count-${id}">${u.strength.aircraft ?? ''}</span>
@@ -263,6 +328,9 @@ export function createHUD(callbacks) {
     },
     hideSummary() {
       summary.classList.add('hidden');
+    },
+    openFigure(id) {
+      openFigure(id);
     },
   };
 }
