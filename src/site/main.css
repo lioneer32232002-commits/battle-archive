@@ -1,0 +1,93 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0a0e16;
+  color: #e8e6df;
+  font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.site-header {
+  text-align: center;
+  padding: 64px 24px 40px;
+  background:
+    radial-gradient(ellipse at 50% 120%, rgba(40, 70, 120, 0.35), transparent 70%),
+    linear-gradient(180deg, #060a12, #0a0e16);
+  border-bottom: 1px solid #1d2738;
+}
+
+.site-header h1 {
+  font-size: 2.6rem;
+  letter-spacing: 0.35em;
+  text-indent: 0.35em;
+  font-weight: 700;
+}
+
+.tagline { margin-top: 12px; color: #8fa3c0; letter-spacing: 0.1em; }
+
+main { flex: 1; max-width: 1100px; width: 100%; margin: 0 auto; padding: 40px 24px; }
+
+.era { margin-bottom: 48px; }
+
+.era-head {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  border-left: 4px solid #c9a227;
+  padding-left: 14px;
+  margin-bottom: 20px;
+}
+
+.era-head h2 { font-size: 1.5rem; letter-spacing: 0.08em; }
+.era-period { color: #7d8aa0; font-size: 0.95rem; }
+
+.battle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.coming-soon { color: #5d6b82; padding: 18px 4px; }
+
+.battle-card {
+  display: block;
+  background: linear-gradient(160deg, #121a2a, #0d1320);
+  border: 1px solid #243150;
+  border-radius: 10px;
+  padding: 22px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.battle-card:hover {
+  transform: translateY(-4px);
+  border-color: #c9a227;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+
+.battle-card.disabled { opacity: 0.5; cursor: default; }
+
+.card-top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.card-top h3 { font-size: 1.35rem; }
+.card-en { color: #7d8aa0; font-size: 0.85rem; }
+.card-date { color: #c9a227; font-size: 0.9rem; margin-top: 6px; }
+
+.card-sides { margin-top: 12px; display: flex; align-items: center; gap: 10px; font-size: 0.95rem; }
+.side.red { color: #ff6b5e; }
+.side.blue { color: #5ea8ff; }
+.vs { color: #5d6b82; font-size: 0.75rem; }
+
+.card-summary { margin-top: 12px; color: #aab6c9; font-size: 0.9rem; line-height: 1.7; }
+
+.card-cta { margin-top: 16px; color: #c9a227; font-size: 0.9rem; letter-spacing: 0.06em; }
+
+.site-footer {
+  text-align: center;
+  padding: 24px;
+  color: #5d6b82;
+  font-size: 0.8rem;
+  border-top: 1px solid #1d2738;
+}
