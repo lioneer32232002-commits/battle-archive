@@ -31,12 +31,17 @@ body {
 .battle-title small { color: #8fa3c0; font-weight: 400; margin-left: 8px; }
 
 .tb-clock {
-  font-size: 1.5rem;
+  font-size: 1.4rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   color: #ffd97a;
   text-shadow: 0 0 14px rgba(255, 217, 122, 0.35);
   font-variant-numeric: tabular-nums;
+  background: rgba(6, 10, 18, 0.5);
+  padding: 4px 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(201, 162, 39, 0.25);
+  backdrop-filter: blur(4px);
 }
 
 /* ── 按鈕 ── */
@@ -206,6 +211,64 @@ body {
 .hud-btn.start:hover { background: rgba(201, 162, 39, 0.18); }
 .intro-src { margin-top: 26px; color: #5d6b82; font-size: 0.72rem; }
 
+/* ── 戰損比較表(播放結束) ── */
+#summary {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: radial-gradient(ellipse at 50% 50%, rgba(8, 14, 26, 0.82), rgba(3, 5, 9, 0.95));
+  backdrop-filter: blur(3px);
+  z-index: 40;
+}
+#summary.hidden { display: none; }
+#summary.animate .summary-box { animation: sum-in 0.6s ease; }
+@keyframes sum-in {
+  from { opacity: 0; transform: translateY(24px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.summary-box {
+  width: min(720px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  text-align: center;
+  background: linear-gradient(160deg, rgba(18, 26, 42, 0.9), rgba(10, 16, 28, 0.9));
+  border: 1px solid #31405e;
+  border-top: 3px solid #c9a227;
+  border-radius: 14px;
+  padding: 30px 30px 26px;
+}
+.sum-kicker { color: #c9a227; letter-spacing: 0.25em; font-size: 0.78rem; }
+.sum-title { font-size: 2rem; letter-spacing: 0.12em; margin: 10px 0 4px; }
+.sum-sub { color: #8fa3c0; font-size: 0.9rem; margin-bottom: 22px; }
+
+.sum-table table { width: 100%; border-collapse: collapse; }
+.sum-table th {
+  padding: 8px 6px 14px;
+  vertical-align: top;
+  width: 38%;
+}
+.sum-table th.metric { width: 24%; }
+.sum-table th .sn { display: block; font-size: 1.05rem; font-weight: 700; }
+.sum-table th.red .sn { color: #ff6b5e; }
+.sum-table th.blue .sn { color: #5ea8ff; }
+.sum-table th .sd { display: block; color: #8fa3c0; font-size: 0.72rem; margin-top: 4px; font-weight: 400; line-height: 1.5; }
+
+.sum-table td {
+  padding: 11px 6px;
+  border-top: 1px solid #243150;
+  font-variant-numeric: tabular-nums;
+}
+.sum-table td.sl { color: #aab6c9; font-size: 0.86rem; }
+.sum-table td.sv { font-size: 1.5rem; font-weight: 700; }
+.sum-table td.sv.red { color: #ff7a6e; }
+.sum-table td.sv.blue { color: #6fb0ff; }
+
+.sum-actions { display: flex; gap: 12px; justify-content: center; margin-top: 24px; flex-wrap: wrap; }
+.sum-actions a.hud-btn { text-decoration: none; display: inline-block; }
+
 /* ── 桌面預設:面板抽屜按鈕與背幕隱藏 ── */
 .panel-toggle { display: none; }
 .panel-toggle .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
@@ -322,4 +385,16 @@ body {
 /* 極窄螢幕:隱藏標題避免擁擠 */
 @media (max-width: 460px) {
   .battle-title { display: none; }
+}
+
+/* 戰損表:手機縮放 */
+@media (max-width: 640px) {
+  .summary-box { padding: 22px 16px 20px; }
+  .sum-title { font-size: 1.5rem; }
+  .sum-sub { font-size: 0.8rem; margin-bottom: 16px; }
+  .sum-table th .sn { font-size: 0.86rem; }
+  .sum-table th .sd { font-size: 0.62rem; }
+  .sum-table td.sl { font-size: 0.74rem; }
+  .sum-table td.sv { font-size: 1.1rem; }
+  .sum-actions .hud-btn { font-size: 0.9rem; padding: 9px 18px; }
 }

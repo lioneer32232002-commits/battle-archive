@@ -1,5 +1,5 @@
 // HUD:標題列、時間軸控制、部隊面板、事件字卡、圖例、開場畫面
-import { TIME_START, TIME_END, formatClock, sides, units, events } from '../data/battle.js';
+import { TIME_START, TIME_END, formatClock, sides, units, events, outcome } from '../data/battle.js';
 
 const STATUS_ICON = { normal: '', burning: ' 🔥', sunk: ' ✚沉沒' };
 
@@ -50,12 +50,25 @@ export function createHUD(callbacks) {
         <h1>中途島戰役</h1>
         <p class="intro-sub">Battle of Midway · 1942年6月4日–7日</p>
         <p class="intro-desc">
-          日本海軍企圖攻佔中途島、殲滅美軍太平洋艦隊殘部;
-          但美軍已破譯密碼,三艘航空母艦在東北海域靜候伏擊。
-          一日之內,太平洋戰爭的天平就此翻轉。
+          日本海軍企圖攻佔中途島、殲滅美軍太平洋艦隊殘部；
+          但美軍已破譯密碼，三艘航空母艦在東北海域靜候伏擊。
+          一日之內，太平洋戰爭的天平就此翻轉。
         </p>
         <button id="btn-start" class="hud-btn start">▶ 進入戰場</button>
-        <p class="intro-src">戰役資料依據:美國海軍歷史與遺產司令部(NHHC)、Parshall &amp; Tully《Shattered Sword》</p>
+        <p class="intro-src">戰役資料依據：美國海軍歷史與遺產司令部（NHHC）、Parshall &amp; Tully《Shattered Sword》</p>
+      </div>
+    </div>
+
+    <div id="summary" class="hidden">
+      <div class="summary-box">
+        <p class="sum-kicker">戰役結束 · BATTLE CONCLUDED</p>
+        <h2 class="sum-title">${outcome.headline}</h2>
+        <p class="sum-sub">${outcome.sub} · 戰損比較</p>
+        <div class="sum-table"></div>
+        <div class="sum-actions">
+          <button id="btn-replay" class="hud-btn start">↻ 重播戰役</button>
+          <a href="/" class="hud-btn">◀ 返回戰史檔案館</a>
+        </div>
       </div>
     </div>
   `;
@@ -117,6 +130,37 @@ export function createHUD(callbacks) {
     setPanel(panelBlue.classList.contains('open') ? null : 'blue')
   );
   backdrop.addEventListener('click', () => setPanel(null));
+
+  // 戰損比較表(播放結束)
+  const summary = document.getElementById('summary');
+  buildSummary();
+  document.getElementById('btn-replay').addEventListener('click', () => callbacks.onReplay());
+
+  function buildSummary() {
+    const unitFor = (k) => (k === 'aircraft' ? '架' : k === 'killed' ? '人' : '艘');
+    const approx = (k) => k === 'aircraft' || k === 'killed';
+    const fmt = (k, v) => `${approx(k) ? '約 ' : ''}${v} ${unitFor(k)}`;
+    const rows = outcome.rows
+      .map(
+        (r) => `<tr>
+          <td class="sv red">${fmt(r.key, outcome.red.values[r.key])}</td>
+          <td class="sl">${r.label}</td>
+          <td class="sv blue">${fmt(r.key, outcome.blue.values[r.key])}</td>
+        </tr>`
+      )
+      .join('');
+    document.querySelector('.sum-table').innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th class="red"><span class="sn">${outcome.red.name}</span><span class="sd">${outcome.red.detail}</span></th>
+            <th class="metric"></th>
+            <th class="blue"><span class="sn">${outcome.blue.name}</span><span class="sd">${outcome.blue.detail}</span></th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
 
   // 字卡
   const card = document.getElementById('event-card');
@@ -202,6 +246,15 @@ export function createHUD(callbacks) {
     hideEvent() {
       clearTimeout(cardTimer);
       card.classList.add('hidden');
+    },
+    showSummary() {
+      summary.classList.remove('hidden');
+      summary.classList.remove('animate');
+      void summary.offsetWidth;
+      summary.classList.add('animate');
+    },
+    hideSummary() {
+      summary.classList.add('hidden');
     },
   };
 }

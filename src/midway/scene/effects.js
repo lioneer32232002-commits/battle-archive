@@ -57,8 +57,6 @@ export class Effects {
     );
     fire.scale.setScalar(2 * scale);
     group.add(fire);
-    const light = new THREE.PointLight(0xffaa44, 30 * scale, 220 * scale, 1.6);
-    group.add(light);
     this.scene.add(group);
 
     let age = 0;
@@ -71,7 +69,6 @@ export class Effects {
         flash.material.opacity = Math.max(0, 1 - f * 2.2);
         fire.scale.setScalar((2 + f * 42) * scale);
         fire.material.opacity = Math.max(0, 1 - f * 1.3);
-        light.intensity = Math.max(0, 30 * scale * (1 - f * 1.8));
         return age < dur;
       },
       dispose: () => this.scene.remove(group),
@@ -270,14 +267,10 @@ export class Effects {
       group.add(s);
       parts.push(s);
     }
-    const light = new THREE.PointLight(0xff7722, 18, 180, 1.8);
-    group.add(light);
 
     const fire = {
       update: (dt) => {
         group.position.copy(obj.position);
-        light.position.set(0, 14, 0);
-        light.intensity = 14 + Math.sin(performance.now() * 0.02) * 5;
         for (const s of parts) {
           const d = s.userData;
           d.life += dt;

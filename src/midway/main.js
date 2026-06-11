@@ -8,8 +8,13 @@ import {
   airGroups,
   events,
   sides,
+  outcome,
 } from './data/battle.js';
 import { unitStateAt, interpolateTrack, newEvents } from './engine/timeline.js';
+
+// 行動裝置:縮小標籤、降低 pixelRatio,改善重疊與卡頓
+const isMobile = window.matchMedia('(max-width: 640px)').matches;
+const LABEL_SCALE = isMobile ? 0.6 : 1;
 import { createEnvironment } from './scene/environment.js';
 import { createMidwayAtoll } from './scene/terrain.js';
 import { createShip, animateFlags } from './scene/ships.js';
@@ -21,8 +26,8 @@ import { createHUD } from './ui/hud.js';
 
 // ── 基本場景 ─────────────────────────────────────────
 const container = document.getElementById('scene-container');
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 container.appendChild(renderer.domElement);
 
@@ -51,6 +56,7 @@ const director = new Director(camera, controls);
 // 地名標籤
 const midwayLabel = makeLabel('中途島 Midway', { side: 'neutral', big: true });
 midwayLabel.position.set(0, 90, 0);
+midwayLabel.scale.multiplyScalar(LABEL_SCALE);
 scene.add(midwayLabel);
 
 // ── 船艦 ─────────────────────────────────────────────
@@ -67,7 +73,7 @@ for (const u of units) {
       : u.name + (u.nameEn ? ` ${u.nameEn}` : '');
   const label = makeLabel(labelText, { side: u.side });
   label.position.y = isCarrier ? 56 : 38;
-  if (!isCarrier) label.scale.multiplyScalar(0.72);
+  label.scale.multiplyScalar((isCarrier ? 1 : 0.72) * LABEL_SCALE);
   group.add(label);
   const sunk = (u.statusChanges ?? []).find((c) => c.status === 'sunk');
   shipObjs.set(u.id, { group, spec: u, sunkT: sunk ? sunk.t : null });
@@ -79,7 +85,10 @@ const formationLabels = [
   { unit: 'enterprise', label: makeLabel('Task Force 16 第16特遣艦隊', { side: 'blue', big: true, sub: 'R.A. Spruance 史普魯恩斯' }), dy: 130 },
   { unit: 'yorktown', label: makeLabel('Task Force 17 第17特遣艦隊', { side: 'blue', big: true, sub: 'F.J. Fletcher 佛萊徹' }), dy: 130 },
 ];
-for (const f of formationLabels) scene.add(f.label);
+for (const f of formationLabels) {
+  f.label.scale.multiplyScalar(LABEL_SCALE);
+  scene.add(f.label);
+}
 
 // ── 機隊 ─────────────────────────────────────────────
 const airObjs = [];
@@ -88,7 +97,7 @@ for (const ag of airGroups) {
   scene.add(group);
   const label = makeLabel(ag.label, { side: ag.side });
   label.position.y = 26;
-  label.scale.multiplyScalar(0.62);
+  label.scale.multiplyScalar(0.62 * LABEL_SCALE);
   group.add(label);
   airObjs.push({ group, spec: ag });
 }
@@ -99,6 +108,7 @@ let prevT = TIME_START;
 let playing = false;
 let speed = 2; // 戰役分鐘 / 真實秒
 let started = false;
+let summaryShown = false;
 
 const hud = createHUD({
   onStart: () => {
@@ -116,10 +126,22 @@ const hud = createHUD({
   onScrub: (t) => {
     battleT = t;
     prevT = t;
+    summaryShown = false;
     effects.clearTransients();
     hud.hideEvent();
+    hud.hideSummary();
   },
   onModeToggle: (mode) => director.setMode(mode),
+  onReplay: () => {
+    battleT = TIME_START;
+    prevT = TIME_START;
+    summaryShown = false;
+    playing = true;
+    effects.clearTransients();
+    hud.hideSummary();
+    hud.setPlaying(true);
+    triggerEventsBetween(TIME_START - 1, battleT);
+  },
 });
 
 function unitObjPos(id) {
@@ -186,6 +208,10 @@ function tick() {
     if (battleT >= TIME_END) {
       playing = false;
       hud.setPlaying(false);
+      if (!summaryShown) {
+        summaryShown = true;
+        hud.showSummary();
+      }
     }
     triggerEventsBetween(prevT, battleT);
     hud.setTime(battleT);
