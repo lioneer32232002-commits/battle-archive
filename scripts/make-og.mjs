@@ -81,7 +81,7 @@ function homeOverlay() {
     <text x="70" y="474" font-family="'Microsoft JhengHei'" font-weight="bold" font-size="124" fill="#ffffff" letter-spacing="5">戰史檔案館</text>
     <line x1="76" y1="506" x2="600" y2="506" stroke="#e9c659" stroke-width="2" stroke-opacity="0.5"/>
     <text x="74" y="552" font-family="'Microsoft JhengHei'" font-weight="bold" font-size="38" fill="#f0d27a">歷史戰役 3D 模擬</text>
-    <text x="74" y="596" font-family="'Microsoft JhengHei'" font-size="24" fill="#dbe3ee">以電視特別節目式 3D 運鏡,重現歷史上的關鍵戰役</text>
+    <text x="74" y="596" font-family="'Microsoft JhengHei'" font-size="24" fill="#dbe3ee">以 3D 運鏡重現歷史　親臨改變世界的關鍵戰役</text>
   `);
 }
 

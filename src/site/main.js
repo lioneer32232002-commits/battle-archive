@@ -15,7 +15,7 @@ for (const era of eras) {
   grid.className = 'battle-grid';
 
   if (era.battles.length === 0) {
-    grid.innerHTML = `<p class="coming-soon">戰役製作中,敬請期待</p>`;
+    grid.innerHTML = `<p class="coming-soon">戰役製作中，敬請期待</p>`;
   }
 
   for (const b of era.battles) {
