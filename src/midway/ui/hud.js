@@ -186,7 +186,15 @@ export function createHUD(callbacks) {
           .join('')}
       </div>
       <div class="formations">
-        ${s.formations.map((f) => `<div class="formation"><b>${f.name}</b><small>${f.detail}</small></div>`).join('')}
+        ${s.formations
+          .map((f) => {
+            const lines = f.detail
+              .split('｜')
+              .map((seg) => `<small>${seg.trim()}</small>`)
+              .join('');
+            return `<div class="formation"><b>${f.name}</b>${lines}</div>`;
+          })
+          .join('')}
       </div>
       <div class="strength">
         <div class="strength-title">主力艦艇 / 航空戰力</div>
