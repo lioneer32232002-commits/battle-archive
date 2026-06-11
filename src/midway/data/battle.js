@@ -10,12 +10,12 @@ export const TIME_END = 1300; // 尾聲結束
 export const EPILOGUE_T = 1170; // 之後為 6/5–6/7 尾聲
 
 export function formatClock(t) {
-  if (t >= 1255) return '1942年6月7日';
-  if (t >= 1230) return '1942年6月6日';
-  if (t >= EPILOGUE_T) return '1942年6月5日';
+  if (t >= 1255) return '1942/6/7';
+  if (t >= 1230) return '1942/6/6';
+  if (t >= EPILOGUE_T) return '1942/6/5';
   const h = Math.floor(t / 60);
   const m = Math.floor(t % 60);
-  return `6月4日 ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  return `6/4 ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
 // ── 艦隊航跡(編隊中心) ─────────────────────────────────
@@ -464,7 +464,7 @@ export const events = [
 // ── 戰役結算(播放結束戰損比較表) ─────────────────────
 export const outcome = {
   headline: '太平洋戰爭的轉捩點',
-  sub: '1942年6月4日至7日',
+  sub: '1942/6/4–6/7',
   rows: [
     { key: 'carrier', label: '航空母艦 沉沒' },
     { key: 'cruiser', label: '重巡洋艦 沉沒' },

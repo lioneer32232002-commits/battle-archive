@@ -49,7 +49,7 @@ export function createHUD(callbacks) {
       <div class="intro-box">
         <p class="intro-kicker">戰史檔案館 · 3D 戰役模擬</p>
         <h1>中途島戰役</h1>
-        <p class="intro-sub">Battle of Midway · 1942年6月4日–7日</p>
+        <p class="intro-sub">Battle of Midway · 1942/6/4–6/7</p>
         <p class="intro-desc">
           日本海軍企圖攻佔中途島、殲滅美軍太平洋艦隊殘部；
           但美軍已破譯密碼，3 艘航空母艦在東北海域靜候伏擊。

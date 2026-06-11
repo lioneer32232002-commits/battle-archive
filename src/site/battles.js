@@ -9,7 +9,7 @@ export const eras = [
         id: 'midway',
         name: '中途島戰役',
         nameEn: 'Battle of Midway',
-        date: '1942年6月4日–7日',
+        date: '1942/6/4–6/7',
         sides: { red: '大日本帝國海軍', blue: '美國海軍' },
         summary:
           '太平洋戰爭的轉捩點。美軍憑藉情報破譯設伏，在一日之內擊沉日本 4 艘主力航艦，' +
