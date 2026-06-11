@@ -51,7 +51,7 @@ export function createHUD(callbacks) {
         <p class="intro-sub">Battle of Midway · 1942年6月4日–7日</p>
         <p class="intro-desc">
           日本海軍企圖攻佔中途島、殲滅美軍太平洋艦隊殘部；
-          但美軍已破譯密碼，三艘航空母艦在東北海域靜候伏擊。
+          但美軍已破譯密碼，3 艘航空母艦在東北海域靜候伏擊。
           一日之內，太平洋戰爭的天平就此翻轉。
         </p>
         <button id="btn-start" class="hud-btn start">▶ 進入戰場</button>
@@ -188,11 +188,11 @@ export function createHUD(callbacks) {
       <div class="formations">
         ${s.formations
           .map((f) => {
-            const lines = f.detail
-              .split('｜')
-              .map((seg) => `<small>${seg.trim()}</small>`)
+            const ships = (f.ships ?? [])
+              .map((sh) => `<small class="ship">${sh}</small>`)
               .join('');
-            return `<div class="formation"><b>${f.name}</b>${lines}</div>`;
+            const escort = f.escort ? `<small class="escort">${f.escort}</small>` : '';
+            return `<div class="formation"><b>${f.name}</b>${ships}${escort}</div>`;
           })
           .join('')}
       </div>

@@ -302,12 +302,12 @@ export const airGroups = [
 export const events = [
   {
     t: 245, title: '黎明前的太平洋', cinematic: true,
-    desc: '日軍計畫攻佔中途島，誘出美軍艦隊決戰。但美軍已破譯日軍密碼，三艘航艦在東北海域設伏。山本五十六的主力艦隊遠在後方三百浬，渾然不知埋伏已成。',
+    desc: '日軍計畫攻佔中途島，誘出美軍艦隊決戰。但美軍已破譯日軍密碼，3 艘航艦在東北海域設伏。山本五十六的主力艦隊遠在後方 300 浬，渾然不知埋伏已成。',
     camera: { pos: { x: 0, z: 0 }, dist: 2600 },
   },
   {
     t: 270, title: '日軍第一波出擊', cinematic: true,
-    desc: '南雲忠一的四艘航艦放飛一百零八架飛機，由友永丈市大尉率領，航向中途島。同時七架偵察機奉命搜索海面，利根四號機因彈射器故障延誤，埋下致命伏筆。',
+    desc: '南雲忠一的 4 艘航艦放飛 108 架飛機，由友永丈市大尉率領，航向中途島。同時 7 架偵察機奉命搜索海面，利根四號機因彈射器故障延誤，埋下致命伏筆。',
     camera: { unit: 'akagi', dist: 420 },
     fx: [{ kind: 'launch', unit: 'akagi' }],
   },
@@ -318,7 +318,7 @@ export const events = [
   },
   {
     t: 380, title: '中途島攔截戰',
-    desc: '海軍陸戰隊 VMF-221 中隊二十五架戰鬥機（多為過時的水牛式）攔截來襲機群，遭零式戰鬥機擊潰，損失十七架。',
+    desc: '海軍陸戰隊 VMF-221 中隊 25 架戰鬥機（多為過時的水牛式）攔截來襲機群，遭零式戰鬥機擊潰，損失 17 架。',
     camera: { pos: { x: -60, z: -120 }, dist: 350 },
     fx: [{ kind: 'dogfight', pos: { x: -50, z: -100 } }],
   },
@@ -330,7 +330,7 @@ export const events = [
   },
   {
     t: 420, title: '美軍航艦放飛攻擊隊', cinematic: true,
-    desc: '企業號與大黃蜂號在一百七十五浬距離上放飛一百一十六架飛機。史普魯恩斯接受參謀建議，賭上提早出擊，要趕在日軍回收第一波時痛擊。',
+    desc: '企業號與大黃蜂號在 175 浬距離上放飛 116 架飛機。史普魯恩斯接受參謀建議，賭上提早出擊，要趕在日軍回收第一波時痛擊。',
     camera: { unit: 'enterprise', dist: 420 },
     fx: [{ kind: 'launch', unit: 'enterprise' }, { kind: 'launch', unit: 'hornet' }],
   },
@@ -346,8 +346,8 @@ export const events = [
     camera: { unit: 'akagi', dist: 260 },
   },
   {
-    t: 448, title: '利根四號機：「發現敵艦十艘」', cinematic: true,
-    desc: '遲到的利根四號機終於回報：「發現疑似敵艦十艘」，卻未說明艦種。南雲陷入兩難：換裝作業要不要停？',
+    t: 448, title: '利根四號機：「發現敵艦 10 艘」', cinematic: true,
+    desc: '遲到的利根四號機終於回報：「發現疑似敵艦 10 艘」，卻未說明艦種。南雲陷入兩難：換裝作業要不要停？',
     camera: { unit: 'tone', dist: 400 },
   },
   {
@@ -362,25 +362,25 @@ export const events = [
   },
   {
     t: 560, title: 'VT-8 全滅', cinematic: true,
-    desc: '大黃蜂號 VT-8 雷擊中隊（沃爾德倫少校）十五架 TBD 無護航強攻，全數被擊落，三十名機組僅蓋伊少尉一人生還。',
+    desc: '大黃蜂號 VT-8 雷擊中隊（沃爾德倫少校）15 架 TBD 無護航強攻，全數被擊落，30 名機組僅蓋伊少尉一人生還。',
     camera: { unit: 'kaga', dist: 380 },
     fx: [{ kind: 'flak', unit: 'kaga', until: 585 }, { kind: 'torpedo-run', unit: 'kaga', at: 560 }],
   },
   {
     t: 580, title: 'VT-6 雷擊',
-    desc: '企業號 VT-6 中隊十四架雷擊機進攻，十架被擊落，無一命中。三波雷擊機的犧牲把日軍零戰全部引到低空，高空此刻門戶大開。',
+    desc: '企業號 VT-6 中隊 14 架雷擊機進攻，10 架被擊落，無一命中。3 波雷擊機的犧牲把日軍零戰全部引到低空，高空此刻門戶大開。',
     camera: { unit: 'akagi', dist: 380 },
     fx: [{ kind: 'flak', unit: 'akagi', until: 600 }, { kind: 'torpedo-run', unit: 'akagi', at: 580 }],
   },
   {
     t: 610, title: 'VT-3 進攻、零戰被引至低空',
-    desc: '約克鎮號 VT-3 自東南進攻。幾乎同一時刻，麥克拉斯基的三十三架俯衝轟炸機在燃料見底前發現日軍驅逐艦「嵐」的航跡，循線找到了機動部隊。',
+    desc: '約克鎮號 VT-3 自東南進攻。幾乎同一時刻，麥克拉斯基的 33 架俯衝轟炸機在燃料見底前發現日軍驅逐艦「嵐」的航跡，循線找到了機動部隊。',
     camera: { unit: 'soryu', dist: 420 },
     fx: [{ kind: 'flak', unit: 'soryu', until: 625 }],
   },
   {
     t: 622, title: '命運的五分鐘：加賀、赤城中彈', cinematic: true,
-    desc: '企業號俯衝轟炸機自雲層俯衝而下。加賀連中四彈，赤城被一彈貫入機庫，堆滿炸彈與油管的機庫瞬間引發連環爆炸，兩艦頓成火海。',
+    desc: '企業號俯衝轟炸機自雲層俯衝而下。加賀連中 4 彈，赤城被 1 彈貫入機庫，堆滿炸彈與油管的機庫瞬間引發連環爆炸，兩艦頓成火海。',
     camera: { unit: 'kaga', dist: 300 },
     fx: [
       { kind: 'divebomb', unit: 'kaga', at: 622 },
@@ -389,7 +389,7 @@ export const events = [
   },
   {
     t: 625, title: '蒼龍中彈', cinematic: true,
-    desc: '約克鎮號 VB-3（萊斯里少校）十七架俯衝轟炸機命中蒼龍三彈。短短五分鐘，日本三艘主力航艦化為燃燒的殘骸。太平洋戰爭的天平就此翻轉。',
+    desc: '約克鎮號 VB-3（萊斯里少校）17 架俯衝轟炸機命中蒼龍 3 彈。短短五分鐘，日本 3 艘主力航艦化為燃燒的殘骸。太平洋戰爭的天平就此翻轉。',
     camera: { unit: 'soryu', dist: 300 },
     fx: [{ kind: 'divebomb', unit: 'soryu', at: 625 }],
   },
@@ -400,37 +400,37 @@ export const events = [
   },
   {
     t: 658, title: '飛龍反擊：小林隊出擊', cinematic: true,
-    desc: '飛龍放飛十八架九九式艦爆與六架零戰，由小林道雄大尉率領，循美軍歸航機隊方向直撲約克鎮號。',
+    desc: '飛龍放飛 18 架九九式艦爆與 6 架零戰，由小林道雄大尉率領，循美軍歸航機隊方向直撲約克鎮號。',
     camera: { unit: 'hiryu', dist: 360 },
     fx: [{ kind: 'launch', unit: 'hiryu' }],
   },
   {
     t: 718, title: '約克鎮號中三彈', cinematic: true,
-    desc: '小林隊突破防空網，以十三架的代價命中約克鎮號三彈。鍋爐熄火、艦體冒出濃煙，損管隊伍卻奮力搶修，兩小時後竟恢復十九節航速。',
+    desc: '小林隊突破防空網，以 13 架的代價命中約克鎮號 3 彈。鍋爐熄火、艦體冒出濃煙，損管隊伍卻奮力搶修，2 小時後竟恢復 19 節航速。',
     camera: { unit: 'yorktown', dist: 300 },
     fx: [{ kind: 'divebomb', unit: 'yorktown', at: 719 }, { kind: 'flak', unit: 'yorktown', until: 730 }],
   },
   {
     t: 811, title: '友永隊最後的出擊', cinematic: true,
-    desc: '飛龍放飛最後十架九七式艦攻與六架零戰。隊長友永丈市的左油箱在晨襲中受損無法修復，他明知無法歸還，仍率隊出擊。',
+    desc: '飛龍放飛最後 10 架九七式艦攻與 6 架零戰。隊長友永丈市的左油箱在晨襲中受損無法修復，他明知無法歸還，仍率隊出擊。',
     camera: { unit: 'hiryu', dist: 360 },
     fx: [{ kind: 'launch', unit: 'hiryu' }],
   },
   {
     t: 880, title: '約克鎮號中兩枚魚雷', cinematic: true,
-    desc: '友永隊誤認已修復的約克鎮號為另一艘航艦，突防投雷，兩枚命中。約克鎮號嚴重左傾，下令棄艦。友永機被擊落，壯烈戰死。',
+    desc: '友永隊誤認已修復的約克鎮號為另一艘航艦，突防投雷，2 枚命中。約克鎮號嚴重左傾，下令棄艦。友永機被擊落，壯烈戰死。',
     camera: { unit: 'yorktown', dist: 300 },
     fx: [{ kind: 'torpedo-run', unit: 'yorktown', at: 878 }, { kind: 'flak', unit: 'yorktown', until: 890 }],
   },
   {
     t: 930, title: '獵殺飛龍',
-    desc: '企業號放飛二十四架俯衝轟炸機（含約克鎮號的孤兒機），目標：日軍最後一艘航艦。約克鎮號偵察機已標定飛龍位置。',
+    desc: '企業號放飛 24 架俯衝轟炸機（含約克鎮號的孤兒機），目標：日軍最後一艘航艦。約克鎮號偵察機已標定飛龍位置。',
     camera: { unit: 'enterprise', dist: 400 },
     fx: [{ kind: 'launch', unit: 'enterprise' }],
   },
   {
     t: 1023, title: '飛龍中彈：機動部隊覆滅', cinematic: true,
-    desc: '俯衝轟炸機自夕陽方向突入，飛龍連中四彈，前升降機被炸翻貼上艦橋。日本海軍引以為傲的機動部隊，四艘航艦在一日之內全數被毀。',
+    desc: '俯衝轟炸機自夕陽方向突入，飛龍連中 4 彈，前升降機被炸翻貼上艦橋。日本海軍引以為傲的機動部隊，4 艘航艦在一日之內全數被毀。',
     camera: { unit: 'hiryu', dist: 300 },
     fx: [{ kind: 'divebomb', unit: 'hiryu', at: 1023 }],
   },
@@ -451,12 +451,12 @@ export const events = [
   },
   {
     t: 1255, title: '六月七日：約克鎮號沉沒', cinematic: true,
-    desc: '搶救中的約克鎮號遭日軍潛艦伊一六八偷襲，兩枚魚雷命中，護航的驅逐艦哈曼號亦被擊沉。清晨，約克鎮號翻覆沉沒。',
+    desc: '搶救中的約克鎮號遭日軍潛艦伊-168 偷襲，2 枚魚雷命中，護航的驅逐艦哈曼號亦被擊沉。清晨，約克鎮號翻覆沉沒。',
     camera: { unit: 'yorktown', dist: 320 },
   },
   {
     t: 1280, title: '太平洋戰爭的轉捩點', cinematic: true,
-    desc: '中途島一役，日本損失四艘主力航艦、約二百五十架飛機與大批精銳飛行員；美軍損失約克鎮號與一百四十四架飛機。日本海軍自此失去戰略主動權，太平洋戰爭的攻守易位。',
+    desc: '中途島一役，日本損失 4 艘主力航艦、約 250 架飛機與大批精銳飛行員；美軍損失約克鎮號與 144 架飛機。日本海軍自此失去戰略主動權，太平洋戰爭的攻守易位。',
     camera: { pos: { x: 0, z: -800 }, dist: 3000 },
   },
 ];
@@ -490,12 +490,16 @@ export const sides = {
     name: '大日本帝國海軍',
     color: 0xd9442e,
     commanders: [
-      { name: '山本五十六', nameEn: 'Yamamoto Isoroku', role: '聯合艦隊司令長官（旗艦大和，後方三百浬）' },
+      { name: '山本五十六', nameEn: 'Yamamoto Isoroku', role: '聯合艦隊司令長官（旗艦大和，後方 300 浬）' },
       { name: '南雲忠一', nameEn: 'Nagumo Chūichi', role: '第一航空艦隊司令長官（赤城）' },
       { name: '山口多聞', nameEn: 'Yamaguchi Tamon', role: '第二航空戰隊司令官（飛龍）' },
     ],
     formations: [
-      { name: '第一機動部隊', detail: '航艦：赤城、加賀、蒼龍、飛龍｜戰艦二、巡洋艦三、驅逐艦十二' },
+      {
+        name: '第一機動部隊',
+        ships: ['赤城', '加賀', '蒼龍', '飛龍'],
+        escort: '戰艦 2、巡洋艦 3、驅逐艦 12',
+      },
     ],
     unitIds: ['akagi', 'kaga', 'soryu', 'hiryu'],
     baseAircraft: 248,
@@ -509,9 +513,21 @@ export const sides = {
       { name: '雷蒙・史普魯恩斯', nameEn: 'Raymond A. Spruance', role: 'TF16 司令（企業號）' },
     ],
     formations: [
-      { name: 'Task Force 16 第16特遣艦隊', detail: 'USS Enterprise 企業號、USS Hornet 大黃蜂號｜巡洋艦六、驅逐艦九' },
-      { name: 'Task Force 17 第17特遣艦隊', detail: 'USS Yorktown 約克鎮號｜巡洋艦二、驅逐艦六' },
-      { name: 'Midway Naval Air Station 中途島基地航空隊', detail: '各型飛機約一百二十七架' },
+      {
+        name: 'Task Force 16 第16特遣艦隊',
+        ships: ['USS Enterprise 企業號', 'USS Hornet 大黃蜂號'],
+        escort: '巡洋艦 6、驅逐艦 9',
+      },
+      {
+        name: 'Task Force 17 第17特遣艦隊',
+        ships: ['USS Yorktown 約克鎮號'],
+        escort: '巡洋艦 2、驅逐艦 6',
+      },
+      {
+        name: 'Midway Naval Air Station 中途島基地航空隊',
+        ships: [],
+        escort: '各型飛機約 127 架',
+      },
     ],
     unitIds: ['enterprise', 'hornet', 'yorktown', 'midway-base'],
     baseAircraft: 360,

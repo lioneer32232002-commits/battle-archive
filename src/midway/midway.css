@@ -82,8 +82,9 @@ body {
 .cmdr, .formation { margin-bottom: 7px; line-height: 1.45; }
 .cmdr b, .formation b { display: block; font-size: 0.86rem; }
 .cmdr small, .formation small { color: #8fa3c0; font-size: 0.74rem; }
-.formation small { display: block; line-height: 1.55; }
-.formation small + small { margin-top: 1px; }
+.formation small { display: block; line-height: 1.5; }
+.formation small.ship { color: #aab6c9; }
+.formation small.escort { color: #8fa3c0; margin-top: 3px; }
 
 .formations { border-top: 1px solid #243150; margin-top: 10px; padding-top: 10px; }
 
