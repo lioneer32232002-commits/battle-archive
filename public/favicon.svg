@@ -1,43 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  
   <defs>
     <radialGradient id="bg" cx="50%" cy="38%" r="80%">
-      <stop offset="0%" stop-color="#1a2a44"/>
-      <stop offset="55%" stop-color="#0c1422"/>
-      <stop offset="100%" stop-color="#05080f"/>
+      <stop offset="0%" stop-color="#1a2a44"/><stop offset="100%" stop-color="#05080f"/>
     </radialGradient>
-    <radialGradient id="redGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#d9442e" stop-opacity="0.40"/>
-      <stop offset="100%" stop-color="#d9442e" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="blueGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#2e7bd9" stop-opacity="0.40"/>
-      <stop offset="100%" stop-color="#2e7bd9" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="vignette" cx="50%" cy="45%" r="72%">
-      <stop offset="60%" stop-color="#000000" stop-opacity="0"/>
-      <stop offset="100%" stop-color="#000000" stop-opacity="0.72"/>
-    </radialGradient>
-    <linearGradient id="gold" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#fff4cf"/>
-      <stop offset="35%" stop-color="#e9c659"/>
-      <stop offset="62%" stop-color="#c9a227"/>
-      <stop offset="100%" stop-color="#7d5e14"/>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff4cf"/><stop offset="55%" stop-color="#e9c659"/><stop offset="100%" stop-color="#7d5e14"/>
     </linearGradient>
-    <linearGradient id="goldRay" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#f4dd8e"/>
-      <stop offset="100%" stop-color="#9a7a1d"/>
+    <linearGradient id="gr" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f4dd8e"/><stop offset="100%" stop-color="#9a7a1d"/>
     </linearGradient>
-    <radialGradient id="roundel" cx="50%" cy="40%" r="70%">
-      <stop offset="0%" stop-color="#243650"/>
-      <stop offset="100%" stop-color="#0c1626"/>
+    <radialGradient id="ro" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#243650"/><stop offset="100%" stop-color="#0c1626"/>
     </radialGradient>
-    <linearGradient id="ribbon" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#c0392b"/>
-      <stop offset="100%" stop-color="#7d1f16"/>
-    </linearGradient>
   </defs>
   <rect width="64" height="64" rx="14" fill="url(#bg)"/>
-  <rect width="64" height="64" rx="14" fill="none" stroke="url(#gold)" stroke-width="2.5"/>
-  <polygon points="47.86499029943661,29.92585371808488 59,32 47.86499029943661,34.07414628191512" fill="url(#goldRay)"/><polygon points="46.77655777106335,38.13623177841477 55.382685902179844,45.5 44.70241148914823,41.72875852102184" fill="url(#goldRay)"/><polygon points="41.72875852102184,44.70241148914823 45.5,55.382685902179844 38.136231778414775,46.77655777106335" fill="url(#goldRay)"/><polygon points="34.07414628191512,47.86499029943661 32,59 29.925853718084884,47.86499029943661" fill="url(#goldRay)"/><polygon points="25.86376822158523,46.77655777106335 18.500000000000007,55.382685902179844 22.27124147897817,44.70241148914823" fill="url(#goldRay)"/><polygon points="19.297588510851767,41.72875852102183 8.617314097820156,45.5 17.223442228936648,38.136231778414775" fill="url(#goldRay)"/><polygon points="16.13500970056339,34.07414628191512 5,32 16.13500970056339,29.925853718084888" fill="url(#goldRay)"/><polygon points="17.22344222893665,25.863768221585225 8.61731409782016,18.499999999999996 19.297588510851767,22.271241478978162" fill="url(#goldRay)"/><polygon points="22.27124147897816,19.29758851085177 18.499999999999986,8.61731409782016 25.863768221585218,17.223442228936655" fill="url(#goldRay)"/><polygon points="29.92585371808488,16.135009700563394 31.999999999999996,5 34.07414628191511,16.13500970056339" fill="url(#goldRay)"/><polygon points="38.136231778414775,17.22344222893665 45.5,8.61731409782016 41.72875852102184,19.297588510851767" fill="url(#goldRay)"/><polygon points="44.70241148914823,22.27124147897816 55.38268590217984,18.499999999999986 46.776557771063345,25.863768221585218" fill="url(#goldRay)"/><circle cx="32" cy="32" r="17" fill="url(#roundel)" stroke="url(#gold)" stroke-width="2.5"/><polygon points="32,17 35.644268564213334,26.984094634875326 46.265847744427305,27.36474508437579 37.896550401029955,33.91590536512467 40.8167787843871,44.135254915624216 32,38.2 23.183221215612903,44.135254915624216 26.103449598970048,33.91590536512467 17.734152255572695,27.36474508437579 28.355731435786666,26.984094634875326" fill="url(#gold)"/>
+  <rect width="64" height="64" rx="14" fill="none" stroke="url(#g)" stroke-width="2.5"/>
+  <polygon points="47.86499029943661,29.92585371808488 59,32 47.86499029943661,34.07414628191512" fill="url(#gr)"/><polygon points="46.77655777106335,38.13623177841477 55.382685902179844,45.5 44.70241148914823,41.72875852102184" fill="url(#gr)"/><polygon points="41.72875852102184,44.70241148914823 45.5,55.382685902179844 38.136231778414775,46.77655777106335" fill="url(#gr)"/><polygon points="34.07414628191512,47.86499029943661 32,59 29.925853718084884,47.86499029943661" fill="url(#gr)"/><polygon points="25.86376822158523,46.77655777106335 18.500000000000007,55.382685902179844 22.27124147897817,44.70241148914823" fill="url(#gr)"/><polygon points="19.297588510851767,41.72875852102183 8.617314097820156,45.5 17.223442228936648,38.136231778414775" fill="url(#gr)"/><polygon points="16.13500970056339,34.07414628191512 5,32 16.13500970056339,29.925853718084888" fill="url(#gr)"/><polygon points="17.22344222893665,25.863768221585225 8.61731409782016,18.499999999999996 19.297588510851767,22.271241478978162" fill="url(#gr)"/><polygon points="22.27124147897816,19.29758851085177 18.499999999999986,8.61731409782016 25.863768221585218,17.223442228936655" fill="url(#gr)"/><polygon points="29.92585371808488,16.135009700563394 31.999999999999996,5 34.07414628191511,16.13500970056339" fill="url(#gr)"/><polygon points="38.136231778414775,17.22344222893665 45.5,8.61731409782016 41.72875852102184,19.297588510851767" fill="url(#gr)"/><polygon points="44.70241148914823,22.27124147897816 55.38268590217984,18.499999999999986 46.776557771063345,25.863768221585218" fill="url(#gr)"/>
+  <circle cx="32" cy="32" r="17" fill="url(#ro)" stroke="url(#g)" stroke-width="2.5"/>
+  <polygon points="32,17 35.644268564213334,26.984094634875326 46.265847744427305,27.36474508437579 37.896550401029955,33.91590536512467 40.8167787843871,44.135254915624216 32,38.2 23.183221215612903,44.135254915624216 26.103449598970048,33.91590536512467 17.734152255572695,27.36474508437579 28.355731435786666,26.984094634875326" fill="url(#g)"/>
 </svg>
