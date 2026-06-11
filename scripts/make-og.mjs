@@ -73,7 +73,7 @@ function overlaySvg(body) {
 function midwayOverlay() {
   return overlaySvg(`
     <text x="76" y="86" font-family="Bahnschrift, Arial" font-weight="bold" font-size="24" fill="#f0d27a" letter-spacing="5">WAR HISTORY ARCHIVE &#183; 3D BATTLE SIMULATION</text>
-    <text x="70" y="430" font-family="Impact, Arial" font-size="132" fill="#ffffff" letter-spacing="3">BATTLE OF MIDWAY</text>
+    <text x="70" y="430" font-family="Impact, Arial" font-size="132" fill="#ffffff" fill-opacity="0.62" letter-spacing="3">BATTLE OF MIDWAY</text>
     <text x="76" y="488" font-family="Bahnschrift, Arial" font-weight="bold" font-size="36" fill="#f0d27a" letter-spacing="9">JUNE 4, 1942</text>
     <line x1="78" y1="514" x2="560" y2="514" stroke="#e9c659" stroke-width="2" stroke-opacity="0.5"/>
     <text x="76" y="552" font-family="Bahnschrift, Arial" font-weight="bold" font-size="27" fill="#dbe3ee" letter-spacing="2">THE TURNING POINT OF THE PACIFIC WAR</text>
@@ -85,7 +85,7 @@ function midwayOverlay() {
 function homeOverlay() {
   return overlaySvg(`
     <text x="76" y="86" font-family="Bahnschrift, Arial" font-weight="bold" font-size="24" fill="#f0d27a" letter-spacing="6">CINEMATIC 3D BATTLE SIMULATIONS</text>
-    <text x="72" y="428" font-family="Impact, Arial" font-size="100" fill="#ffffff" letter-spacing="2">WAR HISTORY ARCHIVE</text>
+    <text x="72" y="428" font-family="Impact, Arial" font-size="100" fill="#ffffff" fill-opacity="0.62" letter-spacing="2">WAR HISTORY ARCHIVE</text>
     <line x1="78" y1="476" x2="620" y2="476" stroke="#e9c659" stroke-width="2" stroke-opacity="0.5"/>
     <text x="76" y="528" font-family="Bahnschrift, Arial" font-weight="bold" font-size="34" fill="#f0d27a" letter-spacing="2">RELIVE THE BATTLES THAT CHANGED HISTORY</text>
     <text x="76" y="572" font-family="Bahnschrift, Arial" font-size="25" fill="#dbe3ee" letter-spacing="2">STEP ONTO THE 3D BATTLEFIELD, MINUTE BY MINUTE</text>
