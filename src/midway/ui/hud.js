@@ -181,7 +181,7 @@ export function createHUD(callbacks) {
     document.getElementById('fig-en').textContent = f.nameEn;
     document.getElementById('fig-meta').textContent = `${f.rank}　${f.affil}`;
     document.getElementById('fig-stats').innerHTML =
-      `<span><i>生卒</i> ${f.born}–${f.died}</span><span><i>戰役時</i> ${f.age} 歲</span>`;
+      `<span>${f.born}–${f.died}</span><span><i>戰役時</i> ${f.age} 歲</span>`;
     document.getElementById('fig-bio').textContent = f.bio;
     document.getElementById('fig-battle').textContent = f.battle;
     document.getElementById('fig-career').textContent = f.career;
