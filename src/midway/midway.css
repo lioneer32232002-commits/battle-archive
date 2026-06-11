@@ -347,16 +347,51 @@ body {
 .fig-en { color: #8fa3c0; font-size: 0.82rem; margin-top: 3px; }
 .fig-meta { color: #c9a227; font-size: 0.82rem; margin-top: 6px; }
 .fig-bio { color: #c6cedb; font-size: 0.9rem; line-height: 1.85; }
-.fig-fate { margin-top: 16px; padding-top: 14px; border-top: 1px solid #243150; font-size: 0.88rem; color: #dbe3ee; }
-.fig-fate .fl {
+
+.fig-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 4px 0 14px;
+  padding: 9px 13px;
+  background: rgba(201, 162, 39, 0.09);
+  border: 1px solid rgba(201, 162, 39, 0.22);
+  border-radius: 8px;
+  font-size: 0.84rem;
+  color: #e8e6df;
+  font-variant-numeric: tabular-nums;
+}
+.fig-stats i { font-style: normal; color: #c9a227; margin-right: 6px; font-size: 0.74rem; }
+
+.fig-result { margin-top: 12px; font-size: 0.88rem; color: #dbe3ee; line-height: 1.75; }
+.fig-result .rl {
   display: inline-block;
-  color: #ff9a55;
+  color: #ffd97a;
   font-size: 0.72rem;
-  border: 1px solid rgba(255, 154, 85, 0.4);
+  border: 1px solid rgba(201, 162, 39, 0.4);
   border-radius: 4px;
   padding: 1px 7px;
   margin-right: 8px;
+  vertical-align: 1px;
 }
+
+/* 時間軸:王牌出擊星標 */
+.ace-tick {
+  position: absolute;
+  top: -15px;
+  transform: translateX(-50%);
+  background: none;
+  border: none;
+  padding: 3px 4px;
+  margin: 0;
+  color: #ffd97a;
+  font-size: 0.72rem;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  text-shadow: 0 0 6px rgba(255, 217, 122, 0.75);
+}
+.ace-tick:hover { color: #fff; transform: translateX(-50%) scale(1.35); }
 
 @media (max-width: 640px) {
   #figure-card { padding: 16px; }

@@ -1,5 +1,5 @@
 // HUD:標題列、時間軸控制、部隊面板、事件字卡、圖例、開場畫面
-import { TIME_START, TIME_END, formatClock, sides, units, events, outcome } from '../data/battle.js';
+import { TIME_START, TIME_END, formatClock, sides, units, events, outcome, aces } from '../data/battle.js';
 import { figures, figureById, captainOf } from '../data/figures.js';
 
 const STATUS_ICON = { normal: '', burning: ' 🔥', sunk: ' ✚沉沒' };
@@ -84,20 +84,36 @@ export function createHUD(callbacks) {
             <div class="fig-meta" id="fig-meta"></div>
           </div>
         </div>
+        <div class="fig-stats" id="fig-stats"></div>
         <p class="fig-bio" id="fig-bio"></p>
-        <div class="fig-fate"><span class="fl">結局</span><span id="fig-fate"></span></div>
+        <div class="fig-result"><span class="rl">中途島戰果</span><span id="fig-battle"></span></div>
+        <div class="fig-result"><span class="rl">生涯戰果</span><span id="fig-career"></span></div>
       </div>
     </div>
   `;
 
   // 事件刻度
   const ticks = document.getElementById('timeline-ticks');
+  const pct = (t) => `${((t - TIME_START) / (TIME_END - TIME_START)) * 100}%`;
   for (const e of events) {
     const tick = document.createElement('i');
-    tick.style.left = `${((e.t - TIME_START) / (TIME_END - TIME_START)) * 100}%`;
+    tick.style.left = pct(e.t);
     if (e.cinematic) tick.classList.add('major');
     tick.title = e.title;
     ticks.appendChild(tick);
+  }
+  // 王牌攻擊時刻(★ 可點開人物小卡;標於該次攻擊的時點)
+  for (const ace of aces) {
+    for (const s of ace.sorties) {
+      const markT = (s.spawnT + s.despawnT) / 2;
+      const star = document.createElement('button');
+      star.className = 'ace-tick';
+      star.textContent = '★';
+      star.style.left = pct(markT);
+      star.dataset.fig = ace.id;
+      star.title = `★ ${ace.name} 攻擊（${formatClock(markT)}）`;
+      ticks.appendChild(star);
+    }
   }
 
   // 控制列事件
@@ -164,8 +180,11 @@ export function createHUD(callbacks) {
     document.getElementById('fig-name').textContent = f.name;
     document.getElementById('fig-en').textContent = f.nameEn;
     document.getElementById('fig-meta').textContent = `${f.rank}　${f.affil}`;
+    document.getElementById('fig-stats').innerHTML =
+      `<span><i>生卒</i> ${f.born}–${f.died}</span><span><i>戰役時</i> ${f.age} 歲</span>`;
     document.getElementById('fig-bio').textContent = f.bio;
-    document.getElementById('fig-fate').textContent = f.fate;
+    document.getElementById('fig-battle').textContent = f.battle;
+    document.getElementById('fig-career').textContent = f.career;
     figureCard.classList.remove('hidden');
     figureCard.classList.remove('animate');
     void figureCard.offsetWidth;
