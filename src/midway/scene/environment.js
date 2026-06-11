@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 
 const PALETTES = {
-  dawn: { top: 0x1a2a55, horizon: 0xe8956b, sun: 0xffb27a, sunInt: 0.9, amb: 0.45, water: 0x14304a, fog: 0xc9a58a },
+  dawn: { top: 0x1a2a55, horizon: 0xe8956b, sun: 0xffb27a, sunInt: 0.9, amb: 0.5, water: 0x1a3a58, fog: 0x9a8a82 },
   day: { top: 0x3577c9, horizon: 0xcfe3ee, sun: 0xfff3df, sunInt: 1.25, amb: 0.7, water: 0x10456e, fog: 0xbfd4de },
   dusk: { top: 0x2a2150, horizon: 0xe07a4e, sun: 0xff9a55, sunInt: 0.8, amb: 0.4, water: 0x122840, fog: 0xc08a6a },
   night: { top: 0x060a18, horizon: 0x1c2a45, sun: 0x8aa3cc, sunInt: 0.25, amb: 0.22, water: 0x081625, fog: 0x16202f },
@@ -123,17 +123,17 @@ export function createEnvironment(scene) {
   const cloudTex = makeCloudTexture();
   const clouds = new THREE.Group();
   const rand = mulberry(42);
-  for (let i = 0; i < 70; i++) {
+  for (let i = 0; i < 60; i++) {
     const sp = new THREE.Sprite(
-      new THREE.SpriteMaterial({ map: cloudTex, transparent: true, opacity: 0.45 + rand() * 0.35, depthWrite: false })
+      new THREE.SpriteMaterial({ map: cloudTex, transparent: true, opacity: 0.28 + rand() * 0.22, depthWrite: false })
     );
-    // 約半數集中在西北(機動部隊上空雲帶)
-    const cluster = i < 32;
+    // 部分集中在西北(機動部隊上空雲帶)
+    const cluster = i < 24;
     const cx = cluster ? -900 + (rand() - 0.5) * 2200 : (rand() - 0.5) * 9000;
     const cz = cluster ? -1300 + (rand() - 0.5) * 1800 : (rand() - 0.5) * 9000;
-    sp.position.set(cx, 380 + rand() * 320, cz);
-    const s = 500 + rand() * 900;
-    sp.scale.set(s, s * 0.42, 1);
+    sp.position.set(cx, 480 + rand() * 380, cz);
+    const s = 380 + rand() * 520;
+    sp.scale.set(s, s * 0.38, 1);
     sp.userData.drift = 6 + rand() * 8;
     clouds.add(sp);
   }

@@ -163,13 +163,17 @@ function runFx(fx) {
 
 // ── 每幀更新 ─────────────────────────────────────────
 const SINK_DURATION = 14; // 戰役分鐘:沉沒動畫時長
-const clock = new THREE.Clock();
+let lastNow = performance.now();
+let elapsed = 0;
 let panelAcc = 0;
 
 function tick() {
   requestAnimationFrame(tick);
-  const dt = Math.min(clock.getDelta(), 0.1);
-  const time = clock.elapsedTime;
+  const now = performance.now();
+  const dt = Math.min((now - lastNow) / 1000, 0.1);
+  lastNow = now;
+  elapsed += dt;
+  const time = elapsed;
 
   if (playing && started) {
     prevT = battleT;
@@ -244,4 +248,5 @@ function tick() {
 }
 
 hud.setTime(battleT);
+window.__dbg = () => ({ battleT, playing, started, speed, elapsed });
 tick();
