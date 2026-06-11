@@ -486,9 +486,9 @@ export const sides = {
       { name: '雷蒙·史普魯恩斯', nameEn: 'Raymond A. Spruance', role: 'TF16 司令(企業號)' },
     ],
     formations: [
-      { name: '第16特遣艦隊 TF16', detail: '企業號、大黃蜂號|巡洋艦 6、驅逐艦 9' },
-      { name: '第17特遣艦隊 TF17', detail: '約克鎮號|巡洋艦 2、驅逐艦 6' },
-      { name: '中途島基地航空隊', detail: '各型飛機約 127 架' },
+      { name: 'Task Force 16 第16特遣艦隊', detail: 'USS Enterprise 企業號、USS Hornet 大黃蜂號|巡洋艦 6、驅逐艦 9' },
+      { name: 'Task Force 17 第17特遣艦隊', detail: 'USS Yorktown 約克鎮號|巡洋艦 2、驅逐艦 6' },
+      { name: 'Midway Naval Air Station 中途島基地航空隊', detail: '各型飛機約 127 架' },
     ],
     unitIds: ['enterprise', 'hornet', 'yorktown', 'midway-base'],
     baseAircraft: 360,

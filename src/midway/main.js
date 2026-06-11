@@ -60,7 +60,12 @@ for (const u of units) {
   const group = createShip(u);
   scene.add(group);
   const isCarrier = u.kind === 'carrier';
-  const label = makeLabel(u.name + (u.nameEn ? ` ${u.nameEn}` : ''), { side: u.side });
+  // 美軍英文在前、繁中在後;日軍繁中在前、原文在後
+  const labelText =
+    u.side === 'blue' && u.nameEn
+      ? `${u.nameEn} ${u.name}`
+      : u.name + (u.nameEn ? ` ${u.nameEn}` : '');
+  const label = makeLabel(labelText, { side: u.side });
   label.position.y = isCarrier ? 56 : 38;
   if (!isCarrier) label.scale.multiplyScalar(0.72);
   group.add(label);
@@ -71,8 +76,8 @@ for (const u of units) {
 // 部隊大標籤(跟隨編隊旗艦)
 const formationLabels = [
   { unit: 'akagi', label: makeLabel('南雲機動部隊', { side: 'red', big: true, sub: '南雲忠一 中將' }), dy: 130 },
-  { unit: 'enterprise', label: makeLabel('第16特遣艦隊 TF16', { side: 'blue', big: true, sub: '史普魯恩斯 少將' }), dy: 130 },
-  { unit: 'yorktown', label: makeLabel('第17特遣艦隊 TF17', { side: 'blue', big: true, sub: '佛萊徹 少將' }), dy: 130 },
+  { unit: 'enterprise', label: makeLabel('Task Force 16 第16特遣艦隊', { side: 'blue', big: true, sub: 'R.A. Spruance 史普魯恩斯' }), dy: 130 },
+  { unit: 'yorktown', label: makeLabel('Task Force 17 第17特遣艦隊', { side: 'blue', big: true, sub: 'F.J. Fletcher 佛萊徹' }), dy: 130 },
 ];
 for (const f of formationLabels) scene.add(f.label);
 

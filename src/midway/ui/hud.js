@@ -13,10 +13,13 @@ export function createHUD(callbacks) {
       </div>
       <div class="tb-clock" id="clock">—</div>
       <div class="tb-right">
+        <button id="btn-panel-red" class="hud-btn panel-toggle"><i class="dot red"></i>日軍</button>
+        <button id="btn-panel-blue" class="hud-btn panel-toggle"><i class="dot blue"></i>美軍</button>
         <button id="btn-mode" class="hud-btn active">🎬 導演模式</button>
       </div>
     </div>
 
+    <div id="panel-backdrop"></div>
     <aside id="panel-red" class="side-panel red"></aside>
     <aside id="panel-blue" class="side-panel blue"></aside>
 
@@ -92,6 +95,29 @@ export function createHUD(callbacks) {
     callbacks.onStart();
   });
 
+  // 行動版面板抽屜
+  const panelRed = document.getElementById('panel-red');
+  const panelBlue = document.getElementById('panel-blue');
+  const backdrop = document.getElementById('panel-backdrop');
+  const btnPanelRed = document.getElementById('btn-panel-red');
+  const btnPanelBlue = document.getElementById('btn-panel-blue');
+  function setPanel(side) {
+    const openRed = side === 'red';
+    const openBlue = side === 'blue';
+    panelRed.classList.toggle('open', openRed);
+    panelBlue.classList.toggle('open', openBlue);
+    backdrop.classList.toggle('shown', openRed || openBlue);
+    btnPanelRed.classList.toggle('active', openRed);
+    btnPanelBlue.classList.toggle('active', openBlue);
+  }
+  btnPanelRed.addEventListener('click', () =>
+    setPanel(panelRed.classList.contains('open') ? null : 'red')
+  );
+  btnPanelBlue.addEventListener('click', () =>
+    setPanel(panelBlue.classList.contains('open') ? null : 'blue')
+  );
+  backdrop.addEventListener('click', () => setPanel(null));
+
   // 字卡
   const card = document.getElementById('event-card');
   let cardTimer = null;
@@ -102,11 +128,18 @@ export function createHUD(callbacks) {
 
   function buildPanel(side) {
     const s = sides[side];
+    const en = side === 'blue'; // 美軍:英文在前,繁中在後
     const el = document.getElementById(`panel-${side}`);
     el.innerHTML = `
       <h2>${s.name}</h2>
       <div class="cmdrs">
-        ${s.commanders.map((c) => `<div class="cmdr"><b>${c.name}</b><small>${c.role}</small></div>`).join('')}
+        ${s.commanders
+          .map((c) => {
+            const primary = en ? c.nameEn : c.name;
+            const secondary = en ? `${c.name}・${c.role}` : c.role;
+            return `<div class="cmdr"><b>${primary}</b><small>${secondary}</small></div>`;
+          })
+          .join('')}
       </div>
       <div class="formations">
         ${s.formations.map((f) => `<div class="formation"><b>${f.name}</b><small>${f.detail}</small></div>`).join('')}
@@ -116,14 +149,18 @@ export function createHUD(callbacks) {
         ${s.unitIds
           .map((id) => {
             const u = units.find((x) => x.id === id);
+            const nameHtml =
+              en && u.nameEn
+                ? `<span class="en">${u.nameEn}</span><span class="zh">${u.name}</span>`
+                : `<span class="zh">${u.name}</span>`;
             return `<div class="unit-row" id="row-${id}">
-              <span class="u-name">${u.name}</span>
+              <span class="u-name">${nameHtml}</span>
               <span class="u-status" id="status-${id}"></span>
               <span class="u-count" id="count-${id}">${u.strength.aircraft ?? ''}</span>
             </div>`;
           })
           .join('')}
-        <div class="unit-row total"><span class="u-name">航空戰力合計</span><span class="u-count" id="total-${side}">${s.baseAircraft}</span></div>
+        <div class="unit-row total"><span class="u-name"><span class="zh">航空戰力合計</span></span><span class="u-count" id="total-${side}">${s.baseAircraft}</span></div>
       </div>
     `;
   }

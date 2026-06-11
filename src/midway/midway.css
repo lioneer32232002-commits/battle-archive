@@ -87,12 +87,15 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 0;
+  padding: 4px 0;
   font-variant-numeric: tabular-nums;
 }
-.unit-row .u-name { flex: 0 0 auto; }
-.unit-row .u-status { flex: 1; font-size: 0.72rem; color: #ff9a55; }
-.unit-row .u-count { font-weight: 700; color: #ffd97a; }
+.unit-row .u-name { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.28; }
+.unit-row .u-name .en { font-size: 0.82rem; font-weight: 600; }
+.unit-row .u-name .zh { font-size: 0.82rem; }
+.unit-row .u-name:has(.en) .zh { font-size: 0.7rem; color: #8fa3c0; }
+.unit-row .u-status { flex: 0 0 auto; font-size: 0.72rem; color: #ff9a55; }
+.unit-row .u-count { flex: 0 0 auto; margin-left: auto; font-weight: 700; color: #ffd97a; }
 .unit-row.lost .u-name { text-decoration: line-through; color: #6b7280; }
 .unit-row.total { border-top: 1px dashed #31405e; margin-top: 5px; padding-top: 6px; }
 
@@ -203,7 +206,120 @@ body {
 .hud-btn.start:hover { background: rgba(201, 162, 39, 0.18); }
 .intro-src { margin-top: 26px; color: #5d6b82; font-size: 0.72rem; }
 
-@media (max-width: 900px) {
-  .side-panel { display: none; }
-  .tb-clock { font-size: 1.1rem; }
+/* ── 桌面預設:面板抽屜按鈕與背幕隱藏 ── */
+.panel-toggle { display: none; }
+.panel-toggle .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+.panel-toggle .dot.red { background: #d9442e; }
+.panel-toggle .dot.blue { background: #2e7bd9; }
+#panel-backdrop { display: none; }
+
+/* ── 平板:面板收窄 ── */
+@media (max-width: 1000px) and (min-width: 641px) {
+  .side-panel { width: 214px; font-size: 0.78rem; padding: 12px; }
+  .side-panel h2 { font-size: 0.92rem; }
+  .tb-clock { font-size: 1.25rem; }
+}
+
+/* ── 手機:面板改為底部抽屜,版型重排 ── */
+@media (max-width: 640px) {
+  /* 頂部列 */
+  #topbar { padding: 8px 10px; align-items: flex-start; }
+  .tb-left { flex-direction: column; gap: 2px; }
+  .home-link { font-size: 0.72rem; }
+  .battle-title { font-size: 1rem; }
+  .battle-title small { display: none; }
+  .tb-clock {
+    position: absolute;
+    left: 50%;
+    top: 50px;
+    transform: translateX(-50%);
+    font-size: 1.2rem;
+  }
+  .tb-right { gap: 6px; }
+  #btn-mode { display: none; } /* 手機預設導演模式;觸控仍可拖曳鏡頭 */
+  .panel-toggle { display: inline-flex; align-items: center; padding: 7px 11px; font-size: 0.8rem; }
+
+  /* 面板:底部抽屜(以 .red/.blue 雙類選擇器確保覆蓋桌面定位) */
+  .side-panel.red, .side-panel.blue {
+    position: fixed;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: none;
+    max-height: 70vh;
+    border: none;
+    border-top: 3px solid;
+    border-radius: 16px 16px 0 0;
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+    transform: translateY(110vh);
+    transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 30;
+  }
+  .side-panel.red { border-top-color: #d9442e; }
+  .side-panel.blue { border-top-color: #2e7bd9; }
+  .side-panel.red.open, .side-panel.blue.open { transform: translateY(0); }
+  .side-panel::before {
+    content: '';
+    position: absolute;
+    top: 7px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 42px;
+    height: 4px;
+    border-radius: 2px;
+    background: #51607e;
+  }
+  .side-panel h2 { margin-top: 4px; font-size: 1.05rem; }
+  .side-panel { font-size: 0.86rem; }
+
+  #panel-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    z-index: 25;
+  }
+  #panel-backdrop.shown { opacity: 1; pointer-events: auto; }
+
+  /* 事件字卡 */
+  #event-card {
+    bottom: 94px;
+    width: calc(100vw - 20px);
+    padding: 13px 15px;
+    border-left-width: 3px;
+  }
+  .ec-title { font-size: 1.08rem; }
+  .ec-desc { font-size: 0.82rem; line-height: 1.7; }
+
+  /* 圖例:手機隱藏(紅/藍辨識改由頂部日軍/美軍按鈕的色點代替) */
+  #legend { display: none; }
+
+  /* 底部時間軸:加大觸控目標 */
+  #bottombar {
+    padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+    gap: 9px;
+  }
+  .hud-btn.big { font-size: 1.25rem; padding: 9px 15px; }
+  #btn-speed { padding: 9px 13px; }
+  #timeline { height: 6px; }
+  #timeline::-webkit-slider-thumb { width: 22px; height: 22px; }
+
+  /* 開場 */
+  .intro-box { padding: 18px; }
+  .intro-kicker { font-size: 0.68rem; letter-spacing: 0.22em; }
+  .intro-box h1 { font-size: 2.1rem; letter-spacing: 0.14em; text-indent: 0.14em; }
+  .intro-sub { font-size: 0.82rem; }
+  .intro-desc { font-size: 0.86rem; line-height: 1.85; margin: 16px 0; }
+  .hud-btn.start { font-size: 0.98rem; padding: 11px 30px; }
+  .intro-src { font-size: 0.62rem; margin-top: 18px; }
+}
+
+/* 極窄螢幕:隱藏標題避免擁擠 */
+@media (max-width: 460px) {
+  .battle-title { display: none; }
 }
