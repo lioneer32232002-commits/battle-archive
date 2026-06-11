@@ -50,3 +50,55 @@ export function updateAirGroup(group, pos, time, altitude = 70) {
     p.position.y = (p.userData.phase % 3) * 1.2 + Math.sin(time * 2 + p.userData.phase) * 0.8;
   }
 }
+
+// ── 王牌飛行員座機(放大、金色尾翼、金色光暈,易於辨識) ──
+let goldGlowTex = null;
+function getGoldGlow() {
+  if (goldGlowTex) return goldGlowTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+  grad.addColorStop(0, 'rgba(255,228,150,0.95)');
+  grad.addColorStop(1, 'rgba(255,200,60,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  goldGlowTex = new THREE.CanvasTexture(c);
+  return goldGlowTex;
+}
+
+export function createAcePlane(side) {
+  const g = new THREE.Group();
+  g.rotation.order = 'YXZ'; // 先航向後俯仰
+  const body = new THREE.Mesh(
+    new THREE.ConeGeometry(1.5, 10, 6),
+    new THREE.MeshLambertMaterial({ color: PLANE_COLOR[side] })
+  );
+  body.rotation.x = -Math.PI / 2;
+  g.add(body);
+  const wing = new THREE.Mesh(
+    new THREE.BoxGeometry(13, 0.5, 2.6),
+    new THREE.MeshLambertMaterial({ color: PLANE_COLOR[side] })
+  );
+  wing.position.z = 0.6;
+  g.add(wing);
+  const tail = new THREE.Mesh(
+    new THREE.BoxGeometry(4.6, 0.5, 1.4),
+    new THREE.MeshLambertMaterial({ color: 0xe9c659 })
+  );
+  tail.position.z = 4.2;
+  g.add(tail);
+  const glow = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: getGoldGlow(),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      opacity: 0.85,
+    })
+  );
+  glow.scale.setScalar(20);
+  g.add(glow);
+  g.visible = false;
+  return g;
+}

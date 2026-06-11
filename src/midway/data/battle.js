@@ -380,7 +380,7 @@ export const events = [
   },
   {
     t: 622, title: '命運的五分鐘：加賀、赤城中彈', cinematic: true,
-    desc: '企業號俯衝轟炸機自雲層俯衝而下。加賀連中 4 彈，赤城被 1 彈貫入機庫，堆滿炸彈與油管的機庫瞬間引發連環爆炸，兩艦頓成火海。',
+    desc: '企業號俯衝轟炸機自雲層俯衝而下。VB-6 隊長百斯特上尉臨機帶兩名僚機改撲赤城，投下貫入機庫的致命一彈；加賀同時連中 4 彈。機庫內堆滿的炸彈與油管瞬間引發連環爆炸，兩艦頓成火海。',
     camera: { unit: 'kaga', dist: 300 },
     fx: [
       { kind: 'divebomb', unit: 'kaga', at: 622 },
@@ -430,7 +430,7 @@ export const events = [
   },
   {
     t: 1023, title: '飛龍中彈：機動部隊覆滅', cinematic: true,
-    desc: '俯衝轟炸機自夕陽方向突入，飛龍連中 4 彈，前升降機被炸翻貼上艦橋。日本海軍引以為傲的機動部隊，4 艘航艦在一日之內全數被毀。',
+    desc: '俯衝轟炸機自夕陽方向突入，飛龍連中 4 彈，前升降機被炸翻貼上艦橋。晨間擊毀赤城的百斯特再度出擊，成為唯一在一日之內參與擊沉兩艘航艦的飛行員。日本海軍引以為傲的機動部隊，4 艘航艦在一日之內全數被毀。',
     camera: { unit: 'hiryu', dist: 300 },
     fx: [{ kind: 'divebomb', unit: 'hiryu', at: 1023 }],
   },
@@ -483,6 +483,26 @@ export const outcome = {
     values: { carrier: 1, cruiser: 0, destroyer: 1, aircraft: 144, killed: 307 },
   },
 };
+
+// ── 關鍵飛行員(王牌個人行動,疊加於攻擊波之上) ──────────
+// kind:dive 俯衝轟炸 / torpedo 魚雷;sorties 指向目標艦與時間窗
+export const aces = [
+  {
+    id: 'best', side: 'blue', name: 'Dick Best 百斯特', kind: 'dive',
+    sorties: [
+      { unit: 'akagi', spawnT: 616, despawnT: 642 },
+      { unit: 'hiryu', spawnT: 1015, despawnT: 1038 },
+    ],
+  },
+  {
+    id: 'kobayashi', side: 'red', name: '小林道雄 Kobayashi', kind: 'dive',
+    sorties: [{ unit: 'yorktown', spawnT: 711, despawnT: 736 }],
+  },
+  {
+    id: 'tomonaga', side: 'red', name: '友永丈市 Tomonaga', kind: 'torpedo',
+    sorties: [{ unit: 'yorktown', spawnT: 871, despawnT: 896 }],
+  },
+];
 
 // ── 陣營與指揮官(面板資料) ───────────────────────────
 export const sides = {

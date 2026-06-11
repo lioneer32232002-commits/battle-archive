@@ -9,6 +9,7 @@ import {
   events,
   sides,
   outcome,
+  aces,
 } from './data/battle.js';
 import { unitStateAt, interpolateTrack, newEvents } from './engine/timeline.js';
 
@@ -18,7 +19,7 @@ const LABEL_SCALE = isMobile ? 0.6 : 1;
 import { createEnvironment } from './scene/environment.js';
 import { createMidwayAtoll } from './scene/terrain.js';
 import { createShip, animateFlags } from './scene/ships.js';
-import { createAirGroup, updateAirGroup } from './scene/aircraft.js';
+import { createAirGroup, updateAirGroup, createAcePlane } from './scene/aircraft.js';
 import { Effects } from './scene/effects.js';
 import { makeLabel } from './scene/labels.js';
 import { Director } from './camera/director.js';
@@ -100,6 +101,52 @@ for (const ag of airGroups) {
   label.scale.multiplyScalar(0.62 * LABEL_SCALE);
   group.add(label);
   airObjs.push({ group, spec: ag });
+}
+
+// ── 王牌飛行員座機(個人行動) ─────────────────────────
+const aceObjs = aces.map((ace) => {
+  const group = createAcePlane(ace.side);
+  scene.add(group);
+  const label = makeLabel('★ ' + ace.name, { side: ace.side });
+  label.position.y = 20;
+  label.scale.multiplyScalar(0.7 * LABEL_SCALE);
+  group.add(label);
+  return { ace, group };
+});
+
+// 王牌座機航跡:dive 自高空俯衝後拉起;torpedo 低空突防後爬升
+function aceTransform(kind, target, f) {
+  const wp =
+    kind === 'dive'
+      ? [
+          [0, target.x + 110, 250, target.z + 150],
+          [0.45, target.x + 12, 26, target.z + 22],
+          [0.64, target.x - 55, 52, target.z - 28],
+          [1, target.x - 210, 175, target.z - 150],
+        ]
+      : [
+          [0, target.x + 320, 16, target.z + 150],
+          [0.5, target.x + 40, 11, target.z + 22],
+          [0.64, target.x - 60, 18, target.z - 30],
+          [1, target.x - 240, 85, target.z - 140],
+        ];
+  let a = wp[0];
+  let b = wp[1];
+  for (let i = 0; i < wp.length - 1; i++) {
+    if (f >= wp[i][0]) {
+      a = wp[i];
+      b = wp[i + 1];
+    }
+  }
+  const span = b[0] - a[0] || 1;
+  const t = Math.min(1, Math.max(0, (f - a[0]) / span));
+  const x = a[1] + (b[1] - a[1]) * t;
+  const y = a[2] + (b[2] - a[2]) * t;
+  const z = a[3] + (b[3] - a[3]) * t;
+  const heading = Math.atan2(b[1] - a[1], -(b[3] - a[3]));
+  const dh = Math.hypot(b[1] - a[1], b[3] - a[3]) || 1;
+  const pitch = Math.atan2(b[2] - a[2], dh); // 上升為正
+  return { x, y, z, heading, pitch };
 }
 
 // ── 播放狀態 ─────────────────────────────────────────
@@ -260,6 +307,22 @@ function tick() {
     }
   }
 
+  // 王牌座機
+  for (const a of aceObjs) {
+    const sortie = a.ace.sorties.find((s) => battleT >= s.spawnT && battleT <= s.despawnT);
+    const target = sortie ? shipObjs.get(sortie.unit)?.group.position : null;
+    if (sortie && target) {
+      const f = (battleT - sortie.spawnT) / (sortie.despawnT - sortie.spawnT);
+      const tr = aceTransform(a.ace.kind, target, f);
+      a.group.position.set(tr.x, tr.y, tr.z);
+      a.group.rotation.y = -tr.heading;
+      a.group.rotation.x = -tr.pitch; // 俯衝時機首朝下
+      a.group.visible = true;
+    } else {
+      a.group.visible = false;
+    }
+  }
+
   animateFlags(scene, time);
   environment.update(dt, battleT);
   effects.update(dt);
@@ -279,5 +342,4 @@ function tick() {
 }
 
 hud.setTime(battleT);
-window.__dbg = () => ({ battleT, playing, started, speed, elapsed });
 tick();
