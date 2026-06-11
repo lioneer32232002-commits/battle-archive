@@ -16,9 +16,16 @@ const SRC = resolve(ROOT, 'assets-src');
 mkdirSync(PUBLIC, { recursive: true });
 
 const FONT = {
-  fontFiles: ['C:/Windows/Fonts/msjh.ttc', 'C:/Windows/Fonts/msjhbd.ttc', 'C:/Windows/Fonts/arial.ttf', 'C:/Windows/Fonts/arialbd.ttf'],
+  fontFiles: [
+    'C:/Windows/Fonts/msjh.ttc',
+    'C:/Windows/Fonts/msjhbd.ttc',
+    'C:/Windows/Fonts/arial.ttf',
+    'C:/Windows/Fonts/arialbd.ttf',
+    'C:/Windows/Fonts/impact.ttf', // 大標題:電影海報粗黑壓縮
+    'C:/Windows/Fonts/bahnschrift.ttf', // 小字/標籤:DIN 軍事技術感
+  ],
   loadSystemFonts: true,
-  defaultFontFamily: 'Microsoft JhengHei',
+  defaultFontFamily: 'Impact',
 };
 
 function svgToPng(svg, width) {
@@ -29,8 +36,8 @@ function svgToPng(svg, width) {
 const W = 1200, H = 630;
 
 function tag(x, y, color, text) {
-  return `<rect x="${x}" y="${y}" width="22" height="22" rx="3" fill="${color}"/>
-    <text x="${x + 32}" y="${y + 18}" font-family="'Microsoft JhengHei'" font-size="24" fill="#eef2f8">${text}</text>`;
+  return `<rect x="${x}" y="${y}" width="20" height="20" rx="3" fill="${color}"/>
+    <text x="${x + 30}" y="${y + 17}" font-family="Bahnschrift, Arial" font-weight="bold" font-size="23" fill="#eef2f8" letter-spacing="1.5">${text}</text>`;
 }
 
 function overlaySvg(body) {
@@ -65,23 +72,23 @@ function overlaySvg(body) {
 
 function midwayOverlay() {
   return overlaySvg(`
-    <text x="74" y="78" font-family="'Microsoft JhengHei'" font-size="24" fill="#f0d27a" letter-spacing="7">戰史檔案館 · 3D 戰役模擬</text>
-    <text x="70" y="476" font-family="'Microsoft JhengHei'" font-weight="bold" font-size="118" fill="#ffffff" letter-spacing="3">中途島戰役</text>
-    <text x="74" y="528" font-family="Arial, 'Microsoft JhengHei'" font-weight="bold" font-size="33" fill="#f0d27a" letter-spacing="10">BATTLE OF MIDWAY</text>
-    <line x1="76" y1="556" x2="600" y2="556" stroke="#e9c659" stroke-width="2" stroke-opacity="0.5"/>
-    <text x="74" y="592" font-family="'Microsoft JhengHei'" font-size="25" fill="#dbe3ee">1942年6月4日 — 太平洋戰爭的轉捩點</text>
-    ${tag(760, 568, '#e0503a', '大日本帝國海軍')}
-    ${tag(1010, 568, '#3f8ae6', '美國海軍')}
+    <text x="76" y="86" font-family="Bahnschrift, Arial" font-weight="bold" font-size="24" fill="#f0d27a" letter-spacing="5">WAR HISTORY ARCHIVE &#183; 3D BATTLE SIMULATION</text>
+    <text x="70" y="430" font-family="Impact, Arial" font-size="132" fill="#ffffff" letter-spacing="3">BATTLE OF MIDWAY</text>
+    <text x="76" y="488" font-family="Bahnschrift, Arial" font-weight="bold" font-size="36" fill="#f0d27a" letter-spacing="9">JUNE 4, 1942</text>
+    <line x1="78" y1="514" x2="560" y2="514" stroke="#e9c659" stroke-width="2" stroke-opacity="0.5"/>
+    <text x="76" y="552" font-family="Bahnschrift, Arial" font-weight="bold" font-size="27" fill="#dbe3ee" letter-spacing="2">THE TURNING POINT OF THE PACIFIC WAR</text>
+    ${tag(76, 576, '#e0503a', 'IMPERIAL JAPANESE NAVY')}
+    ${tag(640, 576, '#3f8ae6', 'UNITED STATES NAVY')}
   `);
 }
 
 function homeOverlay() {
   return overlaySvg(`
-    <text x="74" y="78" font-family="Arial, 'Microsoft JhengHei'" font-size="24" fill="#f0d27a" letter-spacing="7">WAR HISTORY ARCHIVE</text>
-    <text x="70" y="474" font-family="'Microsoft JhengHei'" font-weight="bold" font-size="124" fill="#ffffff" letter-spacing="5">戰史檔案館</text>
-    <line x1="76" y1="506" x2="600" y2="506" stroke="#e9c659" stroke-width="2" stroke-opacity="0.5"/>
-    <text x="74" y="552" font-family="'Microsoft JhengHei'" font-weight="bold" font-size="38" fill="#f0d27a">歷史戰役 3D 模擬</text>
-    <text x="74" y="596" font-family="'Microsoft JhengHei'" font-size="24" fill="#dbe3ee">以 3D 運鏡重現歷史　親臨改變世界的關鍵戰役</text>
+    <text x="76" y="86" font-family="Bahnschrift, Arial" font-weight="bold" font-size="24" fill="#f0d27a" letter-spacing="6">CINEMATIC 3D BATTLE SIMULATIONS</text>
+    <text x="72" y="428" font-family="Impact, Arial" font-size="100" fill="#ffffff" letter-spacing="2">WAR HISTORY ARCHIVE</text>
+    <line x1="78" y1="476" x2="620" y2="476" stroke="#e9c659" stroke-width="2" stroke-opacity="0.5"/>
+    <text x="76" y="528" font-family="Bahnschrift, Arial" font-weight="bold" font-size="34" fill="#f0d27a" letter-spacing="2">RELIVE THE BATTLES THAT CHANGED HISTORY</text>
+    <text x="76" y="572" font-family="Bahnschrift, Arial" font-size="25" fill="#dbe3ee" letter-spacing="2">STEP ONTO THE 3D BATTLEFIELD, MINUTE BY MINUTE</text>
   `);
 }
 
