@@ -108,6 +108,22 @@ async function buildOg(baseName, overlaySvgStr, outName) {
   console.log(`✓ ${outName}`);
 }
 
+// ── 首頁 hero 橫幅(無文字版)──────────────────────────
+// 與 OG 同一張主視覺,但不疊任何文字,裁成寬幅供網頁 banner 使用。
+async function buildBanner(baseName, outName, w, h) {
+  const basePath = resolve(SRC, baseName);
+  if (!existsSync(basePath)) {
+    console.warn(`! 略過 ${outName}:找不到底圖 ${basePath}`);
+    return;
+  }
+  const out = await sharp(basePath)
+    .resize(w, h, { fit: 'cover', position: 'centre' })
+    .jpeg({ quality: 84, mozjpeg: true })
+    .toBuffer();
+  writeFileSync(resolve(PUBLIC, outName), out);
+  console.log(`✓ ${outName}`);
+}
+
 // ── favicon(金色勳章星) ─────────────────────────────
 function faviconSvg() {
   const cx = 32, cy = 32, rays = [], n = 12;
@@ -151,6 +167,10 @@ function faviconSvg() {
 // ── 執行 ─────────────────────────────────────────────
 await buildOg('midway-base.png', midwayOverlay(), 'og-midway.png');
 await buildOg('home-base.png', homeOverlay(), 'og-home.png');
+// 無文字主題橫幅:首頁用寬幅 hero,各戰役頁用全螢幕開場背景。
+// 之後新增戰役時,放好 assets-src/<name>-base.png 再加一行即可。
+await buildBanner('home-base.png', 'banner-home.jpg', 2000, 760);
+await buildBanner('midway-base.png', 'banner-midway.jpg', 1920, 1080);
 
 const fav = faviconSvg();
 writeFileSync(resolve(PUBLIC, 'favicon.svg'), fav);
