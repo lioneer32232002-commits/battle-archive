@@ -22,19 +22,25 @@ for (const era of eras) {
     const card = document.createElement(b.available ? 'a' : 'div');
     card.className = 'battle-card' + (b.available ? '' : ' disabled');
     if (b.available) card.href = b.url;
+    const thumb = b.thumb
+      ? `<div class="card-thumb"><img src="${b.thumb}" alt="" loading="lazy" decoding="async" /></div>`
+      : '';
     card.innerHTML = `
-      <div class="card-top">
-        <h3>${b.name}</h3>
-        <span class="card-en">${b.nameEn}</span>
+      ${thumb}
+      <div class="card-body">
+        <div class="card-top">
+          <h3>${b.name}</h3>
+          <span class="card-en">${b.nameEn}</span>
+        </div>
+        <p class="card-date">${b.date}</p>
+        <p class="card-sides">
+          <span class="side red">${b.sides.red}</span>
+          <span class="vs">VS</span>
+          <span class="side blue">${b.sides.blue}</span>
+        </p>
+        <p class="card-summary">${b.summary}</p>
+        <p class="card-cta">${b.available ? '▶ 進入 3D 戰役模擬' : '製作中'}</p>
       </div>
-      <p class="card-date">${b.date}</p>
-      <p class="card-sides">
-        <span class="side red">${b.sides.red}</span>
-        <span class="vs">VS</span>
-        <span class="side blue">${b.sides.blue}</span>
-      </p>
-      <p class="card-summary">${b.summary}</p>
-      <p class="card-cta">${b.available ? '▶ 進入 3D 戰役模擬' : '製作中'}</p>
     `;
     grid.appendChild(card);
   }

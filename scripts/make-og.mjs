@@ -171,6 +171,8 @@ await buildOg('home-base.png', homeOverlay(), 'og-home.png');
 // 之後新增戰役時,放好 assets-src/<name>-base.png 再加一行即可。
 await buildBanner('home-base.png', 'banner-home.jpg', 2000, 760);
 await buildBanner('midway-base.png', 'banner-midway.jpg', 1920, 1080);
+// 首頁列表卡片縮圖(16:9 輕量版,各戰役用自己的主題圖)
+await buildBanner('midway-base.png', 'thumb-midway.jpg', 720, 405);
 
 const fav = faviconSvg();
 writeFileSync(resolve(PUBLIC, 'favicon.svg'), fav);
