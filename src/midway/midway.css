@@ -690,7 +690,9 @@ body {
   }
   #hp-mini.show { opacity: 1; visibility: visible; }
 
-  .hpm-row { display: flex; align-items: center; gap: 8px; }
+  .hpm-row { display: flex; align-items: center; gap: 8px; padding-left: 7px; border-left: 2px solid transparent; }
+  .hpm-row.red { border-left-color: #d9442e; }
+  .hpm-row.blue { border-left-color: #2e7bd9; }
   .hpm-side {
     flex: 0 0 auto;
     width: 46px;
@@ -712,7 +714,7 @@ body {
     position: relative;
     flex: 1 1 auto;
     min-width: 0;
-    height: 9px;
+    height: 10px;
     background: #0c111a;
     border: 1px solid #2a3852;
     border-radius: 3px;

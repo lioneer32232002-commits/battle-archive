@@ -282,6 +282,41 @@ let lastNow = performance.now();
 let elapsed = 0;
 let panelAcc = 0;
 
+// 沉沒退場:逐步「配色變淺 → 淡出」,並深沉、側翻沒入水中。
+// (各艦材質為獨立實例,改寫不影響其他艦;scrub 回戰役中段時還原)
+const SINK_PALE = new THREE.Color(0x9fb0c0); // 海沫灰白
+function prepSinkMats(o) {
+  if (o.sinkMats) return;
+  o.sinkMats = [];
+  o.group.traverse((m) => {
+    if (m.isMesh && m.material) {
+      const mats = Array.isArray(m.material) ? m.material : [m.material];
+      for (const mat of mats) {
+        o.sinkMats.push({ mat, op: mat.opacity ?? 1, col: mat.color ? mat.color.clone() : null });
+        mat.transparent = true;
+      }
+    }
+  });
+}
+function applySinkLook(o, f) {
+  prepSinkMats(o);
+  const opacity = Math.max(0, 1 - f * 1.08); // 末段完全淡出
+  const tint = Math.min(1, f * 0.85);        // 配色逐漸變淺
+  for (const r of o.sinkMats) {
+    r.mat.opacity = r.op * opacity;
+    if (r.col) r.mat.color.copy(r.col).lerp(SINK_PALE, tint);
+  }
+  o.sinkLook = true;
+}
+function restoreSinkLook(o) {
+  if (!o.sinkLook) return;
+  for (const r of o.sinkMats) {
+    r.mat.opacity = r.op;
+    if (r.col) r.mat.color.copy(r.col);
+  }
+  o.sinkLook = false;
+}
+
 function tick() {
   requestAnimationFrame(tick);
   const now = performance.now();
@@ -315,14 +350,19 @@ function tick() {
 
     if (st.status === 'sunk') {
       const f = Math.min(1, (battleT - o.sunkT) / SINK_DURATION);
-      o.group.position.y = -f * 26;
-      o.group.rotation.z = f * 0.55;
+      const ease = f * f; // 加速沉降
+      o.group.position.y = -ease * 40; // 沉得更深,沒入水中
+      o.group.rotation.z = f * 0.85; // 側翻傾覆
+      o.group.rotation.x = f * 0.3; // 艦身前後傾、滑入海面
+      applySinkLook(o, f); // 配色變淺 + 淡出
       o.group.visible = f < 1;
       effects.setBurning(id, o.group, false);
       if (o.group.userData.wake) o.group.userData.wake.visible = false;
     } else {
       o.group.position.y = 0;
       o.group.rotation.z = 0;
+      o.group.rotation.x = 0;
+      restoreSinkLook(o); // scrub 回戰役中段時還原艦體
       o.group.visible = true;
       // 停止移動(中彈漂流)時隱藏艦艏波
       if (o.group.userData.wake) o.group.userData.wake.visible = st.status === 'normal';
