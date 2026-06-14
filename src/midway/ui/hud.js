@@ -50,6 +50,36 @@ export function createHUD(callbacks) {
       </div>
     </div>
 
+    <!-- 手機常時顯示:雙方戰力迷你血條(免開面板即可看戰況) -->
+    <div id="hp-mini" aria-hidden="true">
+      <div class="hpm-row red">
+        <span class="hpm-side"><i class="dot"></i>日軍</span>
+        <span class="hpm-cell">
+          <i class="hpm-ico" title="航空戰力">空</i>
+          <span class="hpm-track"><span class="hpm-ghost" id="mini-hp-air-ghost-red"></span><span class="hpm-fill" id="mini-hp-air-red"></span></span>
+          <span class="hpm-val" id="mini-hp-air-val-red">100%</span>
+        </span>
+        <span class="hpm-cell">
+          <i class="hpm-ico" title="艦隊戰力">艦</i>
+          <span class="hpm-track"><span class="hpm-ghost" id="mini-hp-fleet-ghost-red"></span><span class="hpm-fill" id="mini-hp-fleet-red"></span></span>
+          <span class="hpm-val" id="mini-hp-fleet-val-red">100%</span>
+        </span>
+      </div>
+      <div class="hpm-row blue">
+        <span class="hpm-side"><i class="dot"></i>美軍</span>
+        <span class="hpm-cell">
+          <i class="hpm-ico" title="航空戰力">空</i>
+          <span class="hpm-track"><span class="hpm-ghost" id="mini-hp-air-ghost-blue"></span><span class="hpm-fill" id="mini-hp-air-blue"></span></span>
+          <span class="hpm-val" id="mini-hp-air-val-blue">100%</span>
+        </span>
+        <span class="hpm-cell">
+          <i class="hpm-ico" title="艦隊戰力">艦</i>
+          <span class="hpm-track"><span class="hpm-ghost" id="mini-hp-fleet-ghost-blue"></span><span class="hpm-fill" id="mini-hp-fleet-blue"></span></span>
+          <span class="hpm-val" id="mini-hp-fleet-val-blue">100%</span>
+        </span>
+      </div>
+    </div>
+
     <div id="panel-backdrop"></div>
     <aside id="panel-red" class="side-panel red"></aside>
     <aside id="panel-blue" class="side-panel blue"></aside>
@@ -211,6 +241,7 @@ export function createHUD(callbacks) {
   });
   document.getElementById('btn-start').addEventListener('click', () => {
     document.getElementById('intro').classList.add('hidden');
+    document.getElementById('hp-mini').classList.add('show'); // 開戰後顯示手機迷你血條
     callbacks.onStart();
   });
 
@@ -313,15 +344,18 @@ export function createHUD(callbacks) {
   };
   function setBar(side, kind, pct) {
     const p = Math.max(0, Math.min(100, Math.round(pct)));
-    const fill = document.getElementById(`hp-${kind}-${side}`);
-    const ghost = document.getElementById(`hp-${kind}-ghost-${side}`);
-    const val = document.getElementById(`hp-${kind}-val-${side}`);
-    if (fill) fill.style.width = `${p}%`;
-    if (ghost) ghost.style.width = `${p}%`; // 慢速追上 fill,露出剛損失的一段
-    if (val) {
-      val.textContent = `${p}%`;
-      val.classList.toggle('warn', p < 50 && p >= 25);
-      val.classList.toggle('crit', p < 25);
+    // 同步更新面板血條(hp-)與手機常時迷你血條(mini-hp-)
+    for (const prefix of ['hp', 'mini-hp']) {
+      const fill = document.getElementById(`${prefix}-${kind}-${side}`);
+      const ghost = document.getElementById(`${prefix}-${kind}-ghost-${side}`);
+      const val = document.getElementById(`${prefix}-${kind}-val-${side}`);
+      if (fill) fill.style.width = `${p}%`;
+      if (ghost) ghost.style.width = `${p}%`; // 慢速追上 fill,露出剛損失的一段
+      if (val) {
+        val.textContent = `${p}%`;
+        val.classList.toggle('warn', p < 50 && p >= 25);
+        val.classList.toggle('crit', p < 25);
+      }
     }
   }
 

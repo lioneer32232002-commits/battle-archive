@@ -662,6 +662,75 @@ body {
   .battle-title { display: none; }
 }
 
+/* ── 手機:常時顯示的雙方戰力迷你血條(免開面板) ── */
+#hp-mini { display: none; }
+
+@media (max-width: 640px) {
+  #hp-mini {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    position: fixed;
+    top: 100px;
+    left: 8px;
+    right: 8px;
+    z-index: 20;
+    padding: 7px 10px 8px;
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(8, 12, 20, 0.84), rgba(8, 12, 20, 0.66));
+    border: 1px solid rgba(49, 64, 94, 0.7);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    pointer-events: none; /* 純顯示,可穿透觸控拖曳鏡頭 */
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.4s ease;
+    font-variant-numeric: tabular-nums;
+  }
+  #hp-mini.show { opacity: 1; visibility: visible; }
+
+  .hpm-row { display: flex; align-items: center; gap: 8px; }
+  .hpm-side {
+    flex: 0 0 auto;
+    width: 46px;
+    display: flex;
+    align-items: center;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  .hpm-row.red .hpm-side { color: #ff6b5e; }
+  .hpm-row.blue .hpm-side { color: #5ea8ff; }
+  .hpm-side .dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; flex: 0 0 auto; }
+  .hpm-row.red .dot { background: #d9442e; }
+  .hpm-row.blue .dot { background: #2e7bd9; }
+
+  .hpm-cell { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 5px; }
+  .hpm-ico { flex: 0 0 auto; width: 13px; text-align: center; font-size: 0.66rem; color: #8fa3c0; font-style: normal; }
+  .hpm-track {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 9px;
+    background: #0c111a;
+    border: 1px solid #2a3852;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .hpm-ghost, .hpm-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; }
+  .hpm-ghost { background: rgba(255, 226, 170, 0.55); transition: width 0.9s ease 0.12s; }
+  .hpm-fill {
+    transition: width 0.22s ease;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 4px rgba(0, 0, 0, 0.35);
+  }
+  .hpm-row.red .hpm-fill { background: linear-gradient(180deg, #f06a52, #cf3d29); }
+  .hpm-row.blue .hpm-fill { background: linear-gradient(180deg, #5ea8ff, #2a72cf); }
+  .hpm-val { flex: 0 0 auto; width: 32px; text-align: right; font-size: 0.7rem; color: #cdd6e3; }
+  .hpm-val.warn { color: #ffcf6a; }
+  .hpm-val.crit { color: #ff7a68; font-weight: 700; }
+}
+
 /* 戰損表:手機縮放 */
 @media (max-width: 640px) {
   .summary-box { padding: 22px 16px 20px; }
