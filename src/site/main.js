@@ -15,7 +15,7 @@ for (const era of eras) {
   grid.className = 'battle-grid';
 
   if (era.battles.length === 0) {
-    grid.innerHTML = `<p class="coming-soon">戰役製作中，敬請期待</p>`;
+    grid.innerHTML = `<p class="coming-soon">戰雲集結中 · 即將開戰</p>`;
   }
 
   for (const b of era.battles) {
@@ -39,7 +39,7 @@ for (const era of eras) {
           <span class="side blue">${b.sides.blue}</span>
         </p>
         <p class="card-summary">${b.summary}</p>
-        <p class="card-cta">${b.available ? '▶ 進入 3D 戰役模擬' : '製作中'}</p>
+        <p class="card-cta">${b.available ? '▶ 進入戰場 · 3D 戰役重現' : '備戰中'}</p>
       </div>
     `;
     grid.appendChild(card);

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>戰史檔案館 — 歷史戰役 3D 模擬</title>
-  <meta name="description" content="以 3D 運鏡重現歷史上的關鍵戰役。第一個戰役：中途島戰役。" />
+  <meta name="description" content="以 3D 運鏡重返烽火現場，親臨扭轉世界命運的關鍵決戰。首役登場：中途島戰役。" />
 
   <!-- favicon -->
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -15,7 +15,7 @@
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="戰史檔案館" />
   <meta property="og:title" content="戰史檔案館 — 歷史戰役 3D 模擬" />
-  <meta property="og:description" content="以 3D 運鏡重現歷史上的關鍵戰役。" />
+  <meta property="og:description" content="以 3D 運鏡重返烽火現場，親臨扭轉世界命運的關鍵決戰。" />
   <meta property="og:url" content="https://battle-archive.pages.dev/" />
   <meta property="og:image" content="https://battle-archive.pages.dev/og-home.png" />
   <meta property="og:image:width" content="1200" />
@@ -23,12 +23,35 @@
   <meta property="og:image:type" content="image/png" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="戰史檔案館 — 歷史戰役 3D 模擬" />
-  <meta name="twitter:description" content="以 3D 運鏡重現歷史上的關鍵戰役。" />
+  <meta name="twitter:description" content="以 3D 運鏡重返烽火現場，親臨扭轉世界命運的關鍵決戰。" />
   <meta name="twitter:image" content="https://battle-archive.pages.dev/og-home.png" />
+
+  <!-- 戰爭風字型:厚重黑體(Noto Sans TC) + 二戰儀表數字(Oswald) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Oswald:wght@500;600;700&display=swap" />
 
   <link rel="stylesheet" href="/src/site/main.css" />
 </head>
 <body>
+  <!-- 戰損濾鏡:以 SVG 亂流位移讓標題邊緣產生風化、侵蝕的戰損感 -->
+  <svg class="svg-defs" aria-hidden="true" focusable="false" width="0" height="0">
+    <defs>
+      <filter id="battle-worn" x="-8%" y="-8%" width="116%" height="116%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.025" numOctaves="2" seed="9" result="n" />
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="2.2" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+      <filter id="battle-worn-hero" x="-12%" y="-12%" width="124%" height="124%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.018 0.022" numOctaves="3" seed="5" result="n" />
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="3.4" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+      <!-- 弱化版:給小字(戰役選項、英文)用,保留可讀性 -->
+      <filter id="battle-worn-soft" x="-6%" y="-6%" width="112%" height="112%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="2" seed="13" result="n" />
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="1.5" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+    </defs>
+  </svg>
   <header class="site-header">
     <div class="hero">
       <img class="hero-img" src="/banner-home.jpg" alt="" loading="eager" decoding="async" />
@@ -36,8 +59,8 @@
       <div class="hero-content">
         <h1>戰史檔案館</h1>
         <p class="tagline">
-          <span>以 3D 運鏡重現歷史</span>
-          <span>親臨改變世界的關鍵戰役</span>
+          <span>以 3D 運鏡重返烽火現場</span>
+          <span>親臨扭轉世界命運的關鍵決戰</span>
         </p>
       </div>
     </div>
@@ -52,7 +75,7 @@
         <span class="btn-icon">🛩</span>Skyfaring 主站<span class="btn-ext">↗</span>
       </a>
     </div>
-    <p class="footer-note">戰役資料依據官方與權威史料製作 · 本站為歷史教育用途</p>
+    <p class="footer-note">戰役考據悉依官方與權威史料 · 本站為歷史教育用途</p>
   </footer>
   <script type="module" src="/src/site/main.js"></script>
 </body>

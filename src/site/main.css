@@ -9,6 +9,9 @@ body {
   flex-direction: column;
 }
 
+/* 戰損濾鏡的 SVG 容器,不佔版面 */
+.svg-defs { position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none; }
+
 .site-header { border-bottom: 1px solid #1d2738; }
 
 /* ── 首頁 hero 橫幅 ───────────────────────────────── */
@@ -48,19 +51,20 @@ body {
 }
 
 .hero-content h1 {
-  font-size: 2.8rem;
-  letter-spacing: 0.35em;
-  text-indent: 0.35em;
-  font-weight: 700;
-  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.7);
+  font-size: 2.9rem;
+  letter-spacing: 0.42em;
+  text-indent: 0.42em;
+  font-weight: 900;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.75);
+  filter: url(#battle-worn-hero);
 }
 
 .tagline {
   margin-top: 14px;
   color: #cdd8ea;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.24em;
   line-height: 1.9;
-  font-weight: 300;
+  font-weight: 500;
   text-shadow: 0 1px 12px rgba(0, 0, 0, 0.65);
 }
 .tagline span { display: inline-block; }
@@ -79,8 +83,21 @@ main { flex: 1; max-width: 1100px; width: 100%; margin: 0 auto; padding: 40px 24
   margin-bottom: 20px;
 }
 
-.era-head h2 { font-size: 1.5rem; letter-spacing: 0.08em; }
-.era-period { color: #7d8aa0; font-size: 0.95rem; }
+.era-head h2 { font-size: 1.5rem; letter-spacing: 0.1em; font-weight: 900; filter: url(#battle-worn); }
+.era-period {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 500;
+  font-size: 1rem;
+  letter-spacing: 0.08em;
+  color: #b4f06a;                          /* 夜光綠讀數 */
+  text-shadow: 0 0 5px rgba(120, 230, 90, 0.4);
+  font-feature-settings: "tnum" 1;
+  padding: 1px 9px;
+  border: 1px solid rgba(120, 200, 90, 0.38);
+  border-radius: 3px;
+  background: rgba(4, 16, 8, 0.6);         /* 暗色儀表盤面,拉高對比 */
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
+}
 
 .battle-grid {
   display: grid;
@@ -88,7 +105,7 @@ main { flex: 1; max-width: 1100px; width: 100%; margin: 0 auto; padding: 40px 24
   gap: 20px;
 }
 
-.coming-soon { color: #5d6b82; padding: 18px 4px; }
+.coming-soon { color: #5d6b82; padding: 18px 4px; font-weight: 700; letter-spacing: 0.12em; }
 
 .battle-card {
   display: block;
@@ -135,9 +152,24 @@ main { flex: 1; max-width: 1100px; width: 100%; margin: 0 auto; padding: 40px 24
 .card-body { padding: 20px 22px 22px; }
 
 .card-top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.card-top h3 { font-size: 1.35rem; }
-.card-en { color: #7d8aa0; font-size: 0.85rem; }
-.card-date { color: #c9a227; font-size: 0.9rem; margin-top: 6px; }
+.card-top h3 { font-size: 1.38rem; font-weight: 900; letter-spacing: 0.04em; filter: url(#battle-worn); }
+.card-en { color: #7d8aa0; font-size: 0.85rem; filter: url(#battle-worn-soft); }
+.card-date {
+  display: inline-block;
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600;
+  font-size: 0.98rem;
+  letter-spacing: 0.06em;
+  color: #b8f56e;                          /* 夜光綠讀數 */
+  text-shadow: 0 0 6px rgba(135, 240, 95, 0.45);
+  font-feature-settings: "tnum" 1;
+  margin-top: 8px;
+  padding: 2px 10px;
+  border: 1px solid rgba(135, 215, 95, 0.42);
+  border-radius: 3px;
+  background: rgba(3, 18, 9, 0.62);        /* 暗色儀表盤面,拉高對比 */
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.62);
+}
 
 .card-sides { margin-top: 12px; display: flex; align-items: center; gap: 10px; font-size: 0.95rem; }
 .side.red { color: #ff6b5e; }
@@ -146,7 +178,7 @@ main { flex: 1; max-width: 1100px; width: 100%; margin: 0 auto; padding: 40px 24
 
 .card-summary { margin-top: 12px; color: #aab6c9; font-size: 0.9rem; line-height: 1.7; }
 
-.card-cta { margin-top: 16px; color: #c9a227; font-size: 0.9rem; letter-spacing: 0.06em; }
+.card-cta { margin-top: 16px; color: #c9a227; font-size: 0.95rem; font-weight: 900; letter-spacing: 0.1em; filter: url(#battle-worn-soft); }
 
 .site-footer {
   text-align: center;
