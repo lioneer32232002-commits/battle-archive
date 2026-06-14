@@ -306,13 +306,13 @@ export const events = [
     camera: { pos: { x: 0, z: 0 }, dist: 2600 },
   },
   {
-    t: 270, title: '日軍第一波出擊', cinematic: true,
+    t: 270, title: '日軍第一波出擊', short: '日軍出擊', cinematic: true,
     desc: '南雲忠一的 4 艘航艦放飛 108 架飛機，由友永丈市大尉率領，航向中途島。同時 7 架偵察機奉命搜索海面，利根四號機因彈射器故障延誤，埋下致命伏筆。',
     camera: { unit: 'akagi', dist: 420 },
     fx: [{ kind: 'launch', unit: 'akagi' }],
   },
   {
-    t: 334, title: 'PBY：「發現敵航艦！」', cinematic: true,
+    t: 334, title: 'PBY：「發現敵航艦！」', short: '發現日艦', cinematic: true,
     desc: '美軍 PBY 卡特琳娜偵察機發現南雲艦隊，隨後回報「大批飛機飛向中途島」。佛萊徹下令史普魯恩斯的 TF16 立即南下攔截。',
     camera: { unit: 'akagi', dist: 700 },
   },
@@ -323,13 +323,13 @@ export const events = [
     fx: [{ kind: 'dogfight', pos: { x: -50, z: -100 } }],
   },
   {
-    t: 390, title: '日軍空襲中途島', cinematic: true,
+    t: 390, title: '日軍空襲中途島', short: '空襲中途島', cinematic: true,
     desc: '日機轟炸中途島，擊毀發電廠、油槽與設施，但跑道仍可使用。友永發出關鍵電報：「有必要實施第二次攻擊」。',
     camera: { pos: { x: 0, z: 0 }, dist: 300 },
     fx: [{ kind: 'bombing', pos: { x: 0, z: 0 }, until: 403 }],
   },
   {
-    t: 420, title: '美軍航艦放飛攻擊隊', cinematic: true,
+    t: 420, title: '美軍航艦放飛攻擊隊', short: '美軍出擊', cinematic: true,
     desc: '企業號與大黃蜂號在 175 浬距離上放飛 116 架飛機。史普魯恩斯接受參謀建議，賭上提早出擊，要趕在日軍回收第一波時痛擊。',
     camera: { unit: 'enterprise', dist: 420 },
     fx: [{ kind: 'launch', unit: 'enterprise' }, { kind: 'launch', unit: 'hornet' }],
@@ -351,7 +351,7 @@ export const events = [
     camera: { unit: 'tone', dist: 400 },
   },
   {
-    t: 500, title: '「敵艦隊似有航艦隨行」', cinematic: true,
+    t: 500, title: '「敵艦隊似有航艦隨行」', short: '航艦現蹤', cinematic: true,
     desc: '利根四號機追加報告：敵艦隊後方似有航空母艦。最壞的消息成真。南雲決定先回收中途島歸來的第一波，再整隊出擊，這個決定將葬送機動部隊。',
     camera: { unit: 'akagi', dist: 500 },
   },
@@ -361,7 +361,7 @@ export const events = [
     camera: { unit: 'akagi', dist: 700 },
   },
   {
-    t: 560, title: 'VT-8 全滅', cinematic: true,
+    t: 560, title: 'VT-8 全滅', short: 'VT-8 全滅', cinematic: true,
     desc: '大黃蜂號 VT-8 雷擊中隊（沃爾德倫少校）15 架 TBD 無護航強攻，全數被擊落，30 名機組僅蓋伊少尉一人生還。',
     camera: { unit: 'kaga', dist: 380 },
     fx: [{ kind: 'flak', unit: 'kaga', until: 585 }, { kind: 'torpedo-run', unit: 'kaga', at: 560 }],
@@ -379,7 +379,7 @@ export const events = [
     fx: [{ kind: 'flak', unit: 'soryu', until: 625 }],
   },
   {
-    t: 622, title: '命運的五分鐘：加賀、赤城中彈', cinematic: true,
+    t: 622, title: '命運的五分鐘：加賀、赤城中彈', short: '命運五分鐘', cinematic: true,
     desc: '企業號俯衝轟炸機自雲層俯衝而下。VB-6 隊長百斯特上尉臨機帶兩名僚機改撲赤城，投下貫入機庫的致命一彈；加賀同時連中 4 彈。機庫內堆滿的炸彈與油管瞬間引發連環爆炸，兩艦頓成火海。',
     camera: { unit: 'kaga', dist: 300 },
     fx: [
@@ -399,25 +399,25 @@ export const events = [
     camera: { unit: 'nagara', dist: 320 },
   },
   {
-    t: 658, title: '飛龍反擊：小林隊出擊', cinematic: true,
+    t: 658, title: '飛龍反擊：小林隊出擊', short: '飛龍反擊', cinematic: true,
     desc: '飛龍放飛 18 架九九式艦爆與 6 架零戰，由小林道雄大尉率領，循美軍歸航機隊方向直撲約克鎮號。',
     camera: { unit: 'hiryu', dist: 360 },
     fx: [{ kind: 'launch', unit: 'hiryu' }],
   },
   {
-    t: 718, title: '約克鎮號中三彈', cinematic: true,
+    t: 718, title: '約克鎮號中三彈', short: '約克鎮中彈', cinematic: true,
     desc: '小林隊突破防空網，以 13 架的代價命中約克鎮號 3 彈。鍋爐熄火、艦體冒出濃煙，損管隊伍卻奮力搶修，2 小時後竟恢復 19 節航速。',
     camera: { unit: 'yorktown', dist: 300 },
     fx: [{ kind: 'divebomb', unit: 'yorktown', at: 719 }, { kind: 'flak', unit: 'yorktown', until: 730 }],
   },
   {
-    t: 811, title: '友永隊最後的出擊', cinematic: true,
+    t: 811, title: '友永隊最後的出擊', short: '友永出擊', cinematic: true,
     desc: '飛龍放飛最後 10 架九七式艦攻與 6 架零戰。隊長友永丈市的左油箱在晨襲中受損無法修復，他明知無法歸還，仍率隊出擊。',
     camera: { unit: 'hiryu', dist: 360 },
     fx: [{ kind: 'launch', unit: 'hiryu' }],
   },
   {
-    t: 880, title: '約克鎮號中兩枚魚雷', cinematic: true,
+    t: 880, title: '約克鎮號中兩枚魚雷', short: '約克鎮棄艦', cinematic: true,
     desc: '友永隊誤認已修復的約克鎮號為另一艘航艦，突防投雷，2 枚命中。約克鎮號嚴重左傾，下令棄艦。友永機被擊落，壯烈戰死。',
     camera: { unit: 'yorktown', dist: 300 },
     fx: [{ kind: 'torpedo-run', unit: 'yorktown', at: 878 }, { kind: 'flak', unit: 'yorktown', until: 890 }],
@@ -429,7 +429,7 @@ export const events = [
     fx: [{ kind: 'launch', unit: 'enterprise' }],
   },
   {
-    t: 1023, title: '飛龍中彈：機動部隊覆滅', cinematic: true,
+    t: 1023, title: '飛龍中彈：機動部隊覆滅', short: '飛龍覆滅', cinematic: true,
     desc: '俯衝轟炸機自夕陽方向突入，飛龍連中 4 彈，前升降機被炸翻貼上艦橋。晨間擊毀赤城的百斯特再度出擊，成為唯一在一日之內參與擊沉兩艘航艦的飛行員。日本海軍引以為傲的機動部隊，4 艘航艦在一日之內全數被毀。',
     camera: { unit: 'hiryu', dist: 300 },
     fx: [{ kind: 'divebomb', unit: 'hiryu', at: 1023 }],
@@ -450,12 +450,12 @@ export const events = [
     camera: { pos: { x: -1500, z: -1000 }, dist: 800 },
   },
   {
-    t: 1255, title: '六月七日：約克鎮號沉沒', cinematic: true,
+    t: 1255, title: '六月七日：約克鎮號沉沒', short: '約克鎮沉沒', cinematic: true,
     desc: '搶救中的約克鎮號遭日軍潛艦伊-168 偷襲，2 枚魚雷命中，護航的驅逐艦哈曼號亦被擊沉。清晨，約克鎮號翻覆沉沒。',
     camera: { unit: 'yorktown', dist: 320 },
   },
   {
-    t: 1280, title: '太平洋戰爭的轉捩點', cinematic: true,
+    t: 1280, title: '太平洋戰爭的轉捩點', short: '轉捩點', cinematic: true,
     desc: '中途島一役，日本損失 4 艘主力航艦、約 250 架飛機與大批精銳飛行員；美軍損失約克鎮號與 144 架飛機。日本海軍自此失去戰略主動權，太平洋戰爭的攻守易位。',
     camera: { pos: { x: 0, z: -800 }, dist: 3000 },
   },

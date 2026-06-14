@@ -12,7 +12,37 @@ export function createHUD(callbacks) {
         <a href="/" class="home-link">◀ 戰史檔案館</a>
         <span class="battle-title">中途島戰役 <small>Battle of Midway</small></span>
       </div>
-      <div class="tb-clock" id="clock">—</div>
+      <div class="tb-instruments">
+        <div class="compass-wrap">
+          <div class="compass" id="compass" title="方位羅盤(紅針指向正北;下方數字為目前視向)">
+          <svg viewBox="0 0 100 100" aria-hidden="true">
+            <circle class="cmp-bezel" cx="50" cy="50" r="47" />
+            <circle class="cmp-face" cx="50" cy="50" r="42" />
+            <polygon class="cmp-lubber" points="50,1 44,12 56,12" />
+            <g id="compass-rose">
+              <g class="cmp-ticks">
+                <line x1="50" y1="6" x2="50" y2="13" />
+                <line x1="94" y1="50" x2="87" y2="50" />
+                <line x1="50" y1="94" x2="50" y2="87" />
+                <line x1="6" y1="50" x2="13" y2="50" />
+              </g>
+              <polygon class="cmp-needle-n" points="50,25 45,50 55,50" />
+              <polygon class="cmp-needle-s" points="50,75 45,50 55,50" />
+              <circle class="cmp-hub" cx="50" cy="50" r="3" />
+              <text class="cmp-lab cmp-n" x="50" y="20">N</text>
+              <text class="cmp-lab" x="77" y="50">E</text>
+              <text class="cmp-lab" x="50" y="80">S</text>
+              <text class="cmp-lab" x="23" y="50">W</text>
+            </g>
+          </svg>
+          </div>
+          <span class="cmp-hdg" id="compass-hdg" aria-hidden="true">000°</span>
+        </div>
+        <div class="tb-clock-frame">
+          <span class="tbc-tag" aria-hidden="true">ZONE TIME · 1942</span>
+          <div class="tb-clock" id="clock">—</div>
+        </div>
+      </div>
       <div class="tb-right">
         <button id="btn-panel-red" class="hud-btn panel-toggle"><i class="dot red"></i>日軍</button>
         <button id="btn-panel-blue" class="hud-btn panel-toggle"><i class="dot blue"></i>美軍</button>
@@ -37,11 +67,14 @@ export function createHUD(callbacks) {
     </div>
 
     <div id="bottombar">
-      <button id="btn-play" class="hud-btn big">▶</button>
-      <button id="btn-speed" class="hud-btn">2×</button>
-      <div id="timeline-wrap">
-        <div id="timeline-ticks"></div>
-        <input type="range" id="timeline" min="${TIME_START}" max="${TIME_END}" step="0.5" value="${TIME_START}" />
+      <div id="chapters" role="group" aria-label="重要事件導覽"></div>
+      <div class="bb-controls">
+        <button id="btn-play" class="hud-btn big">▶</button>
+        <button id="btn-speed" class="hud-btn">2×</button>
+        <div id="timeline-wrap">
+          <div id="timeline-ticks"></div>
+          <input type="range" id="timeline" min="${TIME_START}" max="${TIME_END}" step="0.5" value="${TIME_START}" />
+        </div>
       </div>
     </div>
 
@@ -116,6 +149,42 @@ export function createHUD(callbacks) {
     }
   }
 
+  // 重要事件章節:可點按的簡短按鈕,點擊即跳轉至該時點
+  const chaptersEl = document.getElementById('chapters');
+  const chapterBtns = [];
+  for (const e of events) {
+    if (!e.short) continue;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chapter';
+    btn.textContent = e.short;
+    btn.title = `${formatClock(e.t)}　${e.title}`;
+    btn.setAttribute('aria-label', `跳至 ${formatClock(e.t)}：${e.title}`);
+    btn.addEventListener('click', () => callbacks.onJump(e.t));
+    chaptersEl.appendChild(btn);
+    chapterBtns.push({ t: e.t, btn });
+  }
+  let activeChapterT = null;
+  function setActiveChapter(t) {
+    let active = null;
+    for (const c of chapterBtns) {
+      if (c.t <= t + 1e-6) active = c;
+      else break;
+    }
+    const at = active ? active.t : null;
+    if (at === activeChapterT) return; // 僅在切換章節時更新 DOM
+    activeChapterT = at;
+    for (const c of chapterBtns) c.btn.classList.toggle('active', c === active);
+    if (active) {
+      const left = active.btn.offsetLeft - chaptersEl.clientWidth / 2 + active.btn.clientWidth / 2;
+      chaptersEl.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
+    }
+  }
+
+  // 方位羅盤(羅經卡隨鏡頭轉動)
+  const compassRose = document.getElementById('compass-rose');
+  const compassHdg = document.getElementById('compass-hdg');
+
   // 控制列事件
   const btnPlay = document.getElementById('btn-play');
   const btnSpeed = document.getElementById('btn-speed');
@@ -135,7 +204,11 @@ export function createHUD(callbacks) {
     btnMode.textContent = free ? '🎬 導演模式' : '🔓 自由視角';
     callbacks.onModeToggle(free ? 'director' : 'free');
   });
-  slider.addEventListener('input', () => callbacks.onScrub(parseFloat(slider.value)));
+  slider.addEventListener('input', () => {
+    const t = parseFloat(slider.value);
+    callbacks.onScrub(t);
+    setActiveChapter(t);
+  });
   document.getElementById('btn-start').addEventListener('click', () => {
     document.getElementById('intro').classList.add('hidden');
     callbacks.onStart();
@@ -233,6 +306,25 @@ export function createHUD(callbacks) {
   const card = document.getElementById('event-card');
   let cardTimer = null;
 
+  // 戰力血條:主力航艦清單(艦隊戰力計算用)+ 更新單一血條
+  const carrierIds = {
+    red: sides.red.unitIds.filter((id) => units.find((u) => u.id === id)?.kind === 'carrier'),
+    blue: sides.blue.unitIds.filter((id) => units.find((u) => u.id === id)?.kind === 'carrier'),
+  };
+  function setBar(side, kind, pct) {
+    const p = Math.max(0, Math.min(100, Math.round(pct)));
+    const fill = document.getElementById(`hp-${kind}-${side}`);
+    const ghost = document.getElementById(`hp-${kind}-ghost-${side}`);
+    const val = document.getElementById(`hp-${kind}-val-${side}`);
+    if (fill) fill.style.width = `${p}%`;
+    if (ghost) ghost.style.width = `${p}%`; // 慢速追上 fill,露出剛損失的一段
+    if (val) {
+      val.textContent = `${p}%`;
+      val.classList.toggle('warn', p < 50 && p >= 25);
+      val.classList.toggle('crit', p < 25);
+    }
+  }
+
   // 面板骨架
   buildPanel('red');
   buildPanel('blue');
@@ -244,6 +336,18 @@ export function createHUD(callbacks) {
     const aceList = figures.filter((f) => f.type === 'ace' && f.side === side);
     el.innerHTML = `
       <h2>${s.name}</h2>
+      <div class="hp-bars">
+        <div class="hp-row">
+          <span class="hp-label">航空戰力</span>
+          <div class="hp-track"><div class="hp-ghost" id="hp-air-ghost-${side}"></div><div class="hp-fill" id="hp-air-${side}"></div></div>
+          <span class="hp-val" id="hp-air-val-${side}">100%</span>
+        </div>
+        <div class="hp-row">
+          <span class="hp-label">艦隊戰力</span>
+          <div class="hp-track"><div class="hp-ghost" id="hp-fleet-ghost-${side}"></div><div class="hp-fill" id="hp-fleet-${side}"></div></div>
+          <span class="hp-val" id="hp-fleet-val-${side}">100%</span>
+        </div>
+      </div>
       <div class="cmdrs">
         ${s.commanders
           .map((c) => {
@@ -308,6 +412,15 @@ export function createHUD(callbacks) {
     setTime(t) {
       document.getElementById('clock').textContent = formatClock(t);
       slider.value = t;
+      setActiveChapter(t);
+    },
+    setHeading(camBearing) {
+      // 羅經卡轉動使紅針指向場景正北(-z);數字為目前視向(0=N、90=E)
+      if (compassRose) compassRose.setAttribute('transform', `rotate(${-camBearing} 50 50)`);
+      if (compassHdg) {
+        const h = Math.round(((camBearing % 360) + 360) % 360) % 360;
+        compassHdg.textContent = `${String(h).padStart(3, '0')}°`;
+      }
     },
     updatePanels(states) {
       for (const side of ['red', 'blue']) {
@@ -322,6 +435,16 @@ export function createHUD(callbacks) {
           document.getElementById(`row-${id}`).classList.toggle('lost', st.status === 'sunk');
         }
         document.getElementById(`total-${side}`).textContent = total;
+
+        // 航空戰力:現存艦載機 / 初始
+        setBar(side, 'air', (total / sides[side].baseAircraft) * 100);
+        // 艦隊戰力:主力航艦(正常=1、燃燒=0.3、沉沒=0)平均
+        let fleetHp = 0;
+        for (const id of carrierIds[side]) {
+          const st = states.get(id);
+          fleetHp += !st ? 1 : st.status === 'sunk' ? 0 : st.status === 'burning' ? 0.3 : 1;
+        }
+        setBar(side, 'fleet', (fleetHp / carrierIds[side].length) * 100);
       }
     },
     showEvent(e) {

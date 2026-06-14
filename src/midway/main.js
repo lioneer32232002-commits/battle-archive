@@ -179,6 +179,17 @@ const hud = createHUD({
     hud.hideEvent();
     hud.hideSummary();
   },
+  onJump: (t) => {
+    // 點章節按鈕:跳至該時點並重現該事件(字卡 + 運鏡 + 特效)
+    battleT = t;
+    prevT = t;
+    summaryShown = false;
+    effects.clearTransients();
+    hud.hideSummary();
+    const e = events.find((ev) => ev.t === t);
+    if (e) fireEvent(e);
+    hud.setTime(t);
+  },
   onModeToggle: (mode) => director.setMode(mode),
   onReplay: () => {
     battleT = TIME_START;
@@ -195,6 +206,7 @@ const hud = createHUD({
 // 點擊 3D 中可見的王牌座機/標籤 → 開啟人物小卡(以拖曳門檻區分旋轉)
 const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
+const _fwd = new THREE.Vector3(); // 重用:鏡頭視向(方位羅盤)
 let downX = 0;
 let downY = 0;
 renderer.domElement.addEventListener('pointerdown', (e) => {
@@ -215,22 +227,27 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   if (o && o.userData.figureId) hud.openFigure(o.userData.figureId);
 });
 
-function unitObjPos(id) {
-  const o = shipObjs.get(id);
-  if (o) return o.group.position;
-  if (id === 'midway-base') return new THREE.Vector3(0, 0, 0);
-  return new THREE.Vector3(0, 0, 0);
+// 事件運鏡目標:依事件時刻 e.t 由航跡推算單位位置(跳轉時船艦尚未移動,故不取即時座標)
+function eventCameraTarget(e) {
+  if (e.camera?.unit) {
+    const o = shipObjs.get(e.camera.unit);
+    if (o) {
+      const st = unitStateAt(o.spec, e.t);
+      return new THREE.Vector3(st.pos.x, 0, st.pos.z);
+    }
+  }
+  return new THREE.Vector3(e.camera?.pos?.x ?? 0, 0, e.camera?.pos?.z ?? 0);
+}
+
+// 觸發單一事件:字卡 + 運鏡 + 特效
+function fireEvent(e) {
+  hud.showEvent(e);
+  director.flyTo(eventCameraTarget(e), e.camera?.dist ?? 500);
+  for (const fx of e.fx ?? []) runFx(fx);
 }
 
 function triggerEventsBetween(a, b) {
-  for (const e of newEvents(events, a, b)) {
-    hud.showEvent(e);
-    const target = e.camera?.unit
-      ? unitObjPos(e.camera.unit).clone()
-      : new THREE.Vector3(e.camera?.pos?.x ?? 0, 0, e.camera?.pos?.z ?? 0);
-    director.flyTo(target, e.camera?.dist ?? 500);
-    for (const fx of e.fx ?? []) runFx(fx);
-  }
+  for (const e of newEvents(events, a, b)) fireEvent(e);
 }
 
 function runFx(fx) {
@@ -352,6 +369,14 @@ function tick() {
   effects.update(dt);
   director.update(dt);
   controls.update();
+
+  // 方位羅盤:依鏡頭實際視向轉動羅經卡(場景正北 = -z)
+  camera.getWorldDirection(_fwd);
+  _fwd.y = 0;
+  if (_fwd.lengthSq() > 1e-6) {
+    const camBearing = (Math.atan2(_fwd.x, -_fwd.z) * 180) / Math.PI;
+    hud.setHeading(camBearing);
+  }
 
   panelAcc += dt;
   if (panelAcc > 0.5) {
