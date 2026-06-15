@@ -1,0 +1,746 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  background: #06090f;
+  color: #e8e6df;
+  font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+}
+
+#scene-container, #scene-container canvas { position: fixed; inset: 0; }
+
+#hud { position: fixed; inset: 0; pointer-events: none; }
+#hud > * { pointer-events: auto; }
+
+/* ── 頂部列 ── */
+#topbar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 18px;
+  background: linear-gradient(180deg, rgba(4,7,12,0.85), rgba(4,7,12,0));
+}
+
+.tb-left { display: flex; align-items: center; gap: 16px; }
+.home-link { color: #8fa3c0; text-decoration: none; font-size: 0.85rem; }
+.home-link:hover { color: #c9a227; }
+.battle-title { font-size: 1.15rem; font-weight: 700; letter-spacing: 0.08em; }
+.battle-title small { color: #8fa3c0; font-weight: 400; margin-left: 8px; }
+
+/* 戰時儀表式日期時刻:鏤空字體 + 琥珀色發光(無外框、半透明;以柔光襯底維持可讀性) */
+.tb-clock-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 2px 12px 4px;
+  background: radial-gradient(115% 135% at 50% 42%, rgba(6, 9, 14, 0.52), rgba(6, 9, 14, 0) 72%);
+}
+.tbc-tag {
+  font-family: 'Black Ops One', 'Saira Stencil One', sans-serif;
+  font-size: 0.5rem;
+  letter-spacing: 0.26em;
+  text-indent: 0.26em;
+  text-transform: uppercase;
+  color: rgba(223, 190, 112, 0.66);
+  line-height: 1;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+.tb-clock {
+  font-family: 'Saira Stencil One', 'Black Ops One', 'Microsoft JhengHei', sans-serif;
+  font-size: 1.5rem;
+  letter-spacing: 0.06em;
+  line-height: 1.08;
+  color: #ffce5f;
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.85),
+    0 0 5px rgba(255, 200, 96, 0.5),
+    0 0 15px rgba(255, 168, 56, 0.4),
+    0 0 28px rgba(255, 150, 40, 0.22);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 儀表組:方位羅盤 + 時刻(半透明玻璃感、無外框) ── */
+.tb-instruments { display: flex; align-items: center; gap: 12px; }
+.compass-wrap { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.compass {
+  flex: 0 0 auto;
+  width: 58px;
+  height: 58px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7));
+}
+.compass svg { width: 100%; height: 100%; display: block; }
+.cmp-bezel { fill: rgba(10, 14, 20, 0.26); stroke: rgba(201, 162, 39, 0.32); stroke-width: 1.5; }
+.cmp-face { fill: rgba(6, 9, 14, 0.1); stroke: none; }
+.cmp-lubber { fill: #ffce5f; }
+.cmp-ticks line { stroke: rgba(201, 162, 39, 0.62); stroke-width: 2; stroke-linecap: round; }
+.cmp-needle-n { fill: #ec5b41; }
+.cmp-needle-s { fill: #c4cedb; }
+.cmp-hub { fill: #ffce5f; }
+.cmp-lab {
+  fill: #d6dfeb;
+  font-family: 'Black Ops One', 'Saira Stencil One', sans-serif;
+  font-size: 15px;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+.cmp-n { fill: #ff8472; }
+.cmp-hdg {
+  font-family: 'Saira Stencil One', 'Black Ops One', sans-serif;
+  font-size: 0.56rem;
+  letter-spacing: 0.06em;
+  color: rgba(255, 206, 95, 0.82);
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 按鈕 ── */
+.hud-btn {
+  background: rgba(14, 20, 32, 0.85);
+  border: 1px solid #31405e;
+  color: #d7dce6;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+.hud-btn:hover { border-color: #c9a227; }
+.hud-btn.active { border-color: #c9a227; color: #ffd97a; }
+.hud-btn.big { font-size: 1.1rem; padding: 8px 18px; }
+
+/* ── 側面板 ── */
+.side-panel {
+  position: absolute;
+  top: 64px;
+  width: 252px;
+  max-height: calc(100vh - 190px);
+  overflow-y: auto;
+  background: rgba(8, 12, 20, 0.78);
+  border-radius: 10px;
+  padding: 14px;
+  font-size: 0.82rem;
+  backdrop-filter: blur(4px);
+  scrollbar-width: thin;
+}
+.side-panel.red { left: 14px; border-left: 3px solid #d9442e; }
+.side-panel.blue { right: 14px; border-right: 3px solid #2e7bd9; }
+.side-panel h2 { font-size: 1rem; margin-bottom: 10px; letter-spacing: 0.06em; }
+.side-panel.red h2 { color: #ff6b5e; }
+.side-panel.blue h2 { color: #5ea8ff; }
+
+.cmdr, .formation { margin-bottom: 7px; line-height: 1.45; }
+.cmdr b, .formation b { display: block; font-size: 0.86rem; }
+.cmdr small, .formation small { color: #8fa3c0; font-size: 0.74rem; }
+.formation small { display: block; line-height: 1.5; }
+.formation small.ship { color: #aab6c9; }
+.formation small.escort { color: #8fa3c0; margin-top: 3px; }
+
+.formations { border-top: 1px solid #243150; margin-top: 10px; padding-top: 10px; }
+
+.strength { border-top: 1px solid #243150; margin-top: 10px; padding-top: 10px; }
+.strength-title { color: #8fa3c0; font-size: 0.74rem; margin-bottom: 6px; }
+
+.unit-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-variant-numeric: tabular-nums;
+}
+.unit-row .u-name { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.28; }
+.unit-row .u-name .en { font-size: 0.82rem; font-weight: 600; }
+.unit-row .u-name .zh { font-size: 0.82rem; }
+.unit-row .u-name:has(.en) .zh { font-size: 0.7rem; color: #8fa3c0; }
+.unit-row .u-status { flex: 0 0 auto; font-size: 0.72rem; color: #ff9a55; }
+.unit-row .u-count { flex: 0 0 auto; margin-left: auto; font-weight: 700; color: #ffd97a; }
+.unit-row.lost .u-name { text-decoration: line-through; color: #6b7280; }
+.unit-row.total { border-top: 1px dashed #31405e; margin-top: 5px; padding-top: 6px; }
+
+/* ── 戰力血條(RTS 風;隨戰況耗損) ── */
+.hp-bars { margin: 10px 0 12px; display: flex; flex-direction: column; gap: 7px; }
+.hp-row { display: flex; align-items: center; gap: 8px; }
+.hp-label { flex: 0 0 auto; width: 56px; font-size: 0.72rem; color: #aab6c9; }
+.hp-track {
+  position: relative;
+  flex: 1 1 auto;
+  height: 11px;
+  background: #0c111a;
+  border: 1px solid #2a3852;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.hp-ghost, .hp-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; }
+.hp-ghost { background: rgba(255, 226, 170, 0.6); transition: width 0.9s ease 0.12s; }
+.hp-fill {
+  transition: width 0.22s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 -3px 5px rgba(0, 0, 0, 0.35);
+}
+.side-panel.red .hp-fill { background: linear-gradient(180deg, #f06a52, #cf3d29); }
+.side-panel.blue .hp-fill { background: linear-gradient(180deg, #5ea8ff, #2a72cf); }
+.hp-val {
+  flex: 0 0 auto;
+  width: 36px;
+  text-align: right;
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  color: #cdd6e3;
+}
+.hp-val.warn { color: #ffcf6a; }
+.hp-val.crit { color: #ff7a68; font-weight: 700; }
+
+/* ── 事件字卡 ── */
+#event-card {
+  position: absolute;
+  left: 50%;
+  bottom: 132px;
+  transform: translateX(-50%);
+  width: min(640px, calc(100vw - 40px));
+  background: rgba(8, 12, 20, 0.88);
+  border: 1px solid #31405e;
+  border-left: 4px solid #c9a227;
+  border-radius: 10px;
+  padding: 16px 20px;
+  backdrop-filter: blur(5px);
+}
+#event-card.animate { animation: card-in 0.45s ease; }
+@keyframes card-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(18px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+#event-card.hidden { display: none; }
+.ec-time { color: #c9a227; font-size: 0.8rem; letter-spacing: 0.1em; }
+.ec-title { font-size: 1.25rem; font-weight: 700; margin: 4px 0 6px; }
+.ec-desc { color: #c6cedb; font-size: 0.88rem; line-height: 1.75; }
+
+/* ── 圖例 ── */
+#legend {
+  position: absolute;
+  left: 16px;
+  bottom: 120px;
+  display: flex;
+  gap: 14px;
+  font-size: 0.76rem;
+  color: #aab6c9;
+  background: rgba(8, 12, 20, 0.6);
+  padding: 6px 12px;
+  border-radius: 6px;
+}
+#legend .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+#legend .dot.red { background: #d9442e; }
+#legend .dot.blue { background: #2e7bd9; }
+#legend .hint { color: #5d6b82; }
+
+/* ── 底部時間軸 ── */
+#bottombar {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px 18px 16px;
+  background: linear-gradient(0deg, rgba(4,7,12,0.92), rgba(4,7,12,0));
+}
+.bb-controls { display: flex; align-items: center; gap: 12px; }
+
+/* ── 重要事件章節導覽 ── */
+#chapters {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 1px 2px 5px;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #31405e transparent;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+}
+#chapters::-webkit-scrollbar { height: 5px; }
+#chapters::-webkit-scrollbar-thumb { background: #31405e; border-radius: 3px; }
+#chapters::-webkit-scrollbar-track { background: transparent; }
+.chapter {
+  flex: 0 0 auto;
+  background: rgba(14, 20, 32, 0.85);
+  border: 1px solid #31405e;
+  color: #aeb9cb;
+  border-radius: 999px;
+  padding: 5px 13px;
+  font-size: 0.78rem;
+  line-height: 1.25;
+  white-space: nowrap;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.chapter:hover { border-color: #c9a227; color: #ffe6a3; }
+.chapter:focus-visible { outline: 2px solid #c9a227; outline-offset: 1px; }
+.chapter.active {
+  background: #d8af3e;
+  border-color: #e8c862;
+  color: #14110a;
+  font-weight: 700;
+}
+
+#timeline-wrap { position: relative; flex: 1; height: 26px; }
+
+#timeline {
+  width: 100%;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  -webkit-appearance: none;
+  appearance: none;
+  height: 5px;
+  background: #1d2738;
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+#timeline::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: #ffd97a;
+  border: 2px solid #06090f;
+  box-shadow: 0 0 10px rgba(255, 217, 122, 0.6);
+  cursor: grab;
+}
+
+#timeline-ticks { position: absolute; inset: 0; pointer-events: none; }
+#timeline-ticks i {
+  position: absolute;
+  top: 4px;
+  width: 2px; height: 7px;
+  background: #51607e;
+}
+#timeline-ticks i.major { background: #c9a227; height: 9px; top: 3px; }
+
+/* ── 開場 ── */
+#intro {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse at 50% 55%, rgba(6, 12, 24, 0.42), rgba(3, 5, 9, 0.92)),
+    url('/banner-yamato.jpg') center center / cover no-repeat;
+  background-color: #06090f;
+  transition: opacity 0.8s ease;
+}
+#intro.hidden { opacity: 0; pointer-events: none; }
+.intro-box { text-align: center; max-width: 620px; padding: 24px; }
+.intro-kicker { color: #f0d27a; letter-spacing: 0.3em; font-size: 0.8rem; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7); }
+.intro-box h1 { font-size: 3.2rem; letter-spacing: 0.25em; text-indent: 0.25em; margin: 14px 0 6px; text-shadow: 0 2px 24px rgba(0, 0, 0, 0.8); }
+.intro-sub { color: #aebbcf; letter-spacing: 0.12em; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7); }
+.intro-desc { color: #dbe3ee; line-height: 2; margin: 22px 0; font-size: 0.95rem; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.8); }
+.hud-btn.start { font-size: 1.05rem; padding: 12px 36px; border-color: #c9a227; color: #ffd97a; }
+.hud-btn.start:hover { background: rgba(201, 162, 39, 0.18); }
+.intro-src { margin-top: 26px; color: #5d6b82; font-size: 0.72rem; }
+
+/* ── 戰損比較表(播放結束) ── */
+#summary {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: radial-gradient(ellipse at 50% 50%, rgba(8, 14, 26, 0.82), rgba(3, 5, 9, 0.95));
+  backdrop-filter: blur(3px);
+  z-index: 40;
+}
+#summary.hidden { display: none; }
+#summary.animate .summary-box { animation: sum-in 0.6s ease; }
+@keyframes sum-in {
+  from { opacity: 0; transform: translateY(24px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.summary-box {
+  width: min(720px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  text-align: center;
+  background: linear-gradient(160deg, rgba(18, 26, 42, 0.9), rgba(10, 16, 28, 0.9));
+  border: 1px solid #31405e;
+  border-top: 3px solid #c9a227;
+  border-radius: 14px;
+  padding: 30px 30px 26px;
+}
+.sum-kicker { color: #c9a227; letter-spacing: 0.25em; font-size: 0.78rem; }
+.sum-title { font-size: 2rem; letter-spacing: 0.12em; margin: 10px 0 4px; }
+.sum-sub { color: #8fa3c0; font-size: 0.9rem; margin-bottom: 22px; }
+
+.sum-table table { width: 100%; border-collapse: collapse; }
+.sum-table th {
+  padding: 8px 6px 14px;
+  vertical-align: top;
+  width: 38%;
+}
+.sum-table th.metric { width: 24%; }
+.sum-table th .sn { display: block; font-size: 1.05rem; font-weight: 700; }
+.sum-table th.red .sn { color: #ff6b5e; }
+.sum-table th.blue .sn { color: #5ea8ff; }
+.sum-table th .sd { display: block; color: #8fa3c0; font-size: 0.72rem; margin-top: 4px; font-weight: 400; line-height: 1.5; }
+
+.sum-table td {
+  padding: 11px 6px;
+  border-top: 1px solid #243150;
+  font-variant-numeric: tabular-nums;
+}
+.sum-table td.sl { color: #aab6c9; font-size: 0.86rem; }
+.sum-table td.sv { font-size: 1.5rem; font-weight: 700; }
+.sum-table td.sv.red { color: #ff7a6e; }
+.sum-table td.sv.blue { color: #6fb0ff; }
+
+.sum-actions { display: flex; gap: 12px; justify-content: center; margin-top: 24px; flex-wrap: wrap; }
+.sum-actions a.hud-btn { text-decoration: none; display: inline-block; }
+
+/* ── 可點擊人物項目 ── */
+.clickable { cursor: pointer; transition: background 0.15s ease; }
+.cmdr.clickable, .unit-row.clickable { border-radius: 5px; margin-left: -6px; margin-right: -6px; padding-left: 6px; padding-right: 6px; }
+.cmdr.clickable:hover, .unit-row.clickable:hover, .fig-row:hover { background: rgba(201, 162, 39, 0.1); }
+.cmdr.clickable b::after { content: ' ›'; color: #c9a227; opacity: 0.6; font-weight: 400; }
+.unit-row.clickable .u-name::after { content: ' ›'; color: #c9a227; opacity: 0.55; }
+
+.aces-block { border-top: 1px solid #243150; margin-top: 10px; padding-top: 10px; }
+.fig-row { display: flex; align-items: center; gap: 8px; padding: 5px 6px; margin: 0 -6px; border-radius: 5px; cursor: pointer; }
+.fig-row .fr-star { color: #ffd97a; font-size: 0.78rem; }
+.fig-row .fr-name { flex: 1; font-size: 0.86rem; }
+.fig-row .fr-go { color: #c9a227; opacity: 0.6; }
+
+/* ── 人物小卡 ── */
+#figure-card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(4, 7, 13, 0.62);
+  backdrop-filter: blur(3px);
+  z-index: 55;
+}
+#figure-card.hidden { display: none; }
+#figure-card.animate .figure-box { animation: fig-in 0.32s ease; }
+@keyframes fig-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.figure-box {
+  position: relative;
+  width: min(460px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  background: linear-gradient(160deg, rgba(18, 26, 42, 0.96), rgba(10, 16, 28, 0.96));
+  border: 1px solid #31405e;
+  border-radius: 14px;
+  padding: 24px;
+}
+.fig-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid #31405e;
+  background: rgba(8, 12, 20, 0.7);
+  color: #aab6c9;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.fig-close:hover { border-color: #c9a227; color: #ffd97a; }
+.fig-head { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; padding-right: 30px; }
+.fig-avatar {
+  flex: 0 0 auto;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #f3efe4;
+  border: 2px solid;
+}
+.fig-avatar.red { background: radial-gradient(circle at 50% 35%, #6e2018, #3a1410); border-color: #e0503a; }
+.fig-avatar.blue { background: radial-gradient(circle at 50% 35%, #1c3c66, #112236); border-color: #3f8ae6; }
+.fig-name { font-size: 1.35rem; font-weight: 700; line-height: 1.2; }
+.fig-en { color: #8fa3c0; font-size: 0.82rem; margin-top: 3px; }
+.fig-meta { color: #c9a227; font-size: 0.82rem; margin-top: 6px; }
+.fig-bio { color: #c6cedb; font-size: 0.9rem; line-height: 1.85; }
+
+.fig-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 4px 0 14px;
+  padding: 9px 13px;
+  background: rgba(201, 162, 39, 0.09);
+  border: 1px solid rgba(201, 162, 39, 0.22);
+  border-radius: 8px;
+  font-size: 0.84rem;
+  color: #e8e6df;
+  font-variant-numeric: tabular-nums;
+}
+.fig-stats i { font-style: normal; color: #c9a227; margin-right: 6px; font-size: 0.74rem; }
+
+.fig-result { margin-top: 12px; font-size: 0.88rem; color: #dbe3ee; line-height: 1.75; }
+.fig-result .rl {
+  display: inline-block;
+  color: #ffd97a;
+  font-size: 0.72rem;
+  border: 1px solid rgba(201, 162, 39, 0.4);
+  border-radius: 4px;
+  padding: 1px 7px;
+  margin-right: 8px;
+  vertical-align: 1px;
+}
+
+/* 時間軸:王牌出擊星標 */
+.ace-tick {
+  position: absolute;
+  top: -15px;
+  transform: translateX(-50%);
+  background: none;
+  border: none;
+  padding: 3px 4px;
+  margin: 0;
+  color: #ffd97a;
+  font-size: 0.72rem;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  text-shadow: 0 0 6px rgba(255, 217, 122, 0.75);
+}
+.ace-tick:hover { color: #fff; transform: translateX(-50%) scale(1.35); }
+
+@media (max-width: 640px) {
+  #figure-card { padding: 16px; }
+  .figure-box { padding: 20px 18px; }
+  .fig-head { gap: 13px; }
+  .fig-avatar { width: 54px; height: 54px; font-size: 1.5rem; }
+  .fig-name { font-size: 1.18rem; }
+  .fig-bio { font-size: 0.86rem; }
+}
+
+/* ── 桌面預設:面板抽屜按鈕與背幕隱藏 ── */
+.panel-toggle { display: none; }
+.panel-toggle .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+.panel-toggle .dot.red { background: #d9442e; }
+.panel-toggle .dot.blue { background: #2e7bd9; }
+#panel-backdrop { display: none; }
+
+/* ── 平板:面板收窄 ── */
+@media (max-width: 1000px) and (min-width: 641px) {
+  .side-panel { width: 214px; font-size: 0.78rem; padding: 12px; }
+  .side-panel h2 { font-size: 0.92rem; }
+  .tb-clock { font-size: 1.25rem; }
+}
+
+/* ── 手機:面板改為底部抽屜,版型重排 ── */
+@media (max-width: 640px) {
+  /* 頂部列 */
+  #topbar { padding: 8px 10px; align-items: flex-start; }
+  .tb-left { flex-direction: column; gap: 2px; }
+  .home-link { font-size: 0.72rem; }
+  .battle-title { font-size: 1rem; }
+  .battle-title small { display: none; }
+  .tb-instruments {
+    position: absolute;
+    left: 50%;
+    top: 42px;
+    transform: translateX(-50%);
+    gap: 8px;
+  }
+  .compass { width: 44px; height: 44px; }
+  .tb-clock-frame { padding: 2px 12px 3px; }
+  .tb-clock { font-size: 1.16rem; }
+  .tbc-tag { font-size: 0.44rem; letter-spacing: 0.2em; text-indent: 0.2em; }
+  .cmp-lab { font-size: 17px; }
+  .cmp-hdg { font-size: 0.48rem; }
+  .tb-right { gap: 6px; }
+  #btn-mode { display: none; } /* 手機預設導演模式;觸控仍可拖曳鏡頭 */
+  .panel-toggle { display: inline-flex; align-items: center; padding: 7px 11px; font-size: 0.8rem; }
+
+  /* 面板:底部抽屜(以 .red/.blue 雙類選擇器確保覆蓋桌面定位) */
+  .side-panel.red, .side-panel.blue {
+    position: fixed;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: none;
+    max-height: 70vh;
+    border: none;
+    border-top: 3px solid;
+    border-radius: 16px 16px 0 0;
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+    transform: translateY(110vh);
+    transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 30;
+  }
+  .side-panel.red { border-top-color: #d9442e; }
+  .side-panel.blue { border-top-color: #2e7bd9; }
+  .side-panel.red.open, .side-panel.blue.open { transform: translateY(0); }
+  .side-panel::before {
+    content: '';
+    position: absolute;
+    top: 7px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 42px;
+    height: 4px;
+    border-radius: 2px;
+    background: #51607e;
+  }
+  .side-panel h2 { margin-top: 4px; font-size: 1.05rem; }
+  .side-panel { font-size: 0.86rem; }
+
+  #panel-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    z-index: 25;
+  }
+  #panel-backdrop.shown { opacity: 1; pointer-events: auto; }
+
+  /* 事件字卡 */
+  #event-card {
+    bottom: 118px;
+    width: calc(100vw - 20px);
+    padding: 13px 15px;
+    border-left-width: 3px;
+  }
+  .ec-title { font-size: 1.08rem; }
+  .ec-desc { font-size: 0.82rem; line-height: 1.7; }
+
+  /* 圖例:手機隱藏(紅/藍辨識改由頂部日軍/美軍按鈕的色點代替) */
+  #legend { display: none; }
+
+  /* 底部時間軸:加大觸控目標 */
+  #bottombar {
+    padding: 8px 10px calc(12px + env(safe-area-inset-bottom));
+    gap: 7px;
+  }
+  .bb-controls { gap: 9px; }
+  /* 章節導覽:橫向滑動,縮小避免佔據過多畫面 */
+  #chapters { gap: 6px; padding: 0 2px 4px; }
+  .chapter { padding: 6px 12px; font-size: 0.74rem; }
+  .hud-btn.big { font-size: 1.25rem; padding: 9px 15px; }
+  #btn-speed { padding: 9px 13px; }
+  #timeline { height: 6px; }
+  #timeline::-webkit-slider-thumb { width: 22px; height: 22px; }
+
+  /* 開場 */
+  .intro-box { padding: 18px; }
+  .intro-kicker { font-size: 0.68rem; letter-spacing: 0.22em; }
+  .intro-box h1 { font-size: 2.1rem; letter-spacing: 0.14em; text-indent: 0.14em; }
+  .intro-sub { font-size: 0.82rem; }
+  .intro-desc { font-size: 0.86rem; line-height: 1.85; margin: 16px 0; }
+  .hud-btn.start { font-size: 0.98rem; padding: 11px 30px; }
+  .intro-src { font-size: 0.62rem; margin-top: 18px; }
+}
+
+/* 極窄螢幕:隱藏標題避免擁擠 */
+@media (max-width: 460px) {
+  .battle-title { display: none; }
+}
+
+/* ── 手機:常時顯示的雙方戰力迷你血條(免開面板) ── */
+#hp-mini { display: none; }
+
+@media (max-width: 640px) {
+  #hp-mini {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    position: fixed;
+    top: 100px;
+    left: 8px;
+    right: 8px;
+    z-index: 20;
+    padding: 7px 10px 8px;
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(8, 12, 20, 0.84), rgba(8, 12, 20, 0.66));
+    border: 1px solid rgba(49, 64, 94, 0.7);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    pointer-events: none; /* 純顯示,可穿透觸控拖曳鏡頭 */
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.4s ease;
+    font-variant-numeric: tabular-nums;
+  }
+  #hp-mini.show { opacity: 1; visibility: visible; }
+
+  .hpm-row { display: flex; align-items: center; gap: 8px; padding-left: 7px; border-left: 2px solid transparent; }
+  .hpm-row.red { border-left-color: #d9442e; }
+  .hpm-row.blue { border-left-color: #2e7bd9; }
+  .hpm-side {
+    flex: 0 0 auto;
+    width: 46px;
+    display: flex;
+    align-items: center;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  .hpm-row.red .hpm-side { color: #ff6b5e; }
+  .hpm-row.blue .hpm-side { color: #5ea8ff; }
+  .hpm-side .dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; flex: 0 0 auto; }
+  .hpm-row.red .dot { background: #d9442e; }
+  .hpm-row.blue .dot { background: #2e7bd9; }
+
+  .hpm-cell { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 5px; }
+  .hpm-ico { flex: 0 0 auto; width: 13px; text-align: center; font-size: 0.66rem; color: #8fa3c0; font-style: normal; }
+  .hpm-track {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 10px;
+    background: #0c111a;
+    border: 1px solid #2a3852;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .hpm-ghost, .hpm-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; }
+  .hpm-ghost { background: rgba(255, 226, 170, 0.55); transition: width 0.9s ease 0.12s; }
+  .hpm-fill {
+    transition: width 0.22s ease;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 4px rgba(0, 0, 0, 0.35);
+  }
+  .hpm-row.red .hpm-fill { background: linear-gradient(180deg, #f06a52, #cf3d29); }
+  .hpm-row.blue .hpm-fill { background: linear-gradient(180deg, #5ea8ff, #2a72cf); }
+  .hpm-val { flex: 0 0 auto; width: 32px; text-align: right; font-size: 0.7rem; color: #cdd6e3; }
+  .hpm-val.warn { color: #ffcf6a; }
+  .hpm-val.crit { color: #ff7a68; font-weight: 700; }
+}
+
+/* 戰損表:手機縮放 */
+@media (max-width: 640px) {
+  .summary-box { padding: 22px 16px 20px; }
+  .sum-title { font-size: 1.5rem; }
+  .sum-sub { font-size: 0.8rem; margin-bottom: 16px; }
+  .sum-table th .sn { font-size: 0.86rem; }
+  .sum-table th .sd { font-size: 0.62rem; }
+  .sum-table td.sl { font-size: 0.74rem; }
+  .sum-table td.sv { font-size: 1.1rem; }
+  .sum-actions .hud-btn { font-size: 0.9rem; padding: 9px 18px; }
+}

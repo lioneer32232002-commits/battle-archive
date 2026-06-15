@@ -18,6 +18,19 @@ export const eras = [
         url: '/battles/midway/',
         available: true,
       },
+      {
+        id: 'yamato',
+        name: '天號作戰',
+        nameEn: 'Operation Ten-Gō',
+        date: '1945/4/7',
+        sides: { red: '大日本帝國海軍', blue: '美國海軍' },
+        thumb: '/thumb-yamato.jpg',
+        summary:
+          '戰艦大和的最後一戰。沖繩告急,聯合艦隊命世界最大的戰艦攜單程燃料衝向沖繩,組成「海上特攻隊」。' +
+          '在毫無空中掩護的東海,大和遭美軍 386 架艦載機圍攻,連敵艦都未見著便傾覆爆沉,巨艦大砲的時代就此終結。',
+        url: '/battles/yamato/',
+        available: true,
+      },
     ],
   },
   {
