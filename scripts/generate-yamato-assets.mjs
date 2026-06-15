@@ -1,127 +1,87 @@
-// 產生天號作戰頁所需圖像:thumb-yamato.jpg(卡片縮圖)、banner-yamato.jpg(開場背景)、og-yamato.png(社群預覽)
-// 純插畫(無文字,避免字型問題):陰天鋼灰天空 + 旭日餘暉 + 鉛灰海面 + 傾斜燃燒的戰艦剪影。
+// 產生天號作戰頁圖像。底圖為 Gemini 生成的寫實海戰圖(assets-src/yamato-base.png),
+// 仿中途島做法:og 疊上標題文字版面;banner / thumb 為無字底圖裁切。
 import { Resvg } from '@resvg/resvg-js';
 import sharp from 'sharp';
+import { existsSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PUBLIC = resolve(__dirname, '..', 'public');
+const ROOT = resolve(__dirname, '..');
+const PUBLIC = resolve(ROOT, 'public');
+const BASE = resolve(ROOT, 'assets-src', 'yamato-base.png');
+const FONT = resolve(__dirname, 'BlackOpsOne-Regular.ttf');
 
-// ── 旭日光芒(16 道,低調暗紅) ──
-function sunRays(cx, cy, len) {
-  let s = '';
-  for (let i = 0; i < 16; i++) {
-    const a0 = (i / 16) * Math.PI * 2;
-    const a1 = a0 + (Math.PI * 2) / 32;
-    const x0 = cx + Math.cos(a0) * len;
-    const y0 = cy + Math.sin(a0) * len;
-    const x1 = cx + Math.cos(a1) * len;
-    const y1 = cy + Math.sin(a1) * len;
-    s += `<polygon points="${cx},${cy} ${x0.toFixed(1)},${y0.toFixed(1)} ${x1.toFixed(1)},${y1.toFixed(1)}" fill="#b6442e"/>`;
-  }
-  return `<g opacity="0.32">${s}</g>`;
-}
-
-// ── 戰艦大和剪影(艦艏朝右,寶塔艦橋 + 三主炮塔 + 後傾煙囪) ──
-function warship() {
-  const dark = '#0e141b';
-  return `
-  <g transform="translate(470 372) rotate(-5)" fill="${dark}">
-    <!-- 艦體 -->
-    <path d="M -250 24 L 250 12 L 300 26 L 250 44 L -240 44 L -262 34 Z"/>
-    <!-- 艦艉 X 砲塔 -->
-    <rect x="-210" y="6" width="46" height="20" rx="3"/>
-    <rect x="-200" y="-2" width="6" height="14" transform="rotate(-12 -197 5)"/>
-    <rect x="-188" y="-2" width="6" height="14" transform="rotate(-12 -185 5)"/>
-    <!-- 後桅 -->
-    <rect x="-150" y="-44" width="5" height="56"/>
-    <!-- 煙囪(後傾) -->
-    <path d="M -120 12 L -104 12 L -96 -34 L -110 -34 Z"/>
-    <!-- 寶塔艦橋 -->
-    <polygon points="-70,12 -18,12 -26,-22 -62,-22"/>
-    <polygon points="-58,-22 -30,-22 -36,-52 -52,-52"/>
-    <polygon points="-50,-52 -38,-52 -42,-78 -46,-78"/>
-    <rect x="-45" y="-104" width="3" height="28"/>
-    <!-- B 主炮塔(背負,墊高) -->
-    <rect x="34" y="-2" width="48" height="20" rx="3"/>
-    <rect x="78" y="2" width="60" height="6" transform="rotate(-6 78 5)"/>
-    <rect x="78" y="9" width="60" height="6" transform="rotate(-6 78 12)"/>
-    <!-- A 主炮塔 -->
-    <rect x="96" y="14" width="48" height="20" rx="3"/>
-    <rect x="140" y="18" width="64" height="6" transform="rotate(-5 140 21)"/>
-    <rect x="140" y="26" width="64" height="6" transform="rotate(-5 140 29)"/>
-  </g>`;
-}
-
-// ── 黑煙柱 ──
-function smoke() {
-  return `
-  <g fill="#1c2026" opacity="0.72">
-    <ellipse cx="430" cy="250" rx="60" ry="42"/>
-    <ellipse cx="410" cy="200" rx="74" ry="54"/>
-    <ellipse cx="445" cy="150" rx="92" ry="66"/>
-    <ellipse cx="420" cy="92" rx="116" ry="84"/>
-    <ellipse cx="470" cy="40" rx="140" ry="96"/>
-  </g>`;
+// 標題用的軍事鏤空字體(同中途島 OG 的風格);缺檔則自 Google Fonts 下載
+if (!existsSync(FONT)) {
+  const url = 'https://github.com/google/fonts/raw/main/ofl/blackopsone/BlackOpsOne-Regular.ttf';
+  const buf = Buffer.from(await (await fetch(url)).arrayBuffer());
+  writeFileSync(FONT, buf);
+  console.log('downloaded font:', buf.length, 'bytes');
 }
 
 const W = 1200;
 const H = 630;
-const SEA_Y = 392;
+const LX = 54; // 左邊界
 
-const svg = `
+const overlay = `
 <svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <defs>
-    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#36424f"/>
-      <stop offset="0.55" stop-color="#586675"/>
-      <stop offset="1" stop-color="#8b97a3"/>
+    <linearGradient id="h" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#06090e" stop-opacity="0.85"/>
+      <stop offset="0.5" stop-color="#06090e" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#06090e" stop-opacity="0"/>
     </linearGradient>
-    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#33485a"/>
-      <stop offset="1" stop-color="#0c1f2b"/>
+    <linearGradient id="v" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#06090e" stop-opacity="0.55"/>
+      <stop offset="0.32" stop-color="#06090e" stop-opacity="0"/>
+      <stop offset="0.7" stop-color="#06090e" stop-opacity="0"/>
+      <stop offset="1" stop-color="#06090e" stop-opacity="0.9"/>
     </linearGradient>
-    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#e08a52" stop-opacity="0.6"/>
-      <stop offset="1" stop-color="#e08a52" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="blast" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#ffe0a0" stop-opacity="0.95"/>
-      <stop offset="0.4" stop-color="#ff8c32" stop-opacity="0.6"/>
-      <stop offset="1" stop-color="#ff7828" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="vig" cx="0.5" cy="0.42" r="0.75">
-      <stop offset="0.55" stop-color="#000" stop-opacity="0"/>
-      <stop offset="1" stop-color="#000" stop-opacity="0.55"/>
-    </radialGradient>
   </defs>
 
-  <rect width="${W}" height="${SEA_Y}" fill="url(#sky)"/>
-  ${sunRays(430, 250, 520)}
-  <circle cx="430" cy="250" r="80" fill="url(#sun)"/>
+  <rect width="${W}" height="${H}" fill="url(#h)"/>
+  <rect width="${W}" height="${H}" fill="url(#v)"/>
 
-  <rect y="${SEA_Y}" width="${W}" height="${H - SEA_Y}" fill="url(#sea)"/>
-  <rect y="${SEA_Y - 6}" width="${W}" height="16" fill="#aab6c0" opacity="0.22"/>
+  <!-- 站名 kicker -->
+  <text x="${LX}" y="58" font-family="Arial, sans-serif" font-size="18" font-weight="700"
+        letter-spacing="5" fill="#dcc488">WAR HISTORY ARCHIVE   ·   3D BATTLE SIMULATION</text>
 
-  ${smoke()}
-  <ellipse cx="500" cy="${SEA_Y}" rx="220" ry="70" fill="#000" opacity="0.35"/>
-  ${warship()}
-  <ellipse cx="430" cy="${SEA_Y - 4}" rx="150" ry="96" fill="url(#blast)"/>
+  <!-- 主標題(軍事鏤空字體) -->
+  <text x="${LX - 2}" y="352" font-family="Black Ops One, Impact, sans-serif" font-size="96"
+        fill="#f4f0e6" stroke="#05080c" stroke-width="1.2">OPERATION TEN-GO</text>
 
-  <rect width="${W}" height="${H}" fill="url(#vig)"/>
+  <!-- 日期 -->
+  <text x="${LX}" y="402" font-family="Arial, sans-serif" font-size="31" font-weight="700"
+        letter-spacing="2" fill="#edc266">APRIL 7, 1945</text>
+
+  <!-- 副標 -->
+  <text x="${LX}" y="442" font-family="Arial, sans-serif" font-size="23" font-weight="600"
+        letter-spacing="3" fill="#d2dbe6">THE END OF THE BATTLESHIP ERA</text>
+
+  <!-- 底部陣營 -->
+  <rect x="${LX}" y="576" width="17" height="17" fill="#d9442e"/>
+  <text x="${LX + 26}" y="590" font-family="Arial, sans-serif" font-size="18" font-weight="600"
+        letter-spacing="1" fill="#e7ecf3">IMPERIAL JAPANESE NAVY</text>
+  <rect x="365" y="576" width="17" height="17" fill="#2e7bd9"/>
+  <text x="391" y="590" font-family="Arial, sans-serif" font-size="18" font-weight="600"
+        letter-spacing="1" fill="#e7ecf3">UNITED STATES NAVY</text>
 </svg>`;
 
-const png = new Resvg(svg, { background: 'rgba(10,14,20,1)' }).render().asPng();
+const overlayPng = new Resvg(overlay, {
+  fitTo: { mode: 'width', value: W },
+  font: { fontFiles: [FONT], loadSystemFonts: true, defaultFontFamily: 'Arial' },
+  background: 'rgba(0,0,0,0)',
+}).render().asPng();
 
-async function out(name, w, h, fmt) {
-  let img = sharp(png).resize(w, h, { fit: 'cover', position: 'centre' });
-  img = fmt === 'png' ? img.png() : img.jpeg({ quality: 86 });
-  await img.toFile(resolve(PUBLIC, name));
-  console.log('wrote', name, `${w}x${h}`);
-}
+// OG:Gemini 底圖(裁切到 1200x630)+ 文字疊層
+const ogBase = await sharp(BASE).resize(W, H, { fit: 'cover', position: 'attention' }).toBuffer();
+await sharp(ogBase).composite([{ input: overlayPng, top: 0, left: 0 }]).png().toFile(resolve(PUBLIC, 'og-yamato.png'));
+console.log('wrote og-yamato.png 1200x630 (with title overlay)');
 
-await out('og-yamato.png', 1200, 630, 'png');
-await out('banner-yamato.jpg', 1600, 900, 'jpg');
-await out('thumb-yamato.jpg', 800, 500, 'jpg');
+// banner(開場背景)/ thumb(卡片)— 無字底圖裁切
+await sharp(BASE).resize(1600, 900, { fit: 'cover', position: 'attention' }).jpeg({ quality: 88 }).toFile(resolve(PUBLIC, 'banner-yamato.jpg'));
+console.log('wrote banner-yamato.jpg 1600x900');
+await sharp(BASE).resize(800, 500, { fit: 'cover', position: 'attention' }).jpeg({ quality: 88 }).toFile(resolve(PUBLIC, 'thumb-yamato.jpg'));
+console.log('wrote thumb-yamato.jpg 800x500');
 console.log('done');
