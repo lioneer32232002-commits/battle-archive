@@ -5,9 +5,13 @@ const app = document.getElementById('app');
 for (const era of eras) {
   const section = document.createElement('section');
   section.className = 'era';
+  const nameHtml = era.name
+    .split(' · ')
+    .map((seg) => `<span class="era-seg">${seg}</span>`)
+    .join('');
   section.innerHTML = `
     <div class="era-head">
-      <h2>${era.name}</h2>
+      <h2>${nameHtml}</h2>
       <span class="era-period">${era.period}</span>
     </div>
   `;

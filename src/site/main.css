@@ -67,8 +67,7 @@ body {
   font-weight: 500;
   text-shadow: 0 1px 12px rgba(0, 0, 0, 0.65);
 }
-.tagline span { display: inline-block; }
-.tagline span + span::before { content: "·"; margin: 0 0.7em; color: #c9a227; }
+.tagline span { display: inline-block; text-indent: 0.24em; }
 
 main { flex: 1; max-width: 1100px; width: 100%; margin: 0 auto; padding: 40px 24px; }
 
@@ -84,10 +83,14 @@ main { flex: 1; max-width: 1100px; width: 100%; margin: 0 auto; padding: 40px 24
 }
 
 .era-head h2 { font-size: 1.5rem; letter-spacing: 0.1em; font-weight: 900; filter: url(#battle-worn); }
+/* 每個語段保持整句不斷行;只在語段之間(·)換行,避免斷在「太」 */
+.era-seg { white-space: nowrap; }
+.era-seg + .era-seg::before { content: "·"; margin: 0 0.3em; }
 .era-period {
   font-family: 'Oswald', sans-serif;
   font-weight: 500;
   font-size: 1rem;
+  white-space: nowrap;                     /* 時間範圍永遠維持一行 */
   letter-spacing: 0.08em;
   color: #b4f06a;                          /* 夜光綠讀數 */
   text-shadow: 0 0 5px rgba(120, 230, 90, 0.4);
@@ -237,3 +240,9 @@ main { flex: 1; max-width: 1100px; width: 100%; margin: 0 auto; padding: 40px 24
 }
 
 .footer-note { color: #5d6b82; line-height: 1.7; }
+
+/* 手機版:時期標題堆成兩行(第二次世界大戰 / 太平洋戰場),時間範圍維持右側一行 */
+@media (max-width: 560px) {
+  .era-seg { display: block; }
+  .era-seg + .era-seg::before { content: none; }
+}
