@@ -59,7 +59,7 @@ export function createHUD(callbacks) {
       </div>
       <div class="tb-instruments">
         <div class="compass-wrap">
-          <div class="compass" id="compass" title="方位羅盤(紅針指向正北;下方數字為目前視向)">
+          <div class="compass" id="compass" title="方位羅盤（紅針指向正北；下方數字為目前視向）">
           <svg viewBox="0 0 100 100" aria-hidden="true">
             <circle class="cmp-bezel" cx="50" cy="50" r="47" />
             <circle class="cmp-face" cx="50" cy="50" r="42" />
@@ -135,13 +135,13 @@ export function createHUD(callbacks) {
         <h1>天號作戰</h1>
         <p class="intro-sub">Operation Ten-Gō · 戰艦大和的最後一戰 · 1945/4/7</p>
         <p class="intro-desc">
-          沖繩淪陷在即,日本海軍傾盡最後的尊嚴,
-          命世界最大的戰艦「大和」率輕巡與驅逐艦,攜單程燃料衝向沖繩,
+          沖繩淪陷在即，日本海軍傾盡最後的尊嚴，
+          命世界最大的戰艦「大和」率輕巡與驅逐艦，攜單程燃料衝向沖繩，
           欲衝灘充當固定砲台、與敵同歸於盡。
-          然而在制空權盡失的海上,這支毫無空中掩護的艦隊,連敵艦的影子都未曾見著。
+          然而在制空權盡失的海上，這支毫無空中掩護的艦隊，連敵艦的影子都未曾見著。
         </p>
         <button id="btn-start" class="hud-btn start">▶ 進入戰場</button>
-        <p class="intro-src">戰役資料依據:美國海軍歷史與遺產司令部（NHHC）、Wikipedia〈Operation Ten-Go〉、原為一《日本驅逐艦艦長》</p>
+        <p class="intro-src">戰役資料依據：美國海軍歷史與遺產司令部（NHHC）、Wikipedia〈Operation Ten-Go〉、原為一《日本驅逐艦艦長》</p>
       </div>
     </div>
 

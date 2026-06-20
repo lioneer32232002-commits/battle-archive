@@ -171,7 +171,7 @@ body {
   position: relative;
   flex: 1 1 auto;
   height: 11px;
-  background: #0c111a;
+  background: rgba(8, 12, 20, 0.45);
   border: 1px solid #2a3852;
   border-radius: 3px;
   overflow: hidden;
@@ -202,12 +202,13 @@ body {
   bottom: 132px;
   transform: translateX(-50%);
   width: min(640px, calc(100vw - 40px));
-  background: rgba(8, 12, 20, 0.88);
+  background: rgba(8, 12, 20, 0.62);
   border: 1px solid #31405e;
   border-left: 4px solid #c9a227;
   border-radius: 10px;
   padding: 16px 20px;
-  backdrop-filter: blur(5px);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 #event-card.animate { animation: card-in 0.45s ease; }
 @keyframes card-in {
@@ -677,7 +678,7 @@ body {
     z-index: 20;
     padding: 7px 10px 8px;
     border-radius: 10px;
-    background: linear-gradient(180deg, rgba(8, 12, 20, 0.84), rgba(8, 12, 20, 0.66));
+    background: linear-gradient(180deg, rgba(8, 12, 20, 0.55), rgba(8, 12, 20, 0.4));
     border: 1px solid rgba(49, 64, 94, 0.7);
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
     backdrop-filter: blur(4px);
@@ -715,7 +716,7 @@ body {
     flex: 1 1 auto;
     min-width: 0;
     height: 10px;
-    background: #0c111a;
+    background: rgba(8, 12, 20, 0.45);
     border: 1px solid #2a3852;
     border-radius: 3px;
     overflow: hidden;

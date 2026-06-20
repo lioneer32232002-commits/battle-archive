@@ -24,6 +24,7 @@ function makePlane(side) {
   );
   tail.position.z = 3;
   g.add(tail);
+  g.scale.setScalar(0.65); // 縮小機體,凸顯戰艦尺度(飛機原本相對偏大)
   return g;
 }
 

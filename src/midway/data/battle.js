@@ -64,7 +64,7 @@ export const units = [
   // 紅方 — 日本海軍 第一航空艦隊(南雲機動部隊)
   {
     id: 'akagi', side: 'red', kind: 'carrier', name: '赤城', nameEn: 'Akagi',
-    deckMark: 'ア', islandSide: 'left', length: 76,
+    deckMark: 'ア', islandSide: 'left', length: 111,
     strength: { aircraft: 60 },
     track: offsetTrack(kidoButaiTrack, 0, 0, 622),
     statusChanges: [
@@ -74,7 +74,7 @@ export const units = [
   },
   {
     id: 'kaga', side: 'red', kind: 'carrier', name: '加賀', nameEn: 'Kaga',
-    deckMark: 'カ', islandSide: 'right', length: 72,
+    deckMark: 'カ', islandSide: 'right', length: 106,
     strength: { aircraft: 74 },
     track: offsetTrack(kidoButaiTrack, 110, 60, 622),
     statusChanges: [
@@ -84,7 +84,7 @@ export const units = [
   },
   {
     id: 'soryu', side: 'red', kind: 'carrier', name: '蒼龍', nameEn: 'Sōryū',
-    deckMark: 'ソ', islandSide: 'right', length: 67,
+    deckMark: 'ソ', islandSide: 'right', length: 97,
     strength: { aircraft: 57 },
     track: offsetTrack(kidoButaiTrack, -60, -110, 625),
     statusChanges: [
@@ -94,7 +94,7 @@ export const units = [
   },
   {
     id: 'hiryu', side: 'red', kind: 'carrier', name: '飛龍', nameEn: 'Hiryū',
-    deckMark: 'ヒ', islandSide: 'left', length: 67,
+    deckMark: 'ヒ', islandSide: 'left', length: 97,
     strength: { aircraft: 57 },
     // 倖存後向北脫離,傍晚被捕捉
     track: [
@@ -111,25 +111,25 @@ export const units = [
       { t: 1205, status: 'sunk' },
     ],
   },
-  { id: 'haruna', side: 'red', kind: 'battleship', name: '榛名', nameEn: 'Haruna', length: 60,
+  { id: 'haruna', side: 'red', kind: 'battleship', name: '榛名', nameEn: 'Haruna', length: 95,
     strength: {}, track: offsetTrack(kidoButaiTrack, -200, 90), statusChanges: [] },
-  { id: 'kirishima', side: 'red', kind: 'battleship', name: '霧島', nameEn: 'Kirishima', length: 60,
+  { id: 'kirishima', side: 'red', kind: 'battleship', name: '霧島', nameEn: 'Kirishima', length: 95,
     strength: {}, track: offsetTrack(kidoButaiTrack, 210, -60), statusChanges: [] },
-  { id: 'tone', side: 'red', kind: 'cruiser', name: '利根', nameEn: 'Tone', length: 48,
+  { id: 'tone', side: 'red', kind: 'cruiser', name: '利根', nameEn: 'Tone', length: 86,
     strength: {}, track: offsetTrack(kidoButaiTrack, -170, -200), statusChanges: [] },
-  { id: 'chikuma', side: 'red', kind: 'cruiser', name: '筑摩', nameEn: 'Chikuma', length: 48,
+  { id: 'chikuma', side: 'red', kind: 'cruiser', name: '筑摩', nameEn: 'Chikuma', length: 86,
     strength: {}, track: offsetTrack(kidoButaiTrack, 180, -210), statusChanges: [] },
-  { id: 'nagara', side: 'red', kind: 'cruiser', name: '長良', nameEn: 'Nagara', length: 40,
+  { id: 'nagara', side: 'red', kind: 'cruiser', name: '長良', nameEn: 'Nagara', length: 69,
     strength: {}, track: offsetTrack(kidoButaiTrack, 0, 220), statusChanges: [] },
-  { id: 'dd-r1', side: 'red', kind: 'destroyer', name: '驅逐隊', nameEn: '', length: 30,
+  { id: 'dd-r1', side: 'red', kind: 'destroyer', name: '驅逐隊', nameEn: '', length: 51,
     strength: {}, track: offsetTrack(kidoButaiTrack, -280, -40), statusChanges: [] },
-  { id: 'dd-r2', side: 'red', kind: 'destroyer', name: '驅逐隊', nameEn: '', length: 30,
+  { id: 'dd-r2', side: 'red', kind: 'destroyer', name: '驅逐隊', nameEn: '', length: 51,
     strength: {}, track: offsetTrack(kidoButaiTrack, 290, 80), statusChanges: [] },
 
   // 藍方 — 美國海軍
   {
     id: 'enterprise', side: 'blue', kind: 'carrier', name: '企業號', nameEn: 'USS Enterprise',
-    deckMark: '6', islandSide: 'right', length: 74,
+    deckMark: '6', islandSide: 'right', length: 106,
     strength: { aircraft: 79 },
     track: offsetTrack(tf16Track, 0, 0),
     statusChanges: [
@@ -139,14 +139,14 @@ export const units = [
   },
   {
     id: 'hornet', side: 'blue', kind: 'carrier', name: '大黃蜂號', nameEn: 'USS Hornet',
-    deckMark: '8', islandSide: 'right', length: 74,
+    deckMark: '8', islandSide: 'right', length: 106,
     strength: { aircraft: 79 },
     track: offsetTrack(tf16Track, 130, 90),
     statusChanges: [{ t: 562, strengthDelta: { aircraft: -15 } }],
   },
   {
     id: 'yorktown', side: 'blue', kind: 'carrier', name: '約克鎮號', nameEn: 'USS Yorktown',
-    deckMark: '5', islandSide: 'right', length: 74,
+    deckMark: '5', islandSide: 'right', length: 106,
     strength: { aircraft: 75 },
     track: offsetTrack(tf17Track, 0, 0, 883),
     statusChanges: [
@@ -157,15 +157,15 @@ export const units = [
       { t: 1255, status: 'sunk' },
     ],
   },
-  { id: 'ca-b1', side: 'blue', kind: 'cruiser', name: '巡洋艦隊', nameEn: '', length: 46,
+  { id: 'ca-b1', side: 'blue', kind: 'cruiser', name: '巡洋艦隊', nameEn: '', length: 77,
     strength: {}, track: offsetTrack(tf16Track, -160, -120), statusChanges: [] },
-  { id: 'ca-b2', side: 'blue', kind: 'cruiser', name: '巡洋艦隊', nameEn: '', length: 46,
+  { id: 'ca-b2', side: 'blue', kind: 'cruiser', name: '巡洋艦隊', nameEn: '', length: 77,
     strength: {}, track: offsetTrack(tf16Track, 230, -60), statusChanges: [] },
-  { id: 'dd-b1', side: 'blue', kind: 'destroyer', name: '驅逐隊', nameEn: '', length: 30,
+  { id: 'dd-b1', side: 'blue', kind: 'destroyer', name: '驅逐隊', nameEn: '', length: 51,
     strength: {}, track: offsetTrack(tf16Track, 40, 230), statusChanges: [] },
-  { id: 'ca-b3', side: 'blue', kind: 'cruiser', name: '阿斯托里亞', nameEn: 'USS Astoria', length: 46,
+  { id: 'ca-b3', side: 'blue', kind: 'cruiser', name: '阿斯托里亞', nameEn: 'USS Astoria', length: 77,
     strength: {}, track: offsetTrack(tf17Track, -150, 110), statusChanges: [] },
-  { id: 'dd-b2', side: 'blue', kind: 'destroyer', name: '驅逐隊', nameEn: '', length: 30,
+  { id: 'dd-b2', side: 'blue', kind: 'destroyer', name: '驅逐隊', nameEn: '', length: 51,
     strength: {}, track: offsetTrack(tf17Track, 150, -130), statusChanges: [] },
   {
     id: 'midway-base', side: 'blue', kind: 'base', name: '中途島基地', nameEn: 'Midway Atoll',

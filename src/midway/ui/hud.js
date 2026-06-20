@@ -14,7 +14,7 @@ export function createHUD(callbacks) {
       </div>
       <div class="tb-instruments">
         <div class="compass-wrap">
-          <div class="compass" id="compass" title="方位羅盤(紅針指向正北;下方數字為目前視向)">
+          <div class="compass" id="compass" title="方位羅盤（紅針指向正北；下方數字為目前視向）">
           <svg viewBox="0 0 100 100" aria-hidden="true">
             <circle class="cmp-bezel" cx="50" cy="50" r="47" />
             <circle class="cmp-face" cx="50" cy="50" r="42" />
