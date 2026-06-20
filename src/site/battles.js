@@ -59,7 +59,7 @@ export const eras = [
         date: '1944/6/12–13',
         series: '溫特斯三部曲 · 二部曲',
         sides: { red: '德意志國防軍・武裝黨衛軍', blue: '美軍 101 空降師' },
-        thumb: '',   // 待用 Gemini 底圖跑 scripts 合成後補上 /thumb-carentan.jpg
+        thumb: '/thumb-carentan.jpg',
         summary:
           '連結兩處灘頭的樞紐之城。6 月 12 日，溫特斯的 E 連打 506 團先鋒突入卡倫坦，在 MG42 封街的 Y 形路口' +
           '衝進彈雨督陣、逐屋肅清；翌日血腥溝，背靠鐵路路堤頂住第 17 SS 反撲，待第 2 裝甲師雪曼戰車馳援解圍。',
