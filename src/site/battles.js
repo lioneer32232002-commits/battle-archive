@@ -26,9 +26,29 @@ export const eras = [
         sides: { red: '大日本帝國海軍', blue: '美國海軍' },
         thumb: '/thumb-yamato.jpg',
         summary:
-          '戰艦大和的最後一戰。沖繩告急,聯合艦隊命世界最大的戰艦攜單程燃料衝向沖繩,組成「海上特攻隊」。' +
-          '在毫無空中掩護的東海,大和遭美軍 386 架艦載機圍攻,連敵艦都未見著便傾覆爆沉,巨艦大砲的時代就此終結。',
+          '戰艦大和的最後一戰。沖繩告急，聯合艦隊命世界最大的戰艦攜單程燃料衝向沖繩，組成「海上特攻隊」。' +
+          '在毫無空中掩護的東海，大和遭美軍 386 架艦載機圍攻，連敵艦都未見著便傾覆爆沉，巨艦大砲的時代就此終結。',
         url: '/battles/yamato/',
+        available: true,
+      },
+    ],
+  },
+  {
+    id: 'ww2-europe',
+    name: '第二次世界大戰 · 歐洲戰場',
+    period: '1939–1945',
+    battles: [
+      {
+        id: 'brecourt',
+        name: '布雷庫爾奪砲戰',
+        nameEn: 'Brécourt Manor Assault',
+        date: '1944/6/6',
+        sides: { red: '德意志國防軍', blue: '美軍 101 空降師' },
+        thumb: '/thumb-brecourt.jpg',
+        summary:
+          'D 日清晨，溫斯特中尉以約 13 名空降兵，攻擊轟擊猶他灘出口的四門德軍 105mm 榴彈砲。' +
+          '基底火力、側翼接近、逐砲縱射，13 對 50 的勝利，至今仍是西點軍校的班排攻擊教案。',
+        url: '/battles/brecourt/',
         available: true,
       },
     ],
