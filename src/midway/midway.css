@@ -387,7 +387,9 @@ body {
   width: 38%;
 }
 .sum-table th.metric { width: 24%; }
-.sum-table th .sn { display: block; font-size: 1.05rem; font-weight: 700; }
+.sum-table th .sn { display: block; }
+.sum-table th .sn-main { display: block; font-size: 1.05rem; font-weight: 700; line-height: 1.3; }
+.sum-table th .sn-sub { display: block; font-size: 0.78rem; font-weight: 500; opacity: 0.82; margin-top: 2px; line-height: 1.35; }
 .sum-table th.red .sn { color: #ff6b5e; }
 .sum-table th.blue .sn { color: #5ea8ff; }
 .sum-table th .sd { display: block; color: #8fa3c0; font-size: 0.72rem; margin-top: 4px; font-weight: 400; line-height: 1.5; }
@@ -739,7 +741,8 @@ body {
   .summary-box { padding: 22px 16px 20px; }
   .sum-title { font-size: 1.5rem; }
   .sum-sub { font-size: 0.8rem; margin-bottom: 16px; }
-  .sum-table th .sn { font-size: 0.86rem; }
+  .sum-table th .sn-main { font-size: 0.84rem; }
+  .sum-table th .sn-sub { font-size: 0.6rem; }
   .sum-table th .sd { font-size: 0.62rem; }
   .sum-table td.sl { font-size: 0.74rem; }
   .sum-table td.sv { font-size: 1.1rem; }

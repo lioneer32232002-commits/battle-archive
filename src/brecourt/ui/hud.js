@@ -303,12 +303,20 @@ export function createHUD(callbacks) {
       </tr>`).join('');
     const achieve = outcome.achievement
       ? `<div class="sum-achieve"><span class="sa-tag">E 連戰果</span>${outcome.achievement}</div>` : '';
+    // 排版規則(桌面與手機一致):陣營名稱獨立一行,括號內的軍種/番號降為下一行的副標,
+    // 整段不在中途斷行。例:「德軍砲兵連」一行、「第 90 砲兵團 第 6 連」一行。
+    const factionName = (name) => {
+      const m = /^(.+?)（(.+)）\s*$/.exec(name);
+      return m
+        ? `<span class="sn-main">${m[1]}</span><span class="sn-sub">${m[2]}</span>`
+        : `<span class="sn-main">${name}</span>`;
+    };
     document.querySelector('.sum-table').innerHTML = `
       <table>
         <thead><tr>
-          <th class="red"><span class="sn">${outcome.red.name}</span><span class="sd">${outcome.red.detail}</span></th>
+          <th class="red"><span class="sn">${factionName(outcome.red.name)}</span><span class="sd">${outcome.red.detail}</span></th>
           <th class="metric"></th>
-          <th class="blue"><span class="sn">${outcome.blue.name}</span><span class="sd">${outcome.blue.detail}</span></th>
+          <th class="blue"><span class="sn">${factionName(outcome.blue.name)}</span><span class="sd">${outcome.blue.detail}</span></th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>${achieve}`;
