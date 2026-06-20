@@ -32,6 +32,7 @@ for (const era of eras) {
     card.innerHTML = `
       ${thumb}
       <div class="card-body">
+        ${b.series ? `<span class="card-series">${b.series}</span>` : ''}
         <div class="card-top">
           <h3>${b.name}</h3>
           <span class="card-en">${b.nameEn}</span>

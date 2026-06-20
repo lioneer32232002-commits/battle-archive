@@ -12,6 +12,7 @@ export function createHUD(callbacks) {
       <div class="tb-left">
         <a href="/" class="home-link">◀ 戰史檔案館</a>
         <span class="battle-title">十字路口 <small>Crossroads · 島區</small></span>
+        <span class="series-tag" title="溫特斯前線三部曲">溫特斯三部曲 · 三部曲</span>
       </div>
       <div class="tb-instruments">
         <div class="compass-wrap">
@@ -107,14 +108,15 @@ export function createHUD(callbacks) {
 
     <div id="intro">
       <div class="intro-box">
-        <p class="intro-kicker">戰史檔案館 · 3D 戰術解析</p>
+        <p class="intro-kicker">戰史檔案館 · 3D 戰術解析 · 溫特斯三部曲 ③ 三部曲</p>
         <h1>十字路口</h1>
         <p class="intro-sub">Crossroads · 1944/10/5 · 荷蘭島區堤防</p>
         <p class="intro-desc">
           市場花園作戰之後，101 空降師被留在萊茵河畔的「島區」當步兵守堤。
           10 月 5 日拂曉，溫特斯上尉以約 35 人反擊夜渡萊茵河、近 300 人的德軍：
           基底火力、上刺刀衝過開闊圩田、再以英聯邦砲兵收尾。
-          他自評這是 E 連與他個人生涯打得最好的一仗。
+          他自評這是 E 連與他個人生涯打得最好的一仗，也是他以 E 連連長身分的最後一戰：
+          四天後（10 月 9 日）他升調第 2 營副營長（仍是上尉），就此告別 E 連。
         </p>
         <button id="btn-start" class="hud-btn start">▶ 進入戰場</button>
         <p class="intro-src">資料依據：Dick Winters《Beyond Band of Brothers》、Stephen Ambrose《Band of Brothers》、506 PIR 團史、荷蘭在地戰場研究</p>

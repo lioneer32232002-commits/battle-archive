@@ -11,8 +11,8 @@ export function createHUD(callbacks) {
     <div id="topbar">
       <div class="tb-left">
         <a href="/" class="home-link">◀ 戰史檔案館</a>
-        <span class="battle-title">布雷庫爾奪砲戰 <small>Brécourt Manor</small></span>
-        <span class="series-tag" title="溫特斯前線三部曲">溫特斯三部曲 · 首部曲</span>
+        <span class="battle-title">卡倫坦 <small>Carentan · 1944</small></span>
+        <span class="series-tag" title="溫特斯前線三部曲">溫特斯三部曲 · 二部曲</span>
       </div>
       <div class="tb-instruments">
         <div class="compass-wrap">
@@ -39,8 +39,8 @@ export function createHUD(callbacks) {
           <span class="cmp-hdg" id="compass-hdg" aria-hidden="true">000°</span>
         </div>
         <div class="tb-clock-frame">
-          <span class="tbc-tag" aria-hidden="true">D-DAY · 1944</span>
-          <div class="tb-clock" id="clock">—</div>
+          <span class="tbc-tag" aria-hidden="true">1944 · 諾曼第</span>
+          <div class="tb-clock" id="clock">--:--</div>
         </div>
       </div>
       <div class="tb-right">
@@ -90,7 +90,7 @@ export function createHUD(callbacks) {
     <div id="legend">
       <span><i class="dot red"></i>德軍</span>
       <span><i class="dot blue"></i>美軍 E 連</span>
-      <span class="hint">藍線：主攻路線 · 藍錐：基底火力</span>
+      <span class="hint">藍線：突入路線 · 藍錐：基底火力</span>
       <span class="hint">拖曳旋轉 · 滾輪縮放 · 右鍵平移</span>
     </div>
 
@@ -108,17 +108,16 @@ export function createHUD(callbacks) {
 
     <div id="intro">
       <div class="intro-box">
-        <p class="intro-kicker">戰史檔案館 · 3D 戰術解析 · 溫特斯三部曲 ① 首部曲</p>
-        <h1>布雷庫爾奪砲戰</h1>
-        <p class="intro-sub">Brécourt Manor · 1944/6/6 · D 日</p>
+        <p class="intro-kicker">戰史檔案館 · 3D 戰術解析 · 溫特斯三部曲 ② 二部曲</p>
+        <h1>卡倫坦</h1>
+        <p class="intro-sub">Carentan · 1944/6/12–13 · 諾曼第市鎮與血腥溝</p>
         <p class="intro-desc">
-          D 日清晨，溫特斯中尉以約 13 名空降兵，
-          攻擊轟擊猶他灘出口的四門德軍 105mm 榴彈砲。
-          基底火力、側翼接近、逐砲縱射，
-          這場 13 對 50 的勝利，至今仍是西點軍校的攻擊教案。
+          卡倫坦是連結猶他灘與奧馬哈灘的樞紐。6 月 12 日清晨，溫特斯中尉的 E 連打 506 團第 2 營先鋒、自西南突入；
+          在 MG42 封街的 Y 形路口，他衝進彈雨督陣，逐屋肅清拿下市鎮（並在此受了整場大戰唯一的傷）。
+          翌日血腥溝，E 連背靠鐵路路堤頂住第 17 SS 的反撲，待第 2 裝甲師的雪曼戰車馳援，守住卡倫坦、連通兩灘頭。
         </p>
         <button id="btn-start" class="hud-btn start">▶ 進入戰場</button>
-        <p class="intro-src">資料依據：Stephen Ambrose《Band of Brothers》、506 PIR 團史、西點軍校攻擊教案</p>
+        <p class="intro-src">資料依據：Stephen Ambrose《Band of Brothers》、Dick Winters《Beyond Band of Brothers》、506 PIR 團史、National WWII Museum、Wikipedia；考據還原見內文（紫心巷屬 502 團、布萊斯並非死於 1948）</p>
       </div>
     </div>
 
@@ -148,7 +147,7 @@ export function createHUD(callbacks) {
         </div>
         <div class="fig-stats" id="fig-stats"></div>
         <p class="fig-bio" id="fig-bio"></p>
-        <div class="fig-result"><span class="rl">布雷庫爾戰績</span><span id="fig-battle"></span></div>
+        <div class="fig-result"><span class="rl">卡倫坦戰績</span><span id="fig-battle"></span></div>
         <div class="fig-result"><span class="rl">生涯</span><span id="fig-career"></span></div>
       </div>
     </div>
@@ -305,7 +304,7 @@ export function createHUD(callbacks) {
     const achieve = outcome.achievement
       ? `<div class="sum-achieve"><span class="sa-tag">E 連戰果</span>${outcome.achievement}</div>` : '';
     // 排版規則(桌面與手機一致):陣營名稱獨立一行,括號內的軍種/番號降為下一行的副標,
-    // 整段不在中途斷行。例:「德軍砲兵連」一行、「第 90 砲兵團 第 6 連」一行。
+    // 整段不在中途斷行。例:「德軍」一行、「國防軍・國民擲彈兵」一行。
     const factionName = (name) => {
       const m = /^(.+?)（(.+)）\s*$/.exec(name);
       return m
@@ -350,7 +349,7 @@ export function createHUD(callbacks) {
   function rosterHtml(side) {
     const list0 = figures.filter((f) => f.side === side);
     if (!list0.length) return '';
-    const order = ['指揮官', '突擊隊', '機槍組', '增援'];
+    const order = ['指揮官', '突擊', '逐屋肅清', '考據'];
     let html = '<div class="aces-block">';
     for (const g of order) {
       const list = list0.filter((f) => f.group === g);
@@ -365,7 +364,7 @@ export function createHUD(callbacks) {
     const s = sides[side];
     const en = side === 'blue';
     const el = document.getElementById(`panel-${side}`);
-    const gunBar = side === 'red'
+    const gunBar = (side === 'red' && gunIds.length)
       ? `<div class="hp-row">
            <span class="hp-label">火砲</span>
            <div class="hp-track"><div class="hp-ghost" id="hp-guns-ghost-red"></div><div class="hp-fill" id="hp-guns-red"></div></div>
@@ -442,9 +441,11 @@ export function createHUD(callbacks) {
         }
         setBar(side, 'men', (men / sides[side].baseMen) * 100);
       }
-      // 紅方火砲
-      const gunsLeft = gunIds.filter((id) => states.get(id)?.status !== 'destroyed').length;
-      setBar('red', 'guns', (gunsLeft / gunIds.length) * 100);
+      // 紅方火砲（本役無火砲時略過）
+      if (gunIds.length) {
+        const gunsLeft = gunIds.filter((id) => states.get(id)?.status !== 'destroyed').length;
+        setBar('red', 'guns', (gunsLeft / gunIds.length) * 100);
+      }
     },
     showEvent(e) {
       document.getElementById('ec-time').textContent = formatClock(e.t);

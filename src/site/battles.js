@@ -43,6 +43,7 @@ export const eras = [
         name: '布雷庫爾奪砲戰',
         nameEn: 'Brécourt Manor Assault',
         date: '1944/6/6',
+        series: '溫特斯三部曲 · 首部曲',
         sides: { red: '德意志國防軍', blue: '美軍 101 空降師' },
         thumb: '/thumb-brecourt.jpg',
         summary:
@@ -52,16 +53,31 @@ export const eras = [
         available: true,
       },
       {
+        id: 'carentan',
+        name: '卡倫坦',
+        nameEn: 'Battle of Carentan',
+        date: '1944/6/12–13',
+        series: '溫特斯三部曲 · 二部曲',
+        sides: { red: '德意志國防軍・武裝黨衛軍', blue: '美軍 101 空降師' },
+        thumb: '',   // 待用 Gemini 底圖跑 scripts 合成後補上 /thumb-carentan.jpg
+        summary:
+          '連結兩處灘頭的樞紐之城。6 月 12 日，溫特斯的 E 連打 506 團先鋒突入卡倫坦，在 MG42 封街的 Y 形路口' +
+          '衝進彈雨督陣、逐屋肅清；翌日血腥溝，背靠鐵路路堤頂住第 17 SS 反撲，待第 2 裝甲師雪曼戰車馳援解圍。',
+        url: '/battles/carentan/',
+        available: true,
+      },
+      {
         id: 'crossroads',
         name: '十字路口',
         nameEn: 'Crossroads · The Island',
         date: '1944/10/5',
+        series: '溫特斯三部曲 · 三部曲',
         sides: { red: '德意志國防軍', blue: '美軍 101 空降師' },
         thumb: '/thumb-crossroads.jpg',
         summary:
           '市場花園之後，101 空降師在萊茵河畔的「島區」當步兵守堤。10 月 5 日拂曉，溫特斯上尉以約 35 人' +
           '反擊夜渡過河、近 300 人的德軍：基底火力、上刺刀衝過開闊圩田、再以英聯邦砲兵收尾，僅 1 人陣亡。' +
-          '他自評這是生涯打得最好的一仗。',
+          '他自評這是生涯打得最好的一仗，也是他以 E 連連長身分的最後一戰。',
         url: '/battles/crossroads/',
         available: true,
       },

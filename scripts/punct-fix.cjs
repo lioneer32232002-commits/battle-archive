@@ -25,6 +25,14 @@ const FILES = [
   'src/crossroads/scene/effects.js',
   'src/crossroads/scene/soldiers.js',
   'battles/crossroads/index.html',
+  'src/carentan/data/battle.js',
+  'src/carentan/data/figures.js',
+  'src/carentan/ui/hud.js',
+  'src/carentan/main.js',
+  'src/carentan/scene/terrain.js',
+  'src/carentan/scene/environment.js',
+  'src/carentan/scene/soldiers.js',
+  'battles/carentan/index.html',
   'src/site/battles.js',
 ];
 
