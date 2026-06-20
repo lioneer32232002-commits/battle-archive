@@ -16,6 +16,15 @@ const FILES = [
   'src/brecourt/scene/terrain.js',
   'src/brecourt/scene/labels.js',
   'battles/brecourt/index.html',
+  'src/crossroads/data/battle.js',
+  'src/crossroads/data/figures.js',
+  'src/crossroads/ui/hud.js',
+  'src/crossroads/main.js',
+  'src/crossroads/scene/terrain.js',
+  'src/crossroads/scene/environment.js',
+  'src/crossroads/scene/effects.js',
+  'src/crossroads/scene/soldiers.js',
+  'battles/crossroads/index.html',
   'src/site/battles.js',
 ];
 

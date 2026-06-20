@@ -12,6 +12,7 @@ export default defineConfig({
         midway: resolve(__dirname, 'battles/midway/index.html'),
         yamato: resolve(__dirname, 'battles/yamato/index.html'),
         brecourt: resolve(__dirname, 'battles/brecourt/index.html'),
+        crossroads: resolve(__dirname, 'battles/crossroads/index.html'),
       },
     },
   },

@@ -51,6 +51,20 @@ export const eras = [
         url: '/battles/brecourt/',
         available: true,
       },
+      {
+        id: 'crossroads',
+        name: '十字路口',
+        nameEn: 'Crossroads · The Island',
+        date: '1944/10/5',
+        sides: { red: '德意志國防軍', blue: '美軍 101 空降師' },
+        thumb: '/thumb-crossroads.jpg',
+        summary:
+          '市場花園之後，101 空降師在萊茵河畔的「島區」當步兵守堤。10 月 5 日拂曉，溫斯特上尉以約 35 人' +
+          '反擊夜渡過河、近 300 人的德軍：基底火力、上刺刀衝過開闊圩田、再以英聯邦砲兵收尾，僅 1 人陣亡。' +
+          '他自評這是生涯打得最好的一仗。',
+        url: '/battles/crossroads/',
+        available: true,
+      },
     ],
   },
   {
