@@ -221,7 +221,7 @@ export const outcome = {
   ],
   blue: {
     name: 'E 連（101 空降師）',
-    detail: '溫特斯核心約 13 人，含增援共約 21 人（4 陣亡、6 負傷）',
+    detail: '溫特斯核心約 13 人 · 含增援共約 21 人',
     values: { men: 21, killed: 4, captured: 0 },
   },
   red: {

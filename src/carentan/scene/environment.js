@@ -4,8 +4,8 @@ import * as THREE from 'three';
 
 const PALETTES = {
   night: { top: 0x05080f, horizon: 0x10161f, sun: 0x5d6f8a, sunInt: 0.26, amb: 0.34, ground: 0x1a2016, fog: 0x0c1016 },
-  dawn:  { top: 0x5a6e7e, horizon: 0xd8c39a, sun: 0xf0dcb0, sunInt: 0.82, amb: 0.70, ground: 0x4e6230, fog: 0xcdc9ae },
-  day:   { top: 0x7ba2c4, horizon: 0xcdd6cf, sun: 0xfff4e0, sunInt: 1.06, amb: 1.02, ground: 0x5f7536, fog: 0xc6cec0 },
+  dawn:  { top: 0x6a7e8e, horizon: 0xe4cfa6, sun: 0xf8e6c2, sunInt: 1.04, amb: 0.95, ground: 0x576c38, fog: 0xd8d4bd },
+  day:   { top: 0x88afcf, horizon: 0xd8dfd8, sun: 0xfff8ec, sunInt: 1.30, amb: 1.26, ground: 0x6a813f, fog: 0xced6c8 },
 };
 
 // 戰役時刻 → 日相與混合比（6/12 清晨 → 夏日白晝；本役無夜景）
@@ -80,7 +80,7 @@ export function createEnvironment(scene) {
   const sun = new THREE.DirectionalLight(0xffffff, PALETTES.night.sunInt);
   sun.position.set(2400, 900, -200); // 拂曉自東方（下萊茵河上游）低斜射入
   scene.add(sun);
-  const hemi = new THREE.HemisphereLight(0xaebac4, 0x2a3320, PALETTES.night.amb);
+  const hemi = new THREE.HemisphereLight(0xbcc7cf, 0x44502f, PALETTES.night.amb);
   scene.add(hemi);
 
   scene.fog = new THREE.Fog(PALETTES.night.fog, 350, 5200); // 濃霧：遠景沒入晨霾

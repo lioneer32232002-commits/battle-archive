@@ -164,9 +164,10 @@ export function createCarentanTerrain(scene) {
   hedge(-30, 110, 90, 0.05);
   hedge(-95, 130, 80, 0.2);
 
-  // ── 30 高地（鎮西南約一哩的低緩隆起） ─────────────────────
-  const hill = new THREE.Mesh(new THREE.SphereGeometry(70, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), grassMat);
-  hill.scale.set(1, 0.12, 1); hill.position.set(-150, -0.5, 120); g.add(hill);
+  // ── 30 高地（鎮西南的低緩隆起；置於德軍進攻走廊「之外」的西側，作背景高地，
+  //    避免單位行經時被山體擋住、像躲進地洞） ─────────────────────
+  const hill = new THREE.Mesh(new THREE.SphereGeometry(56, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), grassMat);
+  hill.scale.set(1, 0.1, 1); hill.position.set(-210, -0.5, 80); g.add(hill);
 
   // ── 佩里耶／博特公路（自西南通入市鎮；德軍反撲來向） ──────────
   box(5, 0.2, 200, roadMat, 0, 0.15, 0, -0.72);   // 斜貫西南–市鎮的土路
@@ -185,7 +186,7 @@ export function createCarentanTerrain(scene) {
     { name: 'N13 堤道・紫心巷（502 團）', side: 'neutral', pos: { x: 26, y: 6, z: -120 } },
     { name: '杜沃氾濫沼澤', side: 'neutral', pos: { x: -90, y: 5, z: -170 } },
     { name: '鐵路路堤・血腥溝', side: 'blue', pos: { x: -64, y: 6, z: 60 } },
-    { name: '30 高地', side: 'red', pos: { x: -150, y: 10, z: 120 } },
+    { name: '30 高地', side: 'red', pos: { x: -205, y: 9, z: 80 } },
   ];
 
   return { group: g, places };

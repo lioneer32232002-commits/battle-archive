@@ -188,7 +188,8 @@ main { flex: 1; max-width: 1100px; width: 100%; margin: 0 auto; padding: 40px 24
   box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.62);
 }
 
-.card-sides { margin-top: 12px; display: flex; align-items: center; gap: 10px; font-size: 0.95rem; }
+.card-sides { margin-top: 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; font-size: 0.95rem; }
+.side { white-space: nowrap; }   /* 陣營名整體不斷行;太長時整段換行,不從詞中間斷 */
 .side.red { color: #ff6b5e; }
 .side.blue { color: #5ea8ff; }
 .vs { color: #5d6b82; font-size: 0.75rem; }

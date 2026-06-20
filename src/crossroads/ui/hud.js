@@ -112,11 +112,9 @@ export function createHUD(callbacks) {
         <h1>十字路口</h1>
         <p class="intro-sub">Crossroads · 1944/10/5 · 荷蘭島區堤防</p>
         <p class="intro-desc">
-          市場花園作戰之後，101 空降師被留在萊茵河畔的「島區」當步兵守堤。
-          10 月 5 日拂曉，溫特斯上尉以約 35 人反擊夜渡萊茵河、近 300 人的德軍：
-          基底火力、上刺刀衝過開闊圩田、再以英聯邦砲兵收尾。
-          他自評這是 E 連與他個人生涯打得最好的一仗，也是他以 E 連連長身分的最後一戰：
-          四天後（10 月 9 日）他升調第 2 營副營長（仍是上尉），就此告別 E 連。
+          市場花園後，101 空降師在萊茵河畔「島區」守堤。10 月 5 日拂曉，溫特斯上尉率約 35 人
+          反擊夜渡過河、近 300 人的德軍，僅 1 人陣亡。這是他自評生涯最佳、也是以 E 連連長
+          身分的最後一戰：四天後升第 2 營副營長（仍是上尉）。
         </p>
         <button id="btn-start" class="hud-btn start">▶ 進入戰場</button>
         <p class="intro-src">資料依據：Dick Winters《Beyond Band of Brothers》、Stephen Ambrose《Band of Brothers》、506 PIR 團史、荷蘭在地戰場研究</p>

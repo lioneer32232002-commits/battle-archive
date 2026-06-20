@@ -51,7 +51,7 @@ const audio = new AudioEngine();
 for (const p of terrain.places) {
   const lab = makeLabel(p.name, { side: p.side });
   lab.position.set(p.pos.x, p.pos.y, p.pos.z);
-  lab.scale.multiplyScalar(0.34 * LABEL_SCALE);
+  lab.scale.multiplyScalar(0.29 * LABEL_SCALE);
   scene.add(lab);
 }
 
@@ -60,10 +60,10 @@ const unitObjs = new Map();
 for (const u of units) {
   const group = createUnit(u);
   scene.add(group);
-  if (u.kind !== 'mg') {   // 機槍火力點不掛 3D 標籤（避免十字路口處標籤打架）
+  if (u.kind !== 'mg') {   // 機槍火力點不掛 3D 標籤（避免路口處標籤打架）
     const label = makeLabel(u.name, { side: u.side });
-    label.position.y = 13;
-    label.scale.multiplyScalar(0.26 * LABEL_SCALE);
+    label.position.y = u.labelY ?? 13;   // 市鎮密集區各單位錯開高度,減少重疊
+    label.scale.multiplyScalar(0.23 * LABEL_SCALE);
     group.add(label);
   }
   const destroyed = (u.statusChanges ?? []).find((c) => c.status === 'destroyed');

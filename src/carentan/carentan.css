@@ -350,7 +350,7 @@ body {
 .intro-kicker { color: #f0d27a; letter-spacing: 0.3em; font-size: 0.8rem; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7); }
 .intro-box h1 { font-size: 3.2rem; letter-spacing: 0.25em; text-indent: 0.25em; margin: 14px 0 6px; text-shadow: 0 2px 24px rgba(0, 0, 0, 0.8); }
 .intro-sub { color: #aebbcf; letter-spacing: 0.12em; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7); }
-.intro-desc { color: #dbe3ee; line-height: 2; margin: 22px 0; font-size: 0.95rem; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.8); }
+.intro-desc { color: #dbe3ee; line-height: 2; margin: 22px 0; font-size: 0.95rem; text-align: left; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.8); }
 .hud-btn.start { font-size: 1.05rem; padding: 12px 36px; border-color: #c9a227; color: #ffd97a; }
 .hud-btn.start:hover { background: rgba(201, 162, 39, 0.18); }
 .intro-src { margin-top: 26px; color: #5d6b82; font-size: 0.72rem; }

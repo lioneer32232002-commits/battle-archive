@@ -112,9 +112,9 @@ export function createHUD(callbacks) {
         <h1>卡倫坦</h1>
         <p class="intro-sub">Carentan · 1944/6/12–13 · 諾曼第市鎮與血腥溝</p>
         <p class="intro-desc">
-          卡倫坦是連結猶他灘與奧馬哈灘的樞紐。6 月 12 日清晨，溫特斯中尉的 E 連打 506 團第 2 營先鋒、自西南突入；
-          在 MG42 封街的 Y 形路口，他衝進彈雨督陣，逐屋肅清拿下市鎮（並在此受了整場大戰唯一的傷）。
-          翌日血腥溝，E 連背靠鐵路路堤頂住第 17 SS 的反撲，待第 2 裝甲師的雪曼戰車馳援，守住卡倫坦、連通兩灘頭。
+          1944 年 6 月，溫特斯率 E 連打 506 團先鋒突入卡倫坦：在 MG42 封街的路口衝進彈雨督陣、
+          逐屋拿下市鎮（他在此受了整場大戰唯一的傷）。翌日血腥溝，E 連背靠鐵路路堤死守，
+          待雪曼戰車馳援，守住這座連通兩灘頭的樞紐。
         </p>
         <button id="btn-start" class="hud-btn start">▶ 進入戰場</button>
         <p class="intro-src">資料依據：Stephen Ambrose《Band of Brothers》、Dick Winters《Beyond Band of Brothers》、506 PIR 團史、National WWII Museum、Wikipedia；考據還原見內文（紫心巷屬 502 團、布萊斯並非死於 1948）</p>

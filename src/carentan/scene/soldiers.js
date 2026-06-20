@@ -273,10 +273,12 @@ function makeArmor(side, variant, mat) {
 function makeRing(radius, color) {
   const ring = new THREE.Mesh(
     new THREE.RingGeometry(radius * 0.82, radius, 36),
-    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false })
+    // depthTest:false → 識別環永遠畫在建築／地形之上,不被遮蓋(避免單位「躲在房子或高地下」)
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, depthTest: false })
   );
   ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.4;
+  ring.position.y = 0.5;
+  ring.renderOrder = 5;
   return ring;
 }
 

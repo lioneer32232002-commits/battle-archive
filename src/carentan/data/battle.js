@@ -52,7 +52,7 @@ export const units = [
   // 藍方 — 美軍 E 連與增援裝甲
   {
     id: 'easy-assault', side: 'blue', kind: 'assault', name: 'E 連（溫特斯）', nameEn: "Easy Co. (Winters)",
-    role: '506 PIR 2 營先鋒', length: 20,
+    role: '506 PIR 2 營先鋒', length: 20, labelY: 14,
     strength: { men: 90 },
     track: easyTrack,
     statusChanges: [
@@ -62,7 +62,7 @@ export const units = [
   },
   {
     id: 'welsh-platoon', side: 'blue', kind: 'assault', name: '威爾許 第 1 排', nameEn: 'Welsh 1st Platoon',
-    role: '率衝・炸機槍組 約 30 人', length: 16,
+    role: '率衝・炸機槍組 約 30 人', length: 16, labelY: 20,
     strength: { men: 30 },
     track: [
       { t: 350, x: -28, z: 74 },
@@ -76,7 +76,7 @@ export const units = [
   },
   {
     id: 'base-mg', side: 'blue', kind: 'support', name: '基底火力組', nameEn: 'Base of fire',
-    role: '.30 機槍掩護', length: 10,
+    role: '.30 機槍掩護', length: 10, labelY: 9,
     strength: {},
     track: [
       { t: 350, x: -34, z: 70 },
@@ -102,7 +102,7 @@ export const units = [
   // 紅方 — 德軍（6/12 第 6 傘兵團後衛；6/13 第 17 SS 裝甲擲彈兵師反撲）
   {
     id: 'fjr6-town', side: 'red', kind: 'garrison', name: '第 6 傘兵團後衛', nameEn: 'FJR 6 rearguard', facing: 2.4,
-    role: '據守市鎮 約 80 人', length: 18,
+    role: '據守市鎮 約 80 人', length: 18, labelY: 26,
     strength: { men: 80 },
     track: [{ t: 0, x: 6, z: -6 }],
     statusChanges: [
@@ -271,12 +271,12 @@ export const outcome = {
   ],
   blue: {
     name: 'E 連（101 空降師）',
-    detail: 'E 連約 120 人；6/12 約 10 人、6/13 約 9 人傷亡（概估，Ambrose）。整場卡倫坦 101 師陣亡逾 400',
+    detail: '溫特斯先鋒 · 含 CCA 雪曼增援',
     values: { men: 120, killed: 19, captured: 0 },
   },
   red: {
-    name: '德軍（第 6 傘兵團・第 17 SS 裝甲擲彈兵師）',
-    detail: '市鎮守軍＝馮德海特第 6 傘兵團後衛；6/13 反撲＝第 17 SS（傷亡為概估，各家出入大）',
+    name: '德軍（第 6 傘兵團・第 17 SS）',
+    detail: '市鎮守備＋血腥溝反撲 · 傷亡為概估',
     values: { men: 280, killed: 130, captured: 0 },
   },
 };

@@ -216,12 +216,12 @@ export const outcome = {
   ],
   blue: {
     name: 'E 連（101 空降師）',
-    detail: '溫特斯約 35 人（含 F 連一排增援）；1 陣亡、22 負傷（約 18 人傷於撤退砲擊）',
+    detail: '溫特斯先鋒 · 含 F 連一排增援',
     values: { men: 35, killed: 1, captured: 0 },
   },
   red: {
     name: '德軍（國防軍・國民擲彈兵）',
-    detail: '夜渡之兩個連、約 300 人（傷亡為美方估計）',
+    detail: '夜渡萊茵河的兩個德軍連 · 傷亡為美方估計',
     values: { men: 300, killed: 50, captured: 11 },
   },
 };
