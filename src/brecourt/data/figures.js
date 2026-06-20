@@ -1,4 +1,4 @@
-// 布雷庫爾奪砲戰 — 參戰人物小傳(溫斯特突擊隊＋兩個 .30 機槍組＋增援)
+// 布雷庫爾奪砲戰 — 參戰人物小傳(溫特斯突擊隊＋兩個 .30 機槍組＋增援)
 // 史料查證:Stephen Ambrose《Band of Brothers》、506 PIR 團史、Warfare History Network、
 //          各人物 wiki／Find a Grave 訃聞、National WWII Museum。各家名單略有出入,存疑處已註明。
 // group = 面板名冊分組;kia = 當日陣亡;age = 1944 年 6 月概略年齡。
@@ -12,7 +12,7 @@ export const figures = [
     career: '戰後續任軍職，晉升中將，1965 年逝世。',
   },
   {
-    id: 'winters', side: 'blue', type: 'commander', group: '指揮官', name: '理查・溫斯特', nameEn: 'Richard D. Winters', avatar: '溫',
+    id: 'winters', side: 'blue', type: 'commander', group: '指揮官', name: '理查・溫特斯', nameEn: 'Richard D. Winters', avatar: '溫',
     rank: '中尉', affil: 'E 連 · 布雷庫爾攻擊指揮', born: '1918', died: '2011', age: '26',
     bio: 'D 日跳傘時武器袋脫落，他只憑一把刺刀在黑暗中集結散兵。隨即奉命攻擊布雷庫爾莊園的四門德軍榴彈砲，以約 13 人擊潰約 50 名守軍，教科書級的火力與機動分進讓他獲頒傑出服役十字勳章，此役至今仍是西點軍校的攻擊教案。',
     battle: '指揮布雷庫爾拔砲，摧毀四門 105mm 砲，奪得猶他灘德軍防禦圖。',
@@ -72,28 +72,28 @@ export const figures = [
   {
     id: 'lorraine', side: 'blue', type: 'soldier', group: '突擊隊', name: '傑拉德・羅蘭', nameEn: 'Gerald "Frenchy" Loraine', avatar: '羅',
     rank: '一等兵', affil: '非 E 連 · 志願加入', born: '1913', died: '1976', age: '31',
-    bio: '加州人，並非 E 連（多數記載屬 506 團勤務連）。誤降後在聖瑪麗杜蒙一帶會合，志願加入溫斯特攻擊。攻下第一門砲後以衝鋒槍擊倒一名逃跑德兵，並把德軍丟來的手榴彈回擲。',
+    bio: '加州人，並非 E 連（多數記載屬 506 團勤務連）。誤降後在聖瑪麗杜蒙一帶會合，志願加入溫特斯攻擊。攻下第一門砲後以衝鋒槍擊倒一名逃跑德兵，並把德軍丟來的手榴彈回擲。',
     battle: '射倒逃逸德兵、回擲手榴彈支援突擊。',
     career: '因功獲銀星（獎章等級各家略有出入）。戰後返加州，1976 年逝世。',
   },
   {
     id: 'halls', side: 'blue', type: 'soldier', group: '突擊隊', kia: true, name: '約翰・霍爾斯', nameEn: 'John D. Halls', avatar: '霍',
     rank: '一等兵', affil: '第 2 營本部連 · 志願加入', born: '1922', died: '1944', age: '22',
-    bio: '科羅拉多人，屬第 2 營本部連迫擊砲排（常被誤認為勤務連的另一位 John Hall，實為不同人）。落地後向溫斯特自報是失去無線電的通信兵，遂加入攻擊並提供 TNT。',
+    bio: '科羅拉多人，屬第 2 營本部連迫擊砲排（常被誤認為勤務連的另一位 John Hall，實為不同人）。落地後向溫特斯自報是失去無線電的通信兵，遂加入攻擊並提供 TNT。',
     battle: '衝向第三門砲時陣亡，是當日確認陣亡者之一。',
     career: '1944 年 6 月 6 日陣亡，葬於諾曼第美軍公墓。',
   },
   {
     id: 'hicks', side: 'blue', type: 'soldier', group: '突擊隊', name: '華特・希克斯', nameEn: 'Walter Hicks', avatar: '希',
     rank: '二等兵', affil: 'F 連 · 志願加入', born: '', died: '', age: '',
-    bio: '來自 F 連，落地後主動找上溫斯特表示願意幫忙，並奉命回去帶來霍克。攻擊中以手榴彈協助癱瘓第二、三門砲，小腿被跳彈擊中負傷。（戰後生平資料有限）',
+    bio: '來自 F 連，落地後主動找上溫特斯表示願意幫忙，並奉命回去帶來霍克。攻擊中以手榴彈協助癱瘓第二、三門砲，小腿被跳彈擊中負傷。（戰後生平資料有限）',
     battle: '以手榴彈破壞砲位，作戰中負傷。',
     career: '資料有限，生平不詳。',
   },
   {
     id: 'houck', side: 'blue', type: 'nco', group: '突擊隊', kia: true, name: '朱利斯・霍克', nameEn: 'Julius "Rusty" Houck', avatar: '克',
     rank: '中士', affil: 'F 連 · 志願加入', born: '1921', died: '1944', age: '23',
-    bio: '威斯康辛人，1942 年於托科亞受訓。經希克斯引介加入溫斯特攻擊隊，攻擊第四門砲時遭機槍掃中陣亡。',
+    bio: '威斯康辛人，1942 年於托科亞受訓。經希克斯引介加入溫特斯攻擊隊，攻擊第四門砲時遭機槍掃中陣亡。',
     battle: '參與第四門砲突擊時陣亡，當日確認陣亡者之一。',
     career: '1944 年陣亡。',
   },
@@ -116,7 +116,7 @@ export const figures = [
   {
     id: 'petty', side: 'blue', type: 'soldier', group: '機槍組', name: '克里夫蘭・佩提', nameEn: 'Cleveland Petty', avatar: '佩',
     rank: '二等兵', affil: 'E 連 · 機槍組', born: '1924', died: '1961', age: '20',
-    bio: '於布拉格堡加入 E 連第 2 排。D 日操作掩護溫斯特、康普頓推進的兩挺機槍之一，當天頸部被破片擊傷仍留隊。',
+    bio: '於布拉格堡加入 E 連第 2 排。D 日操作掩護溫特斯、康普頓推進的兩挺機槍之一，當天頸部被破片擊傷仍留隊。',
     battle: '機槍壓制砲位掩護突擊，與利布戈特同獲銅星。',
     career: '後於卡倫坦外再度負傷；1961 年早逝。',
   },
@@ -148,7 +148,7 @@ export const figures = [
 export const figureById = Object.fromEntries(figures.map((f) => [f.id, f]));
 
 // 單位 → 領導人物 figure id(點單位列開啟人物小卡)。
-// E 連不再連到溫斯特本人(避免與「溫斯特突擊隊」重複);全員生平改由面板「人物名冊」呈現。
+// E 連不再連到溫特斯本人(避免與「溫特斯突擊隊」重複);全員生平改由面板「人物名冊」呈現。
 export const leaderOf = {
   'winters-party': 'winters',
   'base-of-fire': 'lipton',

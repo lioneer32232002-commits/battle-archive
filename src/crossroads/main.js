@@ -72,7 +72,7 @@ for (const u of units) {
 
 // 部隊大標籤(跟隨)
 const formationLabels = [
-  { unit: 'winters-assault', label: makeLabel('E 連 · 506 PIR', { side: 'blue', big: true, sub: '溫斯特突擊隊 · 約 35 人' }), dy: 30 },
+  { unit: 'winters-assault', label: makeLabel('E 連 · 506 PIR', { side: 'blue', big: true, sub: '溫特斯突擊隊 · 約 35 人' }), dy: 30 },
   { unit: 'gren-1', label: makeLabel('德軍渡河支隊', { side: 'red', big: true, sub: '約 300 人 · 國民擲彈兵' }), dy: 26 },
 ];
 for (const f of formationLabels) {

@@ -5,7 +5,7 @@
 export const figures = [
   // ── 指揮官 ──
   {
-    id: 'winters', side: 'blue', type: 'commander', group: '指揮官', name: '理查・溫斯特', nameEn: 'Richard D. Winters', avatar: '溫',
+    id: 'winters', side: 'blue', type: 'commander', group: '指揮官', name: '理查・溫特斯', nameEn: 'Richard D. Winters', avatar: '溫',
     rank: '上尉', affil: 'E 連連長 · 攻擊指揮', born: '1918', died: '2011', age: '26',
     bio: '十字路口這天，他仍是 E 連連長（這是他以連長身分的最後一戰，四天後的 10 月 9 日才調任第 2 營副營長；當時軍階為上尉，並非常被誤稱的「少校」）。凌晨巡邏遇襲後，他親自前出偵察、布置基底火力，一聲「預備、瞄準、放」殲滅德軍機槍組，再率不到 40 人上刺刀衝過開闊圩田，擊潰近 300 名德軍。他自評這是 E 連與他個人生涯打得最好的一仗。',
     battle: '指揮十字路口反擊，以約 35 人擊潰約兩個連德軍，獲傑出服役十字勳章。',
@@ -14,14 +14,14 @@ export const figures = [
   {
     id: 'welsh', side: 'blue', type: 'officer', group: '指揮官', name: '哈利・威爾許', nameEn: 'Harry Welsh', avatar: '威',
     rank: '中尉', affil: 'E 連 第 1 排排長', born: '1918', died: '1995', age: '26',
-    bio: '第 1 排排長，當天在連 CP，奉溫斯特無線電令把第 1 排其餘兵力與一個輕機槍班壓上增援。性情爽朗、作戰可靠，是溫斯特倚重的軍官，兩人情誼深厚。',
+    bio: '第 1 排排長，當天在連 CP，奉溫特斯無線電令把第 1 排其餘兵力與一個輕機槍班壓上增援。性情爽朗、作戰可靠，是溫特斯倚重的軍官，兩人情誼深厚。',
     battle: '依令派遣並協調第 1 排投入衝鋒。',
     career: '打完歐洲全程，戰後返賓州任教，1995 年逝世。',
   },
   {
     id: 'nixon', side: 'blue', type: 'officer', group: '指揮官', name: '路易斯・尼克森', nameEn: 'Lewis Nixon', avatar: '尼',
     rank: '上尉', affil: '第 2 營 情報官', born: '1918', died: '1995', age: '26',
-    bio: '第 2 營情報官、溫斯特最親近的摯友，耶魯出身。戰鬥後與溫斯特一同清點戰場，估出德軍損失（約 50 死、約 100 傷、11 被俘，皆美方估計）。聰明而豪飲，是 E 連故事裡的另一個主角。',
+    bio: '第 2 營情報官、溫特斯最親近的摯友，耶魯出身。戰鬥後與溫特斯一同清點戰場，估出德軍損失（約 50 死、約 100 傷、11 被俘，皆美方估計）。聰明而豪飲，是 E 連故事裡的另一個主角。',
     battle: '戰後勘查戰場、統計德軍損失。',
     career: '隨第 2 營轉戰至戰爭結束；戰後人生起伏，1995 年逝世。',
   },
@@ -92,7 +92,7 @@ export const figures = [
   {
     id: 'boyle', side: 'blue', type: 'nco', group: '通信', name: '里歐・博伊爾', nameEn: 'Leo Boyle', avatar: '博',
     rank: '中士', affil: 'E 連 連部 · 無線電', born: '', died: '', age: '',
-    bio: '連部士官，背 SCR-300 無線電緊跟在溫斯特身邊，是呼叫增援與砲火支援的關鍵一環。本役致勝的英聯邦砲火，正是透過這條無線電引來。撤退遭德軍反砲擊時負傷。（生平資料有限）',
+    bio: '連部士官，背 SCR-300 無線電緊跟在溫特斯身邊，是呼叫增援與砲火支援的關鍵一環。本役致勝的英聯邦砲火，正是透過這條無線電引來。撤退遭德軍反砲擊時負傷。（生平資料有限）',
     battle: '操作 SCR-300 無線電、傳遞火力與增援呼叫，撤退中負傷。',
     career: '資料有限，生平不詳。',
   },
@@ -101,7 +101,7 @@ export const figures = [
 export const figureById = Object.fromEntries(figures.map((f) => [f.id, f]));
 
 // 單位 → 領導人物 figure id（點單位列開啟人物小卡）。
-// 突擊隊主體連到溫斯特本人由面板「人物名冊」呈現；單位列指向各自代表人物。
+// 突擊隊主體連到溫特斯本人由面板「人物名冊」呈現；單位列指向各自代表人物。
 export const leaderOf = {
   'winters-assault': 'winters',
   'base-of-fire': 'cobb',

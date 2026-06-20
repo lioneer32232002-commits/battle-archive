@@ -289,7 +289,7 @@ export class Effects {
     });
   }
 
-  // ── 煙幕（溫斯特的煙幕彈：灰白煙幕升起、擴散） ─────────────
+  // ── 煙幕（溫特斯的煙幕彈：灰白煙幕升起、擴散） ─────────────
   smoke(pos, duration = 12) {
     const group = new THREE.Group();
     group.position.copy(pos);

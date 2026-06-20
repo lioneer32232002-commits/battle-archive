@@ -89,7 +89,7 @@ export function createCrossroadsTerrain(scene) {
   box(DIKE_LEN, 0.7, 1.6, dikeEarth, 0, 0.34, DIKE_Z - 4.6);
   // 堤頂瀝青路
   box(DIKE_LEN, 0.26, 3.8, roadMat, 0, DIKE_H + 0.12, DIKE_Z);
-  // 堤北腳的排水溝（溫斯特的掩蔽接近路線）
+  // 堤北腳的排水溝（溫特斯的掩蔽接近路線）
   box(DIKE_LEN, 0.5, 1.7, ditchMat, 0, 0.18, DIKE_Z - 6.0);
 
   // ── 渡船道（南北向，跨越河堤的十字路口） ───────────────────

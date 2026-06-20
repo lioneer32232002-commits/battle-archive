@@ -1,5 +1,5 @@
 // 十字路口 — 島區堤防之役（E 連，101 空降師 506 傘兵團 第 2 營）
-// 1944 年 10 月 5 日拂曉，荷蘭「島區」（de Betuwe）。溫斯特上尉以約 35 人反擊
+// 1944 年 10 月 5 日拂曉，荷蘭「島區」（de Betuwe）。溫特斯上尉以約 35 人反擊
 // 夜渡萊茵河的德軍約兩個連（約 300 人），以基底火力＋刺刀衝鋒＋砲兵協同擊潰之。
 // 史料依據：Dick Winters《Beyond Band of Brothers》回憶錄、Stephen Ambrose《Band of Brothers》、
 //          506 PIR 團史（airborne506.org）、army.mil、荷蘭在地戰場研究（strijdbewijs.nl、theisland44-45.nl）。
@@ -20,7 +20,7 @@ export function formatClock(t) {
   return `10/5 ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-// ── 主軸：溫斯特突擊隊（自連 CP 出發線 → 越堤 → 沿堤東掃） ──────
+// ── 主軸：溫特斯突擊隊（自連 CP 出發線 → 越堤 → 沿堤東掃） ──────
 const wintersTrack = [
   { t: 240, x: -60, z: 16 },   // 巡邏遇襲後，自連 CP 一帶前出
   { t: 285, x: -20, z: 8 },    // 沿堤南側溝渠隱蔽接近
@@ -37,7 +37,7 @@ const wintersTrack = [
 export const units = [
   // 藍方 — 美軍 E 連
   {
-    id: 'winters-assault', side: 'blue', kind: 'assault', name: '溫斯特突擊隊', nameEn: "Winters' assault",
+    id: 'winters-assault', side: 'blue', kind: 'assault', name: '溫特斯突擊隊', nameEn: "Winters' assault",
     role: 'E 連 · 約 35 人', length: 18,
     strength: { men: 35 },
     track: wintersTrack,
@@ -142,14 +142,14 @@ export const events = [
       believed: '以為：堤上少數德軍前哨',
       actual: '實際：約兩個連、近 300 人渡河據堤（長期被誤稱「SS」，考證實為國防軍國民擲彈兵）',
     },
-    desc: '溫斯特上尉爬近觀察，真相浮現：不是少數前哨，而是夜渡過河、近 300 人的兩個德軍連，火力點完整。寡不敵眾，他沒有退；和布雷庫爾一樣，他把劣勢拆成一道可解的題目。（附帶一個常被誤傳的真相：影集與書裡稱他們是「SS」，但當時島區一帶對美軍 101 師的並非武裝黨衛軍，最站得住腳的是國防軍國民擲彈兵。溫斯特看到的是長大衣與晚期裝具，誤判成精銳。）',
+    desc: '溫特斯上尉爬近觀察，真相浮現：不是少數前哨，而是夜渡過河、近 300 人的兩個德軍連，火力點完整。寡不敵眾，他沒有退；和布雷庫爾一樣，他把劣勢拆成一道可解的題目。（附帶一個常被誤傳的真相：影集與書裡稱他們是「SS」，但當時島區一帶對美軍 101 師的並非武裝黨衛軍，最站得住腳的是國防軍國民擲彈兵。溫特斯看到的是長大衣與晚期裝具，誤判成精銳。）',
     camera: { pos: { x: 8, z: -16 }, dist: 240 },
     fx: [{ kind: 'reveal', pos: { x: 8, z: -16 } }],
   },
   {
     t: 285, title: '無聲接敵', short: '接敵', cinematic: true,
     device: 'geometry',
-    desc: '溫斯特只帶一個班與背 SCR-300 無線電的博伊爾中士前出，沿堤防北側、與堤路平行的排水溝隱蔽接近（堤防成了天然掩體）。他摸到約二十五碼處，看清堤上一個七人德軍機槍組的剪影。',
+    desc: '溫特斯只帶一個班與背 SCR-300 無線電的博伊爾中士前出，沿堤防北側、與堤路平行的排水溝隱蔽接近（堤防成了天然掩體）。他摸到約二十五碼處，看清堤上一個七人德軍機槍組的剪影。',
     camera: { unit: 'winters-assault', dist: 220, elev: 0.5 },
   },
   {
@@ -169,7 +169,7 @@ export const events = [
   {
     t: 320, title: '上刺刀・衝鋒', short: '上刺刀', cinematic: true,
     device: 'geometry',
-    desc: '天色漸亮。溫斯特要威爾許中尉把第 1 排其餘弟兄與一個輕機槍班全壓上，丟出煙幕，下令上刺刀。三路縱隊衝過約一百七十五到兩百碼的開闊圩田。他率先衝上堤路，迎面一個對著他微笑的德軍哨兵。他開了槍。',
+    desc: '天色漸亮。溫特斯要威爾許中尉把第 1 排其餘弟兄與一個輕機槍班全壓上，丟出煙幕，下令上刺刀。三路縱隊衝過約一百七十五到兩百碼的開闊圩田。他率先衝上堤路，迎面一個對著他微笑的德軍哨兵。他開了槍。',
     camera: { pos: { x: 0, z: -8 }, dist: 175 },
     fx: [{ kind: 'smoke', pos: { x: 2, z: -6 } }, { kind: 'assault', pos: { x: 6, z: -13 }, until: 336 }],
   },
@@ -183,7 +183,7 @@ export const events = [
   {
     t: 348, title: '英聯邦砲兵的致命一擊', short: '砲兵收尾', cinematic: true,
     device: 'sync',
-    desc: '真正的致命一擊不是刺刀，而是火砲。101 師沒有重砲，島區上卻有成團的英聯邦砲兵；溫斯特透過一名加拿大前進觀測官（一度呼叫不到，他索性自己抓起無線電爬上堤頂）把砲火引到開闊地上的潰兵頭上。德軍約五十人陣亡，多數正是死於這頓砲擊。這是一場步砲協同的屠戮。',
+    desc: '真正的致命一擊不是刺刀，而是火砲。101 師沒有重砲，島區上卻有成團的英聯邦砲兵；溫特斯透過一名加拿大前進觀測官（一度呼叫不到，他索性自己抓起無線電爬上堤頂）把砲火引到開闊地上的潰兵頭上。德軍約五十人陣亡，多數正是死於這頓砲擊。這是一場步砲協同的屠戮。',
     camera: { pos: { x: 42, z: -20 }, dist: 320 },
     fx: [{ kind: 'barrage', pos: { x: 44, z: -19 }, until: 366 }],
   },
@@ -195,20 +195,20 @@ export const events = [
     fx: [{ kind: 'barrage', pos: { x: 2, z: -12 }, until: 392 }],
   },
   {
-    t: 395, title: '溫斯特的最佳一役', short: '最佳一役', cinematic: true,
-    desc: '以約 35 人擊潰近 300 人：德軍約 50 死、約 100 傷、11 人被俘（利布戈特押送的這 11 人曾假冒波蘭人求降），E 連僅 1 人陣亡。溫斯特一生自評，這場仗打得比 D 日、比布雷庫爾都好。步兵戰術每一個環節都做到了位。這也是他以 E 連連長身分的最後一戰。',
+    t: 395, title: '溫特斯的最佳一役', short: '最佳一役', cinematic: true,
+    desc: '以約 35 人擊潰近 300 人：德軍約 50 死、約 100 傷、11 人被俘（利布戈特押送的這 11 人曾假冒波蘭人求降），E 連僅 1 人陣亡。溫特斯一生自評，這場仗打得比 D 日、比布雷庫爾都好。步兵戰術每一個環節都做到了位。這也是他以 E 連連長身分的最後一戰。',
     camera: { pos: { x: 6, z: -14 }, dist: 760 },
   },
 ];
 
 // ── 戰役結算（播放結束戰績卡） ───────────────────────────
 export const outcome = {
-  headline: '溫斯特的最佳一役',
+  headline: '溫特斯的最佳一役',
   sub: '1944/10/5 · 島區堤防（蘭德韋克–赫特倫）',
   achievement:
     '以約 35 人擊潰夜渡萊茵河、近 300 人的兩個德軍連，化解對營部與團部的側翼威脅。' +
-    '致命一擊來自英聯邦砲兵（經加拿大前進觀測官管制、溫斯特親自呼叫），而非刺刀。' +
-    '溫斯特自評為其生涯與 E 連打得最好的一仗，也是他以連長身分的最後一戰。',
+    '致命一擊來自英聯邦砲兵（經加拿大前進觀測官管制、溫特斯親自呼叫），而非刺刀。' +
+    '溫特斯自評為其生涯與 E 連打得最好的一仗，也是他以連長身分的最後一戰。',
   rows: [
     { key: 'men', label: '投入兵力' },
     { key: 'killed', label: '陣亡' },
@@ -216,7 +216,7 @@ export const outcome = {
   ],
   blue: {
     name: 'E 連（101 空降師）',
-    detail: '溫斯特約 35 人（含 F 連一排增援）；1 陣亡、22 負傷（約 18 人傷於撤退砲擊）',
+    detail: '溫特斯約 35 人（含 F 連一排增援）；1 陣亡、22 負傷（約 18 人傷於撤退砲擊）',
     values: { men: 35, killed: 1, captured: 0 },
   },
   red: {
@@ -228,7 +228,7 @@ export const outcome = {
 
 // ── 關鍵人物（可點選的個人標記） ─────────────────────────
 export const aces = [
-  { id: 'winters', side: 'blue', name: 'Dick Winters 溫斯特', pos: { x: 2, z: -10 }, activeFrom: 285, activeTo: 375 },
+  { id: 'winters', side: 'blue', name: 'Dick Winters 溫特斯', pos: { x: 2, z: -10 }, activeFrom: 285, activeTo: 375 },
   { id: 'dukeman', side: 'blue', name: 'William Dukeman 杜克曼', pos: { x: 8, z: -11 }, activeFrom: 300, activeTo: 335 },
   { id: 'cobb', side: 'blue', name: 'Roy Cobb 柯布', pos: { x: -24, z: -8 }, activeFrom: 296, activeTo: 360 },
   { id: 'talbert', side: 'blue', name: 'Floyd Talbert 塔伯特', pos: { x: 22, z: -15 }, activeFrom: 320, activeTo: 366 },
@@ -240,12 +240,12 @@ export const sides = {
     name: '美軍 101 空降師',
     color: 0x2e7bd9,
     commanders: [
-      { id: 'winters', name: '理查・溫斯特', nameEn: 'Richard D. Winters', role: 'E 連連長（攻擊指揮，當天上尉）' },
+      { id: 'winters', name: '理查・溫特斯', nameEn: 'Richard D. Winters', role: 'E 連連長（攻擊指揮，當天上尉）' },
       { id: 'welsh', name: '哈利・威爾許', nameEn: 'Harry Welsh', role: 'E 連 第 1 排排長' },
       { id: 'nixon', name: '路易斯・尼克森', nameEn: 'Lewis Nixon', role: '第 2 營 情報官' },
     ],
     formations: [
-      { name: '506 傘兵團 第 2 營 E 連', ships: ['溫斯特突擊隊', '基底火力組'], escort: '空降步兵 約 35 人（含 F 連一排）' },
+      { name: '506 傘兵團 第 2 營 E 連', ships: ['溫特斯突擊隊', '基底火力組'], escort: '空降步兵 約 35 人（含 F 連一排）' },
     ],
     unitIds: ['winters-assault', 'base-of-fire', 'fox-platoon'],
     baseMen: 47,

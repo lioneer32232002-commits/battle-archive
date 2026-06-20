@@ -111,7 +111,7 @@ export function createHUD(callbacks) {
         <h1>布雷庫爾奪砲戰</h1>
         <p class="intro-sub">Brécourt Manor · 1944/6/6 · D 日</p>
         <p class="intro-desc">
-          D 日清晨，溫斯特中尉以約 13 名空降兵，
+          D 日清晨，溫特斯中尉以約 13 名空降兵，
           攻擊轟擊猶他灘出口的四門德軍 105mm 榴彈砲。
           基底火力、側翼接近、逐砲縱射，
           這場 13 對 50 的勝利，至今仍是西點軍校的攻擊教案。

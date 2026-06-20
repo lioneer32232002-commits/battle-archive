@@ -1,5 +1,5 @@
 // 布雷庫爾奪砲戰 — E 連(101 空降師 506 傘兵團 第 2 營 E 連)
-// 1944 年 6 月 6 日(D 日)晨,溫斯特以約 13 人摧毀威脅猶他灘出口的四門德軍 105mm 榴彈砲
+// 1944 年 6 月 6 日(D 日)晨,溫特斯以約 13 人摧毀威脅猶他灘出口的四門德軍 105mm 榴彈砲
 // 史料依據:Stephen Ambrose《Band of Brothers》、506 PIR 團史、
 //          美國西點軍校「布雷庫爾莊園攻擊」班排攻擊教案、當地地形(IGN 地圖)
 // 時間軸:t = 自 6/6 00:00 起算的分鐘數(全程為 D 日當日上午)
@@ -20,7 +20,7 @@ export function formatClock(t) {
 
 // ── 主軸:E 連自空降散落點 → 集結 → 砲線 ───────────────
 const eCompanyTrack = [
-  { t: 92, x: -340, z: -300 },  // 溫斯特落地(聖梅爾埃格利斯一帶，失槍)
+  { t: 92, x: -340, z: -300 },  // 溫特斯落地(聖梅爾埃格利斯一帶，失槍)
   { t: 300, x: -55, z: 60 },    // 集結於勒格朗謝曼
   { t: 470, x: -20, z: 46 },    // 進抵砲線外緣的出發線
   { t: 548, x: -14, z: 44 },    // 突擊期間留守出發線當支援/預備(連主力未全壓上)
@@ -40,7 +40,7 @@ export const units = [
     statusChanges: [{ t: 548, strengthDelta: { men: -4 } }],
   },
   {
-    id: 'winters-party', side: 'blue', kind: 'assault', name: '溫斯特突擊隊', nameEn: "Winters' assault",
+    id: 'winters-party', side: 'blue', kind: 'assault', name: '溫特斯突擊隊', nameEn: "Winters' assault",
     role: '主攻組 約 13 人', length: 14,
     strength: { men: 13 },
     // 沿樹籬切入,逐砲滾進(縱射),拔砲後撤回
@@ -138,20 +138,20 @@ export const events = [
   },
   {
     t: 92, title: '分散的傘降', short: '分散傘降', cinematic: true,
-    desc: '高速與低空使傘兵散落各處。溫斯特中尉落在聖梅爾埃格利斯附近，武器袋在跳傘時脫落，只剩一把刺刀。他在黑暗中循聲集合任何找得到的弟兄。',
+    desc: '高速與低空使傘兵散落各處。溫特斯中尉落在聖梅爾埃格利斯附近，武器袋在跳傘時脫落，只剩一把刺刀。他在黑暗中循聲集合任何找得到的弟兄。',
     camera: { unit: 'easy', dist: 380, elev: 0.22 },
     fx: [{ kind: 'flak', pos: { x: -260, z: -120 }, until: 110 }],
   },
   {
     t: 200, title: '蟋蟀響板的集結',
-    desc: '傘兵以金屬蟋蟀響板（一咔回兩咔）在暗夜中相認。天亮前，溫斯特在勒格朗謝曼集結了十餘名弟兄，聽見前方田野傳來規律的德軍砲聲。',
+    desc: '傘兵以金屬蟋蟀響板（一咔回兩咔）在暗夜中相認。天亮前，溫特斯在勒格朗謝曼集結了十餘名弟兄，聽見前方田野傳來規律的德軍砲聲。',
     camera: { unit: 'easy', dist: 320 },
   },
   {
     t: 440, title: '「處理掉那些砲」', short: '接令', cinematic: true,
     device: 'intel',
     intel: { believed: '情報模糊：前方田野「有幾門砲」在開火', actual: '' },
-    desc: '營部只給了一句模糊的命令：勒格朗謝曼旁有德軍火砲正轟擊猶他灘出口，「去處理掉」。溫斯特當下以為不過是一兩門落單的砲。他帶著手邊僅有的十餘人摸向樹籬。',
+    desc: '營部只給了一句模糊的命令：勒格朗謝曼旁有德軍火砲正轟擊猶他灘出口，「去處理掉」。溫特斯當下以為不過是一兩門落單的砲。他帶著手邊僅有的十餘人摸向樹籬。',
     camera: { pos: { x: 12, z: 18 }, dist: 240 },
     fx: [{ kind: 'gunfire', pos: { x: 12, z: 10 }, until: 470 }],
   },
@@ -159,12 +159,12 @@ export const events = [
     t: 475, title: '抵近偵察：真相', short: '情報落差', cinematic: true,
     device: 'intel',
     intel: { believed: '以為：一兩門落單的砲', actual: '實際：第 90 砲兵團第 6 連，四門 105mm 榴彈砲呈 L 形塹壕（三門朝東、一門朝北），MG 火力點、約 50 人' },
-    desc: '溫斯特爬上樹籬觀察，真相浮現：不是一兩門，而是德軍第 90 砲兵團第 6 連的四門 105mm 榴彈砲，沿 L 形塹壕構築（三門朝東、一門朝北護住左翼），以機槍火力點與約 50 名守軍掩護。寡不敵眾，他沒有退，而是把劣勢拆成一道可解的題目。',
+    desc: '溫特斯爬上樹籬觀察，真相浮現：不是一兩門，而是德軍第 90 砲兵團第 6 連的四門 105mm 榴彈砲，沿 L 形塹壕構築（三門朝東、一門朝北護住左翼），以機槍火力點與約 50 名守軍掩護。寡不敵眾，他沒有退，而是把劣勢拆成一道可解的題目。',
     camera: { pos: { x: 12, z: 12 }, dist: 230 },
     fx: [{ kind: 'reveal', pos: { x: 12, z: 12 } }],
   },
   {
-    t: 500, title: '溫斯特的攻擊', short: '溫斯特攻擊', cinematic: true,
+    t: 500, title: '溫特斯的攻擊', short: '溫特斯攻擊', cinematic: true,
     device: 'geometry',
     desc: '教科書級的解法：留兩挺機槍當「基底火力」把整條砲線釘死，主攻組沿樹籬隱蔽接近敵人側翼，再沿塹壕由側面逐砲縱射，一次只需對付一門。13 人於是能吃掉 50 人。',
     camera: { pos: { x: 10, z: 16 }, dist: 205 },
@@ -173,7 +173,7 @@ export const events = [
   {
     t: 512, title: '一號砲拔除', short: '一號砲',
     device: 'geometry',
-    desc: '主攻組躍入第一個砲坑，投彈解決砲組。溫斯特以 TNT 加德製「馬鈴薯搗碎器」手榴彈塞入砲管引爆，徹底炸毀火砲，再把基底火力依序前推，壓制下一個砲位。',
+    desc: '主攻組躍入第一個砲坑，投彈解決砲組。溫特斯以 TNT 加德製「馬鈴薯搗碎器」手榴彈塞入砲管引爆，徹底炸毀火砲，再把基底火力依序前推，壓制下一個砲位。',
     camera: { unit: 'gun-1', dist: 130 },
     fx: [{ kind: 'destroy', unit: 'gun-1' }],
   },
@@ -187,7 +187,7 @@ export const events = [
   {
     t: 536, title: '三號砲拔除．奪得灘防圖', short: '奪得灘防圖', cinematic: true,
     device: 'sync',
-    desc: '逐砲滾進的過程中，溫斯特在二號砲位搜出一份德軍地圖，標明整段海岸的砲兵陣地與射界。情報價值連城：它經情報官尼克森送抵猶他灘，第 4 步兵師因而回贈兩輛搶灘戰車支援。此刻灘外，登陸部隊正沿這些砲威脅的堤道湧上岸，拔掉一門砲，就為堤道上的人多開一條生路。',
+    desc: '逐砲滾進的過程中，溫特斯在二號砲位搜出一份德軍地圖，標明整段海岸的砲兵陣地與射界。情報價值連城：它經情報官尼克森送抵猶他灘，第 4 步兵師因而回贈兩輛搶灘戰車支援。此刻灘外，登陸部隊正沿這些砲威脅的堤道湧上岸，拔掉一門砲，就為堤道上的人多開一條生路。',
     camera: { unit: 'gun-3', dist: 140 },
     fx: [{ kind: 'destroy', unit: 'gun-3' }, { kind: 'destroy', unit: 'mg-nest' }],
   },
@@ -221,7 +221,7 @@ export const outcome = {
   ],
   blue: {
     name: 'E 連（101 空降師）',
-    detail: '溫斯特核心約 13 人，含增援共約 21 人（4 陣亡、6 負傷）',
+    detail: '溫特斯核心約 13 人，含增援共約 21 人（4 陣亡、6 負傷）',
     values: { men: 21, killed: 4, captured: 0 },
   },
   red: {
@@ -233,7 +233,7 @@ export const outcome = {
 
 // ── 關鍵人物(可點選的個人標記) ─────────────────────────
 export const aces = [
-  { id: 'winters', side: 'blue', name: 'Dick Winters 溫斯特', pos: { x: 6, z: 6 }, activeFrom: 470, activeTo: 600 },
+  { id: 'winters', side: 'blue', name: 'Dick Winters 溫特斯', pos: { x: 6, z: 6 }, activeFrom: 470, activeTo: 600 },
   { id: 'compton', side: 'blue', name: 'Buck Compton 康普頓', pos: { x: 20, z: 4 }, activeFrom: 500, activeTo: 560 },
   { id: 'guarnere', side: 'blue', name: 'Bill Guarnere 圭爾尼', pos: { x: 12, z: -4 }, activeFrom: 505, activeTo: 560 },
   { id: 'speirs', side: 'blue', name: 'Ronald Speirs 史皮爾斯', pos: { x: 30, z: -8 }, activeFrom: 540, activeTo: 600 },
@@ -246,11 +246,11 @@ export const sides = {
     color: 0x2e7bd9,
     commanders: [
       { id: 'sink', name: '羅伯特・辛克', nameEn: 'Robert F. Sink', role: '506 傘兵團團長' },
-      { id: 'winters', name: '理查・溫斯特', nameEn: 'Richard D. Winters', role: 'E 連（攻擊指揮）' },
+      { id: 'winters', name: '理查・溫特斯', nameEn: 'Richard D. Winters', role: 'E 連（攻擊指揮）' },
       { id: 'speirs', name: '羅納德・史皮爾斯', nameEn: 'Ronald Speirs', role: 'D 連（增援拔砲）' },
     ],
     formations: [
-      { name: '506 傘兵團 第 2 營 E 連', ships: ['溫斯特突擊隊', '基底火力組'], escort: '空降步兵 約 24 人' },
+      { name: '506 傘兵團 第 2 營 E 連', ships: ['溫特斯突擊隊', '基底火力組'], escort: '空降步兵 約 24 人' },
     ],
     unitIds: ['easy', 'winters-party', 'base-of-fire'],
     baseMen: 24,

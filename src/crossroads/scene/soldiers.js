@@ -116,7 +116,7 @@ function makeSoldier(side, pose, weapon, mat) {
   if (side === 'blue') body.add(at(box(0.82, 0.9, 0.38, mat.pack), 0, 0.6, -0.44));   // 傘兵背包
   else {
     body.add(at(box(0.5, 0.5, 0.3, mat.pack), 0, 0.62, -0.42));                       // 德軍 A 字背具
-    body.add(at(box(0.96, 0.84, 0.66, mat.uni), 0, -0.28, 0));                        // 國民擲彈兵長大衣下襬（溫斯特誤判成「精銳」的關鍵）
+    body.add(at(box(0.96, 0.84, 0.66, mat.uni), 0, -0.28, 0));                        // 國民擲彈兵長大衣下襬（溫特斯誤判成「精銳」的關鍵）
   }
 
   // 頭 + 鋼盔
