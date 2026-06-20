@@ -1,0 +1,43 @@
+name: Build and deploy to Cloudflare Pages
+
+# 對 master 推送(桌機或手機皆可)就自動建置並部署上線。
+on:
+  push:
+    branches: [master]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # 只有在已設定 Cloudflare 祕鑰時才部署;尚未設定就只建置、略過部署(流程不會變紅)。
+      - name: Check Cloudflare secrets
+        id: secrets
+        run: echo "ready=${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Cloudflare Pages
+        if: steps.secrets.outputs.ready == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=battle-archive --branch=master
+
+      - name: Secrets not set yet
+        if: steps.secrets.outputs.ready != 'true'
+        run: echo "::notice::已建置,但尚未設定 Cloudflare 祕鑰,略過部署。請在 GitHub repo Settings → Secrets and variables → Actions 設定 CLOUDFLARE_API_TOKEN 與 CLOUDFLARE_ACCOUNT_ID。"
