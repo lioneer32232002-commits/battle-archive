@@ -81,6 +81,20 @@ export const eras = [
         url: '/battles/crossroads/',
         available: true,
       },
+      {
+        id: 'bastogne',
+        name: '巴斯通',
+        nameEn: 'Siege of Bastogne',
+        date: '1944/12/19–26',
+        sides: { red: '德意志國防軍', blue: '美軍 101 空降師' },
+        thumb: '/thumb-bastogne.jpg',
+        summary:
+          '突出部之役的圍城。101 空降師倉促馳援、死守阿登的公路樞紐巴斯通，在冰雪與缺補給中頂住四面合圍。' +
+          '德軍勸降，麥考利夫只回一字「呸！」；耶誕前晴空放晴、空投解圍，巴頓的第 4 裝甲師於 12 月 26 日打通道路。' +
+          'E 連在傑克森林的散兵坑裡，承受阿登招牌的樹頂空爆砲擊。',
+        url: '/battles/bastogne/',
+        available: true,
+      },
     ],
   },
   {

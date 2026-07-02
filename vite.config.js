@@ -14,6 +14,7 @@ export default defineConfig({
         brecourt: resolve(__dirname, 'battles/brecourt/index.html'),
         carentan: resolve(__dirname, 'battles/carentan/index.html'),
         crossroads: resolve(__dirname, 'battles/crossroads/index.html'),
+        bastogne: resolve(__dirname, 'battles/bastogne/index.html'),
       },
     },
   },

@@ -33,6 +33,16 @@ const FILES = [
   'src/carentan/scene/environment.js',
   'src/carentan/scene/soldiers.js',
   'battles/carentan/index.html',
+  'src/bastogne/data/battle.js',
+  'src/bastogne/data/figures.js',
+  'src/bastogne/ui/hud.js',
+  'src/bastogne/main.js',
+  'src/bastogne/scene/terrain.js',
+  'src/bastogne/scene/environment.js',
+  'src/bastogne/scene/soldiers.js',
+  'src/bastogne/scene/effects.js',
+  'src/bastogne/scene/weather.js',
+  'battles/bastogne/index.html',
   'src/site/battles.js',
 ];
 
