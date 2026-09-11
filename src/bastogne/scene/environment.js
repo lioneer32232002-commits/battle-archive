@@ -6,12 +6,14 @@
 import * as THREE from 'three';
 
 // 冬季日相調色盤(皆已為 ACES 補償後的值)
+// disc/halo/discCol：P-5 太陽本體與光暈。阿登 12 月＝低斜冬陽,陰霾相位只剩一團模糊亮斑,
+//   放晴(clear)才露出真正的日輪,解圍(relief)午後偏西、放大轉暖。夜相全關。
 const PALETTES = {
-  nightArrival: { top: 0x070b16, horizon: 0x1b2432, sun: 0x9fb4d0, sunInt: 0.55, amb: 0.66, ground: 0x3a4557, fog: 0x141d2a, fogNear: 260, fogFar: 3600 },
-  overcast:     { top: 0x9aa9bb, horizon: 0xc6d0d8, sun: 0xdfe4ea, sunInt: 1.02, amb: 1.34, ground: 0xaeb9c6, fog: 0xc3ccd4, fogNear: 220, fogFar: 3000 },
-  nightCold:    { top: 0x05080f, horizon: 0x131b27, sun: 0x9db4d2, sunInt: 0.60, amb: 0.60, ground: 0x333d4b, fog: 0x0c131f, fogNear: 180, fogFar: 2600 },
-  clear:        { top: 0x4f7fbe, horizon: 0xdae6ef, sun: 0xfff4da, sunInt: 1.72, amb: 1.30, ground: 0xe2ebf2, fog: 0xd2dee8, fogNear: 520, fogFar: 8200 },
-  relief:       { top: 0x6d93c2, horizon: 0xe6ddc9, sun: 0xffedcc, sunInt: 1.52, amb: 1.30, ground: 0xdfe6ec, fog: 0xd8dccf, fogNear: 620, fogFar: 9000 },
+  nightArrival: { top: 0x070b16, horizon: 0x1b2432, sun: 0x9fb4d0, sunInt: 0.55, amb: 0.66, ground: 0x3a4557, fog: 0x141d2a, fogNear: 260, fogFar: 3600, disc: 0,    halo: 0,    discSize: 300, haloSize: 900,  discCol: 0xbcd0ea },
+  overcast:     { top: 0x9aa9bb, horizon: 0xc6d0d8, sun: 0xdfe4ea, sunInt: 1.02, amb: 1.34, ground: 0xaeb9c6, fog: 0xc3ccd4, fogNear: 220, fogFar: 3000, disc: 0.18, halo: 0.34, discSize: 640, haloSize: 3200, discCol: 0xf2f6fa },
+  nightCold:    { top: 0x05080f, horizon: 0x131b27, sun: 0x9db4d2, sunInt: 0.60, amb: 0.60, ground: 0x333d4b, fog: 0x0c131f, fogNear: 180, fogFar: 2600, disc: 0,    halo: 0,    discSize: 300, haloSize: 900,  discCol: 0xbcd0ea },
+  clear:        { top: 0x4f7fbe, horizon: 0xdae6ef, sun: 0xfff4da, sunInt: 1.72, amb: 1.30, ground: 0xe2ebf2, fog: 0xd2dee8, fogNear: 520, fogFar: 8200, disc: 0.95, halo: 0.50, discSize: 460, haloSize: 3200, discCol: 0xfff6e2 },
+  relief:       { top: 0x6d93c2, horizon: 0xe6ddc9, sun: 0xffedcc, sunInt: 1.52, amb: 1.30, ground: 0xdfe6ec, fog: 0xd8dccf, fogNear: 620, fogFar: 9000, disc: 0.9,  halo: 0.58, discSize: 620, haloSize: 3800, discCol: 0xffe6b4 },
 };
 
 // 日相關鍵格(t 與 battle.js 事件對齊;keep in sync)。phaseAt 於相鄰關鍵格之間線性混合。
@@ -52,6 +54,7 @@ export function createEnvironment(scene, { shadows = false } = {}) {
   const skyUniforms = {
     uTop: { value: new THREE.Color(PALETTES.nightArrival.top) },
     uHorizon: { value: new THREE.Color(PALETTES.nightArrival.horizon) },
+    uFog: { value: new THREE.Color(PALETTES.nightArrival.fog) },   // P-6 地平線霧帶
   };
   const sky = new THREE.Mesh(
     new THREE.SphereGeometry(16000, 24, 12),
@@ -66,10 +69,14 @@ export function createEnvironment(scene, { shadows = false } = {}) {
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }`,
       fragmentShader: `
-        uniform vec3 uTop; uniform vec3 uHorizon; varying vec3 vPos;
+        uniform vec3 uTop; uniform vec3 uHorizon; uniform vec3 uFog; varying vec3 vPos;
         void main() {
           float h = clamp(normalize(vPos).y, 0.0, 1.0);
-          gl_FragColor = vec4(mix(uHorizon, uTop, pow(h, 0.55)), 1.0);
+          vec3 col = mix(uHorizon, uTop, pow(h, 0.55));
+          // P-6:地平線再壓一層薄霧帶,讓雪原盡頭不是一條硬線
+          float band = 1.0 - smoothstep(0.0, 0.085, h);
+          col = mix(col, uFog, band * 0.88);
+          gl_FragColor = vec4(col, 1.0);
         }`,
     })
   );
@@ -122,6 +129,24 @@ export function createEnvironment(scene, { shadows = false } = {}) {
   }
   const hemi = new THREE.HemisphereLight(0xc4cfdb, 0x4a5162, PALETTES.nightArrival.amb);
   scene.add(hemi);
+
+  // ── P-5 太陽本體與光暈:沿 sun.position 方向貼在天空圓頂內側 ──
+  // 兩顆 Additive sprite:小而亮的日輪 ＋ 大而淡的光暈。陰霾相位只剩光暈(雲後的模糊亮斑),
+  // 放晴相位日輪現形;bloom 會自然讓它泛光。
+  const SUN_DIST = 13000;
+  const sunDir = sun.position.clone().normalize();
+  const sunDisc = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: makeSunTexture(0.30), color: 0xfff4da, transparent: true,
+    blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0, fog: false,
+  }));
+  const sunHalo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: makeSunTexture(0.02), color: 0xffeccc, transparent: true,
+    blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0, fog: false,
+  }));
+  sunDisc.position.copy(sunDir).multiplyScalar(SUN_DIST);
+  sunHalo.position.copy(sunDir).multiplyScalar(SUN_DIST * 0.99);
+  sunDisc.renderOrder = -3; sunHalo.renderOrder = -4;
+  scene.add(sunHalo); scene.add(sunDisc);
 
   scene.fog = new THREE.Fog(PALETTES.nightArrival.fog, PALETTES.nightArrival.fogNear, PALETTES.nightArrival.fogFar);
 
@@ -180,6 +205,7 @@ export function createEnvironment(scene, { shadows = false } = {}) {
     scene.fog.color = lerpColor(pa.fog, pb.fog, f);
     scene.fog.near = lerpNum(pa.fogNear, pb.fogNear, f);
     scene.fog.far = lerpNum(pa.fogFar, pb.fogFar, f);
+    skyUniforms.uFog.value = scene.fog.color;   // P-6:霧帶跟著相位走
 
     // 夜間程度(星空、雲亮度):以兩端調色盤是否為夜相估計
     const nightW = (p) => ((p === 'nightArrival' || p === 'nightCold') ? 1 : 0);
@@ -190,9 +216,37 @@ export function createEnvironment(scene, { shadows = false } = {}) {
     const mistW = (p) => ((p === 'clear' || p === 'relief') ? 0.25 : 1);
     const mistPeak = lerpNum(mistW(a), mistW(b), f);
     for (const m of mist.children) m.material.opacity = m.userData.baseOp * mistPeak;
+
+    // P-5:太陽本體與光暈隨相位開合
+    const ds = lerpNum(pa.discSize, pb.discSize, f);
+    const hs = lerpNum(pa.haloSize, pb.haloSize, f);
+    sunDisc.scale.set(ds, ds, 1);
+    sunHalo.scale.set(hs, hs, 1);
+    sunDisc.material.opacity = lerpNum(pa.disc, pb.disc, f);
+    sunHalo.material.opacity = lerpNum(pa.halo, pb.halo, f);
+    sunDisc.material.color = lerpColor(pa.discCol, pb.discCol, f);
+    sunHalo.material.color = sunDisc.material.color;
+
+    api.night = night;   // 供 terrain.js 的夜相窗光(B-3)使用
   }
 
-  return { update, sun };
+  const api = { update, sun, night: 1 };
+  return api;
+}
+
+// 太陽貼圖:core 為實心日輪佔比(0.30=有邊界的日輪、0.02=幾乎純光暈)
+function makeSunTexture(core) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(64, 64, 1, 64, 64, 63);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(Math.max(0.02, core), 'rgba(255,246,224,0.92)');
+  grad.addColorStop(Math.min(0.98, core + 0.28), 'rgba(255,214,150,0.20)');
+  grad.addColorStop(1, 'rgba(255,190,110,0)');
+  g.fillStyle = grad;
+  g.beginPath(); g.arc(64, 64, 63, 0, Math.PI * 2); g.fill();
+  return new THREE.CanvasTexture(c);
 }
 
 function makeCloudTexture() {

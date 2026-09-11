@@ -51,8 +51,8 @@ controls.maxDistance = 3000;
 controls.enableDamping = true;
 
 const environment = createEnvironment(scene, { shadows: SHADOWS });
-const terrain = createBastogneTerrain(scene, { shadows: SHADOWS });
-const effects = new Effects(scene);
+const terrain = createBastogneTerrain(scene, { shadows: SHADOWS, mobile: isMobile });
+const effects = new Effects(scene, { mobile: isMobile });
 const director = new Director(camera, controls);
 const audio = new AudioEngine();
 const snow = createSnow(scene, { count: isMobile ? 500 : 1500 });
@@ -411,6 +411,7 @@ function tick() {
 
   animateScene(time);
   environment.update(dt, battleT);
+  terrain.update(dt, environment.night);   // B-3：夜相窗戶橘光、遠景樹線隨相位變暗
   effects.update(dt);
   director.update(dt);
   controls.update();
@@ -497,7 +498,7 @@ if (import.meta.env && import.meta.env.DEV) {
     renderFrame(0.016);
   };
   window.__dbg = {
-    THREE, scene, camera, controls, renderer, director, dbgSeek, dbgLook,
+    THREE, scene, camera, controls, renderer, director, effects, terrain, environment, dbgSeek, dbgLook,
     render: () => renderFrame(0.016),
   };
 }
