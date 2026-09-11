@@ -1,4 +1,6 @@
 // 卡倫坦之役（溫特斯三部曲 · 二部曲）3D 模擬 — 主程式
+// 美術升級（見 docs/art-upgrade-spec.md）：ACES 色調映射、桌機陰影＋後製、動態解析度、
+//   Catmull-Rom 曲線插值＋朝向阻尼、士兵行進微動作、鏡頭手感（手持／震動／前置量）。
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
@@ -13,15 +15,29 @@ import { makeLabel } from './scene/labels.js';
 import { Director } from './camera/director.js';
 import { createHUD } from './ui/hud.js';
 import { AudioEngine } from './scene/audio.js';
+import { createComposer } from './scene/postfx.js';
 
 const isMobile = window.matchMedia('(max-width: 640px)').matches;
 const LABEL_SCALE = isMobile ? 0.6 : 1;
+const SHADOWS = !isMobile;   // P-2：陰影桌機限定
+const POSTFX = !isMobile;    // P-3：後製桌機限定
 
 // ── 基本場景 ─────────────────────────────────────────
 const container = document.getElementById('scene-container');
 const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, powerPreference: 'high-performance', preserveDrawingBuffer: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
+const DPR_CAP = Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2);
+renderer.setPixelRatio(DPR_CAP);
 renderer.setSize(window.innerWidth, window.innerHeight);
+// P-1：ACES 色調映射（手機桌機都開；environment.js 調色盤已據此重校）
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+if (SHADOWS) {
+  renderer.shadowMap.enabled = true;
+  // three r184 已棄用 PCFSoftShadowMap（會每次載入噴 deprecation 警告，且內部本來就退回 PCF），
+  // 直接用 PCFShadowMap：畫面等價，console 乾淨。
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+}
 container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -35,17 +51,25 @@ controls.minDistance = 20;
 controls.maxDistance = 3000;
 controls.enableDamping = true;
 
+const environment = createEnvironment(scene, { shadows: SHADOWS, mobile: isMobile });
+const terrain = createCarentanTerrain(scene, { shadows: SHADOWS, mobile: isMobile });
+const effects = new Effects(scene, { mobile: isMobile });
+const director = new Director(camera, controls);
+const audio = new AudioEngine();
+
+// P-3：後製 composer（桌機）；手機直接 renderer.render
+const post = POSTFX ? createComposer(renderer, scene, camera) : null;
+function renderFrame(dt) {
+  if (post) post.render(dt);
+  else renderer.render(scene, camera);
+}
+
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  if (post) post.setSize(window.innerWidth, window.innerHeight);
 });
-
-const environment = createEnvironment(scene);
-const terrain = createCarentanTerrain(scene);
-const effects = new Effects(scene);
-const director = new Director(camera, controls);
-const audio = new AudioEngine();
 
 // 地名標籤
 for (const p of terrain.places) {
@@ -58,7 +82,7 @@ for (const p of terrain.places) {
 // ── 單位 ─────────────────────────────────────────────
 const unitObjs = new Map();
 for (const u of units) {
-  const group = createUnit(u);
+  const group = createUnit(u, { shadows: SHADOWS });
   scene.add(group);
   if (u.kind !== 'mg') {   // 機槍火力點不掛 3D 標籤（避免路口處標籤打架）
     const label = makeLabel(u.name, { side: u.side });
@@ -67,7 +91,13 @@ for (const u of units) {
     group.add(label);
   }
   const destroyed = (u.statusChanges ?? []).find((c) => c.status === 'destroyed');
-  unitObjs.set(u.id, { group, spec: u, downT: destroyed ? destroyed.t : null });
+  unitObjs.set(u.id, {
+    group, spec: u, downT: destroyed ? destroyed.t : null,
+    troopers: group.userData.troopers ?? [],
+    curRot: u.facing != null ? u.facing : 0,
+    prevX: u.track[0].x, prevZ: u.track[0].z,
+  });
+  group.rotation.y = u.facing != null ? u.facing : 0;
 }
 
 // 部隊大標籤(跟隨)
@@ -134,6 +164,7 @@ let playing = false;
 let speed = 2;
 let started = false;
 let summaryShown = false;
+let snapRot = false;   // 拖曳／跳轉後下一幀直接對齊朝向（不做阻尼）
 
 const hud = createHUD({
   onStart: () => {
@@ -145,11 +176,11 @@ const hud = createHUD({
   onPlayToggle: () => { if (!started) return; playing = !playing; hud.setPlaying(playing); },
   onSpeedChange: (s) => (speed = s),
   onScrub: (t) => {
-    battleT = t; prevT = t; summaryShown = false;
+    battleT = t; prevT = t; summaryShown = false; snapRot = true;
     effects.clearTransients(); hud.hideEvent(); hud.hideSummary(); hud.hideIntel();
   },
   onJump: (t) => {
-    battleT = t; prevT = t; summaryShown = false;
+    battleT = t; prevT = t; summaryShown = false; snapRot = true;
     effects.clearTransients(); hud.hideSummary();
     const e = events.find((ev) => ev.t === t);
     if (e) fireEvent(e);
@@ -157,7 +188,7 @@ const hud = createHUD({
   },
   onModeToggle: (mode) => director.setMode(mode),
   onReplay: () => {
-    battleT = TIME_START; prevT = TIME_START; summaryShown = false; playing = true;
+    battleT = TIME_START; prevT = TIME_START; summaryShown = false; playing = true; snapRot = true;
     effects.clearTransients(); hud.hideSummary(); hud.hideIntel(); hud.setPlaying(true);
     triggerEventsBetween(TIME_START - 1, battleT);
   },
@@ -221,19 +252,38 @@ function triggerEventsBetween(a, b) {
   for (const e of newEvents(events, a, b)) fireEvent(e);
 }
 
+const _fxPos = new THREE.Vector3();
+const _axis = new THREE.Vector3();
+// L-5：曳光線的射向 — 取該點附近最近的藍方與紅方單位，沿兩者連線對射（不改任何事件資料）
+function fireAxis(pos) {
+  let bx = null, bd = Infinity, rx = null, rd = Infinity;
+  for (const [, o] of unitObjs) {
+    if (!o.group.visible) continue;
+    const d = (o.group.position.x - pos.x) ** 2 + (o.group.position.z - pos.z) ** 2;
+    if (o.spec.side === 'blue') { if (d < bd) { bd = d; bx = o.group.position; } }
+    else if (d < rd) { rd = d; rx = o.group.position; }
+  }
+  if (!bx || !rx) return null;
+  _axis.set(rx.x - bx.x, 0, rx.z - bx.z);
+  return _axis.lengthSq() > 1e-6 ? _axis : null;
+}
+
 function runFx(fx) {
   const pos = fx.pos
-    ? new THREE.Vector3(fx.pos.x, 4, fx.pos.z)
+    ? _fxPos.set(fx.pos.x, 4, fx.pos.z).clone()
     : fx.unit
       ? unitObjs.get(fx.unit)?.group.position.clone().setY(4)
       : null;
   if (!pos) return;
+  // M-4：近距離事件觸發鏡頭震動（遠則弱／不觸發）
+  const near = camera.position.distanceTo(pos);
+  const shakeFor = (base) => { if (near < 500) director.shake(base * (1 - near / 500), 0.5); };
   switch (fx.kind) {
-    case 'gunfire': effects.gunfire(pos, 6); audio.sfx('gunfire'); break;
-    case 'assault': effects.assault(pos, 5); audio.sfx('assault'); break;
-    case 'destroy': effects.destroy(pos, 1.4); audio.sfx('destroy'); break;
+    case 'gunfire': effects.gunfire(pos, 6, fireAxis(pos)); audio.sfx('gunfire'); break;
+    case 'assault': effects.assault(pos, 5, fireAxis(pos)); audio.sfx('assault'); shakeFor(3); break;
+    case 'destroy': effects.destroy(pos, 1.4); audio.sfx('destroy'); shakeFor(6); break;
     case 'reveal': effects.reveal(pos); audio.sfx('reveal'); break;
-    case 'barrage': effects.barrage(pos, 16); audio.sfx('explosion'); break;
+    case 'barrage': effects.barrage(pos, 16); audio.sfx('explosion'); shakeFor(5); break;
     case 'smoke': effects.smoke(pos, 12); break;
   }
 }
@@ -277,6 +327,14 @@ function restoreLook(o) {
   o.faded = false;
 }
 
+// M-2：最短角差（處理 ±π 環繞）
+function shortestAngleDiff(target, current) {
+  let d = (target - current) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
 function tick() {
   requestAnimationFrame(tick);
   const now = performance.now();
@@ -284,6 +342,7 @@ function tick() {
   lastNow = now;
   elapsed += dt;
   const time = elapsed;
+  fpsSample(dt);
 
   if (playing && started) {
     prevT = battleT;
@@ -303,12 +362,32 @@ function tick() {
   }
 
   // 單位
+  const rotK = 1 - Math.pow(0.001, dt); // M-2 阻尼係數
   for (const [id, o] of unitObjs) {
     const st = unitStateAt(o.spec, battleT);
     o.group.position.x = st.pos.x;
     o.group.position.z = st.pos.z;
-    o.group.rotation.y = o.spec.facing != null ? o.spec.facing : -st.heading;
-    if (st.status === 'destroyed' && o.downT != null) {
+
+    // M-2：朝向阻尼（拖曳／跳轉後直接對齊）
+    const targetRot = o.spec.facing != null ? o.spec.facing : -st.heading;
+    if (snapRot) o.curRot = targetRot;
+    else o.curRot += shortestAngleDiff(targetRot, o.curRot) * rotK;
+    o.group.rotation.y = o.curRot;
+
+    // M-3：行進微動作（士兵起伏＋輕搖；靜止時保留呼吸感）
+    const moved = Math.hypot(st.pos.x - o.prevX, st.pos.z - o.prevZ);
+    o.prevX = st.pos.x; o.prevZ = st.pos.z;
+    const isDown = st.status === 'destroyed' && o.downT != null;
+    if (o.troopers.length && !isDown) {
+      const movingAmp = moved > 0.03 ? 1 : 0.22;
+      for (const tr of o.troopers) {
+        const ph = tr.userData.phase;
+        tr.position.y = (tr.userData.baseY ?? 0) + Math.sin(time * 7 + ph) * 0.14 * movingAmp;
+        tr.rotation.z = Math.sin(time * 7 + ph) * 0.03 * movingAmp;
+      }
+    }
+
+    if (isDown) {
       const f = Math.min(1, (battleT - o.downT) / DESTROY_DUR);
       o.group.position.y = -f * 2.5;
       o.group.rotation.z = f * 0.4;
@@ -323,6 +402,7 @@ function tick() {
       effects.setBurning(id, o.group, false);
     }
   }
+  snapRot = false;
 
   // 部隊大標籤
   for (const f of formationLabels) {
@@ -341,6 +421,7 @@ function tick() {
   tacticsOverlay.visible = battleT >= 380 && battleT <= 455;
 
   animateScene(time);
+  terrain.update?.(dt);
   environment.update(dt, battleT);
   effects.update(dt);
   director.update(dt);
@@ -362,7 +443,7 @@ function tick() {
     if (!playing) hud.setTime(battleT);
   }
 
-  renderer.render(scene, camera);
+  renderFrame(dt);
 }
 
 // 輕微待機動畫(人物標記)
@@ -370,6 +451,32 @@ function animateScene(time) {
   for (const a of aceObjs) {
     if (a.group.visible) a.group.children[0].position.y = 3 + Math.sin(time * 3) * 0.4;
   }
+}
+
+// ── 動態解析度（P-4）：滾動平均 FPS，每 2 秒結算 ─────────────
+let fpsAcc = 0, fpsFrames = 0, fpsTimer = 0, goodStreak = 0;
+let curRatio = DPR_CAP;
+const FLOOR = isMobile ? 1.0 : DPR_CAP * 0.75;
+function fpsSample(dt) {
+  fpsAcc += dt; fpsFrames++; fpsTimer += dt;
+  if (fpsTimer < 2) return;
+  const fps = fpsFrames / fpsAcc;
+  fpsTimer = 0; fpsAcc = 0; fpsFrames = 0;
+  const lowT = isMobile ? 27 : 45;
+  if (fps < lowT && curRatio > FLOOR) {
+    curRatio = Math.max(FLOOR, curRatio - 0.25);
+    renderer.setPixelRatio(curRatio); if (post) post.setPixelRatio(curRatio);
+    terrain.setDetail?.(0.5);   // 降級同時砍半草叢
+    goodStreak = 0;
+  } else if (fps > (isMobile ? 40 : 55)) {
+    goodStreak += 2;
+    if (goodStreak >= 4 && curRatio < DPR_CAP) {
+      curRatio = Math.min(DPR_CAP, curRatio + 0.25);
+      renderer.setPixelRatio(curRatio); if (post) post.setPixelRatio(curRatio);
+      terrain.setDetail?.(1);
+      goodStreak = 0;
+    }
+  } else goodStreak = 0;
 }
 
 hud.setTime(battleT);
@@ -387,7 +494,7 @@ if (import.meta.env && import.meta.env.DEV) {
       restoreLook(o);
     }
     environment.update(0, t);
-    renderer.render(scene, camera);
+    renderFrame(0.016);
     return t;
   };
   const dbgLook = (tx, ty, tz, px, py, pz) => {
@@ -395,10 +502,10 @@ if (import.meta.env && import.meta.env.DEV) {
     camera.position.set(px, py, pz);
     camera.lookAt(tx, ty, tz);
     camera.updateMatrixWorld();
-    renderer.render(scene, camera);
+    renderFrame(0.016);
   };
   window.__dbg = {
     THREE, scene, camera, controls, renderer, director, dbgSeek, dbgLook,
-    render: () => renderer.render(scene, camera),
+    render: () => renderFrame(0.016),
   };
 }
