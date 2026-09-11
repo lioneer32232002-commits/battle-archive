@@ -1,19 +1,25 @@
 // 環境:天空、雪地、寒霧、低雲、光照 — 阿登冬季(1944 年 12 月)。
 // 情緒主軸:灰藍陰霾＋濃霧＋冰雪的圍城,間以嚴寒長夜(樹爆),於 12/23 天氣放晴、陽光破雲(空投)。
 //
-// B-1 升級:renderer 端已開 ACES 色調映射(見 main.js);ACES 會使整體變暗、對比變高,
-//   本調色盤已據此把 sunInt／amb 較常態提高約 20–30%、天空與霧色重校,避免死暗或過曝。
+// B-1 升級:renderer 端已開 ACES 色調映射(見 main.js);ACES 會使整體變暗、對比變高。
+//
+// ⚠ 2026-09-12 第二輪重校:postfx.js 原本缺 OutputPass,桌機那條 composer 路徑等於既沒 ACES
+//   也沒 sRGB 編碼(實測同幀 直接 render (10,29,7) vs composer (5,8,3)),於是第一版調色盤是
+//   「對著一條壞掉的曲線」把 sunInt／amb 一路往上加出來的 —— 手機反而過曝、桌機仍偏暗,
+//   放晴相位看起來像黃昏。補上 OutputPass 後兩條路徑響應一致,本調色盤已整組往下重校:
+//   陰霾＝灰藍不白化(降 sunInt/amb、霧色壓深、fogNear 拉遠讓中景看得見)、
+//   放晴＝真的像晴天但雪面留高光餘裕、夜相＝有星有霧但看得見部隊。
 import * as THREE from 'three';
 
 // 冬季日相調色盤(皆已為 ACES 補償後的值)
 // disc/halo/discCol：P-5 太陽本體與光暈。阿登 12 月＝低斜冬陽,陰霾相位只剩一團模糊亮斑,
 //   放晴(clear)才露出真正的日輪,解圍(relief)午後偏西、放大轉暖。夜相全關。
 const PALETTES = {
-  nightArrival: { top: 0x070b16, horizon: 0x1b2432, sun: 0x9fb4d0, sunInt: 0.55, amb: 0.66, ground: 0x3a4557, fog: 0x141d2a, fogNear: 260, fogFar: 3600, disc: 0,    halo: 0,    discSize: 300, haloSize: 900,  discCol: 0xbcd0ea },
-  overcast:     { top: 0x9aa9bb, horizon: 0xc6d0d8, sun: 0xdfe4ea, sunInt: 1.02, amb: 1.34, ground: 0xaeb9c6, fog: 0xc3ccd4, fogNear: 220, fogFar: 3000, disc: 0.18, halo: 0.34, discSize: 640, haloSize: 3200, discCol: 0xf2f6fa },
-  nightCold:    { top: 0x05080f, horizon: 0x131b27, sun: 0x9db4d2, sunInt: 0.60, amb: 0.60, ground: 0x333d4b, fog: 0x0c131f, fogNear: 180, fogFar: 2600, disc: 0,    halo: 0,    discSize: 300, haloSize: 900,  discCol: 0xbcd0ea },
-  clear:        { top: 0x4f7fbe, horizon: 0xdae6ef, sun: 0xfff4da, sunInt: 1.72, amb: 1.30, ground: 0xe2ebf2, fog: 0xd2dee8, fogNear: 520, fogFar: 8200, disc: 0.95, halo: 0.50, discSize: 460, haloSize: 3200, discCol: 0xfff6e2 },
-  relief:       { top: 0x6d93c2, horizon: 0xe6ddc9, sun: 0xffedcc, sunInt: 1.52, amb: 1.30, ground: 0xdfe6ec, fog: 0xd8dccf, fogNear: 620, fogFar: 9000, disc: 0.9,  halo: 0.58, discSize: 620, haloSize: 3800, discCol: 0xffe6b4 },
+  nightArrival: { top: 0x070b16, horizon: 0x1b2432, sun: 0x9fb4d0, sunInt: 0.42, amb: 0.46, ground: 0x303a49, fog: 0x141d2a, fogNear: 300, fogFar: 3200, disc: 0,    halo: 0,    discSize: 300, haloSize: 900,  discCol: 0xbcd0ea },
+  overcast:     { top: 0x77879a, horizon: 0xa9b6c2, sun: 0xdfe4ea, sunInt: 0.62, amb: 0.96, ground: 0x93a0ae, fog: 0xa9b4bf, fogNear: 320, fogFar: 3600, disc: 0.18, halo: 0.34, discSize: 640, haloSize: 3200, discCol: 0xf2f6fa },
+  nightCold:    { top: 0x05080f, horizon: 0x131b27, sun: 0x9db4d2, sunInt: 0.46, amb: 0.42, ground: 0x2b3441, fog: 0x0c131f, fogNear: 220, fogFar: 2800, disc: 0,    halo: 0,    discSize: 300, haloSize: 900,  discCol: 0xbcd0ea },
+  clear:        { top: 0x4a7ab8, horizon: 0xd2e0ec, sun: 0xfff4da, sunInt: 1.48, amb: 1.00, ground: 0xd9e3ed, fog: 0xcbd9e6, fogNear: 560, fogFar: 8600, disc: 0.95, halo: 0.50, discSize: 460, haloSize: 3200, discCol: 0xfff6e2 },
+  relief:       { top: 0x658cbd, horizon: 0xdfd6c2, sun: 0xffedcc, sunInt: 1.30, amb: 0.98, ground: 0xd7dfe7, fog: 0xd1d5c9, fogNear: 660, fogFar: 9200, disc: 0.9,  halo: 0.58, discSize: 620, haloSize: 3800, discCol: 0xffe6b4 },
 };
 
 // 日相關鍵格(t 與 battle.js 事件對齊;keep in sync)。phaseAt 於相鄰關鍵格之間線性混合。
