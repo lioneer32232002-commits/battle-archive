@@ -50,7 +50,7 @@ controls.minDistance = 22;
 controls.maxDistance = 3500;
 controls.enableDamping = true;
 
-const environment = createEnvironment(scene, { shadows: SHADOWS, mobile: isMobile });
+const environment = createEnvironment(scene, { shadows: SHADOWS, mobile: isMobile, toneMapSky: !POSTFX });
 const terrain = createBrecourtTerrain(scene, { shadows: SHADOWS, mobile: isMobile });
 const effects = new Effects(scene, { mobile: isMobile });
 const director = new Director(camera, controls);
@@ -309,7 +309,7 @@ let lastNow = performance.now();
 let elapsed = 0;
 let panelAcc = 0;
 
-const FADE_PALE = new THREE.Color(0x4a4d44);
+const FADE_PALE = new THREE.Color(0xd8d8d8);
 function prepMats(o) {
   if (o.mats) return;
   o.mats = [];

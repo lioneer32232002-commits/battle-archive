@@ -146,6 +146,38 @@ function makeGroundTexture(S) {
   return t;
 }
 
+// ── 低頻大範圍遮罩:整張地圖一張(repeat 1、不平鋪),用來打散主貼圖的 5×5 田塊規律 ──
+// 內容是灰階 0.5 附近的超低頻雜訊 ＋ 微色偏;在片元裡與主貼圖相乘,遠景就看不出格紋週期。
+function makeMacroTexture(S) {
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d');
+  const r = mulberry(60606);
+  g.fillStyle = 'rgb(128,128,128)';
+  g.fillRect(0, 0, S, S);
+  const soft = (x, y, rad, fill) => {
+    const grad = g.createRadialGradient(x, y, rad * 0.05, x, y, rad);
+    grad.addColorStop(0, fill); grad.addColorStop(1, 'rgba(128,128,128,0)');
+    g.fillStyle = grad; g.beginPath(); g.arc(x, y, rad, 0, Math.PI * 2); g.fill();
+  };
+  // 超低頻:整片田野的明暗起伏(雲影／地勢)
+  for (let i = 0; i < 10; i++) {
+    const lift = r() > 0.5;
+    soft(r() * S, r() * S, S * (0.30 + r() * 0.35),
+      lift ? `rgba(178,176,158,${0.30 + r() * 0.22})` : `rgba(84,90,78,${0.26 + r() * 0.20})`);
+  }
+  // 中低頻:田塊之間的色相／明度差(黃綠 vs 冷綠)
+  for (let i = 0; i < 34; i++) {
+    const warm = r() > 0.5;
+    soft(r() * S, r() * S, S * (0.08 + r() * 0.16),
+      warm ? `rgba(158,148,112,${0.16 + r() * 0.18})` : `rgba(104,124,112,${0.16 + r() * 0.18})`);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+  t.anisotropy = 4;   // 資料型貼圖:不設 SRGBColorSpace,取樣值直接當乘數用
+  return t;
+}
+
 // ── 土路貼圖(路面 ＋ 兩道車轍 ＋ 路肩漸層 ＋ 碎石顆粒) ──────
 function makeRoadTexture() {
   const W = 256, H = 128;   // U = 路長方向、V = 路寬方向
@@ -370,10 +402,19 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
 
   // ── L-1 主地表:程序化牧草地／樹籬田塊貼圖 ────────────────
   const groundTex = makeGroundTexture(mobile ? 1024 : 2048);
-  const pasture = new THREE.Mesh(
-    new THREE.PlaneGeometry(5000, 5000),
-    new THREE.MeshLambertMaterial({ color: 0xffffff, map: groundTex })
-  );
+  const GROUND_REPEAT = groundTex.repeat.x;   // vMapUv 已含 repeat,除回去就是整張地圖的 0..1
+  const macroTex = makeMacroTexture(mobile ? 256 : 512);
+  const pastureMat = new THREE.MeshLambertMaterial({ color: 0xffffff, map: groundTex });
+  pastureMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uMacro = { value: macroTex };
+    sh.fragmentShader = 'uniform sampler2D uMacro;\n' + sh.fragmentShader.replace(
+      '#include <map_fragment>',
+      `#include <map_fragment>
+       vec3 macroM = texture2D( uMacro, vMapUv * ${(1 / GROUND_REPEAT).toFixed(5)} ).rgb;
+       diffuseColor.rgb *= (0.45 + 1.10 * macroM);`
+    );
+  };
+  const pasture = new THREE.Mesh(new THREE.PlaneGeometry(5000, 5000), pastureMat);
   pasture.rotation.x = -Math.PI / 2;
   pasture.position.set(0, 0.02, 0);
   if (shadows) pasture.receiveShadow = true;

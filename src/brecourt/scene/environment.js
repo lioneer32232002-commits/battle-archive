@@ -10,21 +10,26 @@
 //   D 日清晨:太陽自東北東升起(低斜暖光 → 長影),薄晨霧貼地,天亮後漸散。
 import * as THREE from 'three';
 
-// 註(ACES 重校的關鍵):three.js 自 r155 起用物理光照(輻照度不再乘 π、Lambert BRDF 除以 π),
-//   諾曼第牧草地反照率只有雪地的 1/5,沿用巴斯通那組 1.x 的強度會整片死暗。實測後拉到 3–5 級距,
-//   才是「清晨陽光下的綠田」而非「陰天的泥地」。
+// 註(調色的兩個關鍵,第二輪實測後重寫):
+//  ① three 自 r155 起用物理光照(輻照度不乘 π、Lambert BRDF 除以 π),諾曼第牧草地反照率只有
+//     雪地的 1/5,強度得比巴斯通那組高。
+//  ② 桌機管線補上 OutputPass 之後(見 postfx.js 檔頭),ACES＋sRGB 才真的生效,整體亮度大幅提高,
+//     第一輪那組 5.2/3.2 會過曝 → 全面下修,並改以「六月上午十點的亮綠草地」為目標校準。
 const PALETTES = {
-  night:   { top: 0x060a14, horizon: 0x17203a, sun: 0x8296bf, sunInt: 1.35, amb: 1.45, ground: 0x2b3524, fog: 0x101725, fogNear: 320, fogFar: 9000 },
-  dawn:    { top: 0x2e4a78, horizon: 0xefa268, sun: 0xffc189, sunInt: 3.60, amb: 2.30, ground: 0x53652f, fog: 0xb59a7c, fogNear: 240, fogFar: 7200 },
-  morning: { top: 0x59a0dc, horizon: 0xdeeaec, sun: 0xfff1d8, sunInt: 5.20, amb: 3.20, ground: 0x7c9041, fog: 0xc7d5c7, fogNear: 700, fogFar: 15000 },
+  night:   { top: 0x060a14, horizon: 0x17203a, sun: 0x8296bf, sunInt: 0.72, amb: 0.82, ground: 0x2b3524, fog: 0x101725, fogNear: 320, fogFar: 9000 },
+  dawn:    { top: 0x2e4a78, horizon: 0xefa268, sun: 0xffc189, sunInt: 2.55, amb: 1.42, ground: 0x53652f, fog: 0xb59a7c, fogNear: 240, fogFar: 7200 },
+  morning: { top: 0x59a0dc, horizon: 0xdeeaec, sun: 0xfff1d8, sunInt: 3.30, amb: 1.95, ground: 0x7c9041, fog: 0xc7d5c7, fogNear: 700, fogFar: 15000 },
+  midday:  { top: 0x6fb2e6, horizon: 0xe9f2f1, sun: 0xfff6e4, sunInt: 4.15, amb: 2.50, ground: 0x8a9c4c, fog: 0xd3ded1, fogNear: 900, fogFar: 17000 },
 };
 
-// 戰役時刻 → 日相與混合比(D 日 01:10 夜跳 → 05:30 天光 → 06:00 日出 → 08:00 後清晨)
+// 戰役時刻 → 日相與混合比
+// D 日 01:10 夜跳 → 05:30 天光 → 06:00 日出 → 08:00 清晨 → 08:30 拔砲後日頭升高 → 10:00 明亮上午
 function phaseAt(t) {
   if (t < 285) return ['night', 'night', 0];
   if (t < 372) return ['night', 'dawn', (t - 285) / 87];
-  if (t < 486) return ['dawn', 'morning', (t - 372) / 114];
-  return ['morning', 'morning', 0];
+  if (t < 470) return ['dawn', 'morning', (t - 372) / 98];
+  if (t < 570) return ['morning', 'midday', (t - 470) / 100];
+  return ['midday', 'midday', 0];
 }
 
 // 太陽方位(羅盤度,北 0 東 90)與仰角(弧度)隨時刻變化:日出東北東、清晨升高偏東南
@@ -55,7 +60,10 @@ function lerpColor(a, b, f) {
 }
 function lerpNum(a, b, f) { return a + (b - a) * f; }
 
-export function createEnvironment(scene, { shadows = false, mobile = false } = {}) {
+// toneMapSky:天空是自寫 ShaderMaterial,不吃 three 的 tonemapping/colorspace chunk。
+//   桌機走 composer,最後有 OutputPass 統一處理,天空不必自己來;手機直接 renderer.render,
+//   受光材質會自己 ACES＋sRGB,天空就得在片元裡補同一條曲線,否則天地兩套響應曲線對不齊。
+export function createEnvironment(scene, { shadows = false, mobile = false, toneMapSky = false } = {}) {
   // ── 天空圓頂(P-6:地平線霧帶) ─────────────────────────
   const skyUniforms = {
     uTop: { value: new THREE.Color(PALETTES.night.top) },
@@ -68,6 +76,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false } = {
       side: THREE.BackSide,
       depthWrite: false,
       uniforms: skyUniforms,
+      defines: toneMapSky ? { SKY_TONEMAP: '' } : {},
       vertexShader: `
         varying vec3 vPos;
         void main() {
@@ -76,11 +85,21 @@ export function createEnvironment(scene, { shadows = false, mobile = false } = {
         }`,
       fragmentShader: `
         uniform vec3 uTop; uniform vec3 uHorizon; uniform vec3 uFogC; varying vec3 vPos;
+        // Narkowicz 的 ACES 近似 fit(與 three 的 ACESFilmicToneMapping 同一條曲線)
+        vec3 acesFit(vec3 x) {
+          return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+        }
+        vec3 toSRGB(vec3 c) {
+          return mix(c * 12.92, 1.055 * pow(max(c, vec3(0.0)), vec3(0.41666)) - 0.055, step(0.0031308, c));
+        }
         void main() {
           float h = clamp(normalize(vPos).y, 0.0, 1.0);
-          vec3 c = mix(uHorizon, uTop, pow(h, 0.55));
+          vec3 c = mix(uHorizon, uTop, pow(h, 0.55));    // uniforms 已是線性(ColorManagement)
           float band = 1.0 - smoothstep(0.0, 0.09, h);   // P-6：貼著地平線的薄霧帶
           c = mix(c, uFogC, band * 0.78);
+          #ifdef SKY_TONEMAP
+            c = toSRGB(acesFit(c));                      // 手機路徑:天空自己補上與地面同一條曲線
+          #endif
           gl_FragColor = vec4(c, 1.0);
         }`,
     })
@@ -103,7 +122,8 @@ export function createEnvironment(scene, { shadows = false, mobile = false } = {
   starGeo.setAttribute('position', new THREE.BufferAttribute(sp, 3));
   const stars = new THREE.Points(
     starGeo,
-    new THREE.PointsMaterial({ color: 0xdfe6f5, size: 34, sizeAttenuation: true, transparent: true, opacity: 0, depthWrite: false })
+    // 星點在 14000 單位外,開 sizeAttenuation 會小於一像素等於看不見 → 改用固定像素尺寸
+    new THREE.PointsMaterial({ color: 0xdfe6f5, size: 2.0, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false })
   );
   scene.add(stars);
 
