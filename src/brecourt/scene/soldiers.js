@@ -5,6 +5,7 @@
 //   武器種類(Thompson/BAR/Garand/Kar98)、leFH 18 風格 105mm、雙層沙包 MG42 巢含射手。
 // 重要:材質「每單位一份」(makeMats),班內共用 → 整單位一起淡出;不同單位互不影響(避免炸一門砲四門全淡)。
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const SIDE_COLOR = { red: 0xd9442e, blue: 0x2e7bd9 };
 const UNIFORM = { blue: 0x6f7049, red: 0x565a4e };   // 美軍橄欖綠 / 德軍灰綠
@@ -29,11 +30,45 @@ function strut(a, b, r, mat) {
   return m;
 }
 
+// ── 幾何合併(效能:一個小人／一門砲 = 一個 draw call,外觀不變) ──
+// 各部位原本各自一個 Mesh(單兵約 27 個),桌機開陰影後光是陰影 pass 就多出數百個 draw call。
+// 作法:照舊用分件模型組出來,最後把所有部位「烘」成單一帶頂點色的幾何,沿用每單位一份的
+// vertexColors 材質 → 外觀、姿態、比例完全相同,但 draw call 降一個數量級。
+const _m4 = new THREE.Matrix4();
+function paintGeo(geo, color) {
+  const n = geo.attributes.position.count;
+  const arr = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { arr[i * 3] = color.r; arr[i * 3 + 1] = color.g; arr[i * 3 + 2] = color.b; }
+  geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+  return geo;
+}
+// 把 root 底下所有 Mesh 烘成單一 Mesh(保留 root 自身的 transform)
+function bake(root, material, skip = null) {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const geos = [];
+  root.traverse((m) => {
+    if (!m.isMesh || m === skip) return;
+    let p = m;
+    while (p && p !== root) { if (p === skip) return; p = p.parent; }
+    const g = m.geometry.clone();
+    g.applyMatrix4(_m4.multiplyMatrices(inv, m.matrixWorld));
+    paintGeo(g, m.material.color);
+    geos.push(g);
+  });
+  const mesh = new THREE.Mesh(mergeGeometries(geos, false), material);
+  mesh.position.copy(root.position);
+  mesh.rotation.copy(root.rotation);
+  mesh.scale.copy(root.scale);
+  return mesh;
+}
+
 // 每單位一份材質(班內共用)
 function makeMats(side) {
   const isUS = side === 'blue';
   const L = (c) => new THREE.MeshLambertMaterial({ color: c });
   return {
+    body: new THREE.MeshLambertMaterial({ vertexColors: true }),   // 烘好的單位幾何共用
     uni: L(UNIFORM[side]),
     pack: L(isUS ? 0x59593a : 0x4a4d42),
     helm: L(HELMET[side]),
@@ -89,7 +124,7 @@ function makeWeapon(type, mat) {
 }
 
 // ── 單兵(放大的程序化小人,分姿態) ─────────────────────
-function makeSoldier(side, pose, weapon, mat) {
+function makeSoldier(side, pose, weapon, mat, phase = 0) {
   const s = new THREE.Group();
   const core = new THREE.Group();
   s.add(core);
@@ -145,20 +180,24 @@ function makeSoldier(side, pose, weapon, mat) {
   }
 
   s.scale.setScalar(1.15);
-  return s;
+  const baked = bake(s, mat.body);
+  baked.userData.phase = phase;        // M-3：行進微動作相位
+  return baked;
 }
 
 // ── 班/組:一叢小人(依設定分姿態/武器/朝向) ────────────
-function makeSquad(side, count, spread, seed, cfg, mat) {
+function makeSquad(side, count, spread, seed, cfg, mat, troopers) {
   const g = new THREE.Group();
   const r = rng(seed);
   for (let i = 0; i < count; i++) {
     const pose = cfg.poses[Math.floor(r() * cfg.poses.length)];
     const weapon = cfg.weapons[Math.floor(r() * cfg.weapons.length)];
-    const sd = makeSoldier(side, pose, weapon, mat);
+    const sd = makeSoldier(side, pose, weapon, mat, r() * Math.PI * 2);
     sd.position.set((r() - 0.5) * spread * 2, 0, (r() - 0.5) * spread * 2);
     sd.rotation.y = cfg.face + (r() - 0.5) * 0.6;
     sd.scale.multiplyScalar(0.92 + r() * 0.16);
+    sd.userData.baseY = 0;
+    troopers.push(sd);
     g.add(sd);
   }
   return g;
@@ -198,11 +237,11 @@ function makeHowitzer(mat) {
   for (let k = 0; k < 3; k++) g.add(at(cyl(0.22, 0.22, 1.1, 8, mat.brass), -0.2 + k * 0.5, 0.22, 3.5, Math.PI / 2));
 
   g.scale.setScalar(0.95);
-  return g;
+  return bake(g, mat.body);
 }
 
 // ── MG42 機槍巢(雙層沙包 + 三腳架 MG42 + 射手) ──────────
-function makeMGNest(mat) {
+function makeMGNest(mat, troopers) {
   const g = new THREE.Group();
 
   // 雙層沙包半圈(以 +x 為中心,西側 -x 開口為射界)
@@ -224,13 +263,44 @@ function makeMGNest(mat) {
   g.add(at(box(0.16, 0.2, 0.7, mat.wood), apex.x + 0.65, apex.y - 0.02, apex.z));     // 槍托
   g.add(at(box(0.5, 0.42, 0.42, mat.dark), apex.x + 0.2, apex.y - 0.25, apex.z + 0.45)); // 彈箱
 
+  // 巢體烘成單一 mesh;射手另外掛(要做行進微動作,不能併進去)
+  const out = new THREE.Group();
+  out.add(bake(g, mat.body));
+
   // 射手(跪姿,面朝 -x 西)
-  const gunner = makeSoldier('red', 'kneel', 'kar98', mat);
+  const gunner = makeSoldier('red', 'kneel', 'kar98', mat, 1.7);
   gunner.position.set(apex.x + 0.9, 0, apex.z); gunner.rotation.y = -Math.PI / 2;
   gunner.scale.multiplyScalar(0.95);
-  g.add(gunner);
+  gunner.userData.baseY = 0;
+  troopers.push(gunner);
+  out.add(gunner);
 
-  return g;
+  return out;
+}
+
+// ── L-4:手機無陰影時的接地影(柔邊深色圓 sprite) ─────────
+let _blobTex = null;
+function blobShadowTexture() {
+  if (_blobTex) return _blobTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 2, 32, 32, 31);
+  grad.addColorStop(0, 'rgba(0,0,0,0.5)');
+  grad.addColorStop(0.55, 'rgba(0,0,0,0.26)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
+  _blobTex = new THREE.CanvasTexture(c);
+  return _blobTex;
+}
+function makeGroundBlob(radius) {
+  const m = new THREE.Mesh(
+    new THREE.PlaneGeometry(radius * 2, radius * 2),
+    new THREE.MeshBasicMaterial({ map: blobShadowTexture(), transparent: true, depthWrite: false, opacity: 0.85 })
+  );
+  m.rotation.x = -Math.PI / 2;
+  m.position.y = 0.22;
+  return m;
 }
 
 // ── 陣營光圈(地面識別環) ─────────────────────────────
@@ -241,6 +311,7 @@ function makeRing(radius, color) {
   );
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.4;
+  ring.userData.flat = true;   // 識別環不投影
   return ring;
 }
 
@@ -255,27 +326,38 @@ const SQUAD_CFG = {
   default:  { poses: ['stand'],                       weapons: ['garand'],                       face: 0 },
 };
 
-export function createUnit(spec) {
+export function createUnit(spec, { shadows = false } = {}) {
   const g = new THREE.Group();
   const mat = makeMats(spec.side);
+  const troopers = [];
+  let blobR = 0;
 
   if (spec.kind === 'gun') {
     g.add(makeHowitzer(mat));
     g.add(makeRing(7, SIDE_COLOR[spec.side]));
-    return g;
-  }
-  if (spec.kind === 'mg') {
-    g.add(makeMGNest(mat));
+    blobR = 6;
+  } else if (spec.kind === 'mg') {
+    g.add(makeMGNest(mat, troopers));
     g.add(makeRing(6, SIDE_COLOR[spec.side]));
-    return g;
+    blobR = 5;
+  } else {
+    // 步兵/突擊隊/火力組/守軍 → 一叢小人
+    const men = spec.strength?.men ?? 6;
+    const count = Math.max(2, Math.min(9, Math.round(men / 4)));
+    const spread = Math.max(4, (spec.length ?? 16) * 0.5);
+    const cfg = SQUAD_CFG[spec.kind] ?? SQUAD_CFG.default;
+    g.add(makeSquad(spec.side, count, spread, SEED[spec.id] ?? 7, cfg, mat, troopers));
+    g.add(makeRing(Math.max(8, spread + 3), SIDE_COLOR[spec.side]));
+    blobR = Math.max(7, spread + 2);
   }
 
-  // 步兵/突擊隊/火力組/守軍 → 一叢小人
-  const men = spec.strength?.men ?? 6;
-  const count = Math.max(2, Math.min(9, Math.round(men / 4)));
-  const spread = Math.max(4, (spec.length ?? 16) * 0.5);
-  const cfg = SQUAD_CFG[spec.kind] ?? SQUAD_CFG.default;
-  g.add(makeSquad(spec.side, count, spread, SEED[spec.id] ?? 7, cfg, mat));
-  g.add(makeRing(Math.max(8, spread + 3), SIDE_COLOR[spec.side]));
+  // L-4:桌機開陰影 → 單位投影;手機無陰影 → 一張柔邊接地影頂著
+  if (shadows) {
+    g.traverse((m) => { if (m.isMesh && !m.userData.flat) m.castShadow = true; });
+  } else {
+    g.add(makeGroundBlob(blobR));
+  }
+
+  g.userData.troopers = troopers;   // M-3：主迴圈直接走訪做行進微動作
   return g;
 }
