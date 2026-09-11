@@ -41,6 +41,7 @@ export function makeLabel(text, { side = 'neutral', sub = '', big = false } = {}
   }
 
   const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
   const sp = new THREE.Sprite(
     new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false })
