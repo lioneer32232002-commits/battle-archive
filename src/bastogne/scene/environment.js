@@ -131,7 +131,8 @@ export function createEnvironment(scene, { shadows = false } = {}) {
     cam.left = -400; cam.right = 400; cam.top = 400; cam.bottom = -400;
     cam.near = 200; cam.far = 4200;
     sun.shadow.bias = -0.0006;
-    sun.shadow.normalBias = 0.8;
+    sun.shadow.normalBias = 0.15;   // 1 單位≈10 公尺,0.8 會把採樣點推出 8 公尺(卡倫坦實測 0.15 即可)
+    cam.updateProjectionMatrix();   // 改完正交範圍必須重算投影矩陣,否則仍是預設 ±5
   }
   const hemi = new THREE.HemisphereLight(0xc4cfdb, 0x4a5162, PALETTES.nightArrival.amb);
   scene.add(hemi);

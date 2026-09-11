@@ -45,6 +45,8 @@ npm run build    # 產生 dist/
 6. `npm run build` 確認所有頁面都產出、無錯。
 7. `git commit` + `git push` → 自動部署(見下)。
 
+**美術與渲染規格:** 全站六場戰役自 2026-09-12 起統一套用 `docs/art-upgrade-spec.md`(ACES＋OutputPass 後製、陰影、Catmull-Rom 動線、程序化地表／植被／海面／尾流、特效物件池)。新戰役以 `src/carentan/` 或 `src/bastogne/` 為骨架,並務必先讀該文件 §9 的管線陷阱。
+
 **慣例(務必沿用):** 顯示用中文一律全形標點(數字之間例外)、不用破折號;血條/事件卡半透明並補 `-webkit-backdrop-filter`(iOS);艦艇/飛機/人物按真實比例。
 
 ## 部署 ── 桌機或手機都只要 push
