@@ -275,7 +275,9 @@ function makeDiscTexture(inner, core) {
   grad.addColorStop(1, 'rgba(255,180,110,0)');
   g.fillStyle = grad;
   g.beginPath(); g.arc(64, 64, 63, 0, Math.PI * 2); g.fill();
-  return new THREE.CanvasTexture(c);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;   // 當 map 用:畫布內容是 sRGB
+  return t;
 }
 
 // 雲:數顆大小不一的柔邊圓疊加(取代單一圓斑)
@@ -297,7 +299,9 @@ function makeCloudTexture(seed) {
   for (let i = 0; i < 8; i++) {
     puff(S * (0.24 + r() * 0.52), S * (0.34 + r() * 0.32), S * (0.10 + r() * 0.20), 0.30 + r() * 0.4);
   }
-  return new THREE.CanvasTexture(c);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 // 可重現的偽隨機(雲層/星空/晨霧佈局固定)

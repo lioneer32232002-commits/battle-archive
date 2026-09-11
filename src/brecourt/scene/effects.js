@@ -18,7 +18,9 @@ function radialTexture(inner, outer) {
   grad.addColorStop(1, outer);
   g.fillStyle = grad;
   g.fillRect(0, 0, 64, 64);
-  return new THREE.CanvasTexture(c);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;   // 當 map 用:畫布內容是 sRGB
+  return t;
 }
 
 // 煙:柔邊圓 ＋ 幾顆偏移小圓,不是完美圓斑
@@ -38,7 +40,9 @@ function smokeTexture() {
   };
   puff(S / 2, S / 2, S * 0.44, 0.8);
   for (let i = 0; i < 7; i++) puff(S * (0.26 + r() * 0.48), S * (0.26 + r() * 0.48), S * (0.10 + r() * 0.18), 0.35 + r() * 0.35);
-  return new THREE.CanvasTexture(c);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 // 焦痕貼花:深色柔邊圓 ＋ 不規則濺邊
@@ -64,7 +68,9 @@ function scorchTexture() {
     gg.addColorStop(1, 'rgba(30,25,18,0)');
     g.fillStyle = gg; g.beginPath(); g.arc(x, y, rad, 0, Math.PI * 2); g.fill();
   }
-  return new THREE.CanvasTexture(c);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 const TRACER_POOL = 28;
@@ -111,11 +117,16 @@ export class Effects {
   }
 
   update(dt) {
-    this.transients = this.transients.filter((t) => {
-      const alive = t.update(dt);
-      if (!alive) t.dispose();
-      return alive;
-    });
+    // ⚠️ 不能用 this.transients.filter():許多特效會「在自己的 update 裡再 push 新的 transient」
+    //   (衝鋒逐發生成手榴彈爆炸、槍火生成槍口焰、MG 節奏、爆炸生成煙與碎屑)。filter 走的是
+    //   舊陣列的快照,回呼期間 push 進去的新元素會連同舊陣列一起被丟掉 —— 巢狀特效一個都不會出現。
+    //   改成先把陣列換成空的再逐一 update:回呼期間 push 的新特效直接進到新陣列,活得下來。
+    const list = this.transients;
+    this.transients = [];
+    for (const t of list) {
+      if (t.update(dt)) this.transients.push(t);
+      else t.dispose();
+    }
     for (const f of this.fires.values()) f.update(dt);
     // 曳光線
     for (const t of this.tracers) {

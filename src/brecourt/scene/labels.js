@@ -40,6 +40,7 @@ export function makeLabel(text, { side = 'neutral', sub = '', big = false } = {}
   }
 
   const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;   // 當 map 用:畫布內容是 sRGB
   tex.anisotropy = 4;
   const sp = new THREE.Sprite(
     new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false })

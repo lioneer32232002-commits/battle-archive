@@ -291,6 +291,7 @@ function blobShadowTexture() {
   grad.addColorStop(1, 'rgba(0,0,0,0)');
   g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
   _blobTex = new THREE.CanvasTexture(c);
+  _blobTex.colorSpace = THREE.SRGBColorSpace;
   return _blobTex;
 }
 function makeGroundBlob(radius) {
