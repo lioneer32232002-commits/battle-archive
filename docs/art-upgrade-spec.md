@@ -112,3 +112,14 @@
 4. 最後跑 §7 驗收，附截圖回報。
 
 *本規格由 Claude（Fable 5.1）於 2026-09-12 依六場戰役實機截圖撰寫。*
+
+---
+
+## 9. 施工期間發現的管線陷阱（2026-09-12 整合時補記，日後新戰役必讀）
+
+1. **EffectComposer 一定要有 `OutputPass`**（放在 Bloom 之後、自寫暗角顆粒 ShaderPass 之前）。three 渲染到 render target 時會關掉材質的 tonemapping／colorspace chunk，交給管線最後一關；沒有 OutputPass 等於桌機整條管線既沒 ACES 也沒 sRGB 編碼、`toneMappingExposure` 無效，畫面比手機（直接 `renderer.render`）暗約 2.3 倍。原 `quality-upgrade-spec.md` B-5 與巴斯通首版 postfx.js 都漏了這一道，2026-09-12 起各戰役已補。
+2. **`Effects.update()` 不可用 `this.transients.filter()` 就地過濾**：很多特效會在自己的 `update` 裡 push 新 transient（彈幕逐發爆炸、槍口焰、手榴彈），`filter` 的長度快照會把這些新項目連同舊陣列一起丟掉，結果是「彈幕整段沒有爆炸」。正確寫法：先把陣列換成空的，再逐一 update，存活者 push 回去，期間新增者合併。
+3. **當 `map`／`emissiveMap` 用的 `CanvasTexture` 必須設 `colorSpace = SRGBColorSpace`**，否則被當線性資料，實際亮度是預期的數倍、整片糊掉（資料類貼圖如 alpha／normal 不設）。
+4. three 0.184 已棄用 `PCFSoftShadowMap`（會退回 PCFShadowMap 並洗 console 警告），直接用 `PCFShadowMap`。
+5. `renderer.info.render.calls` 在開了 composer 之後只反映最後一個 pass；量 draw call 要另外直接 `renderer.render()` 一次再讀。
+6. 手機沒有 composer 時，自寫的 sky ShaderMaterial 不會過 tone mapping，需在 shader 內自做 ACES 近似（Narkowicz fit）＋ sRGB transfer，桌機則交給 OutputPass。
