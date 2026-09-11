@@ -1,4 +1,8 @@
 // 中途島戰役 3D 模擬 — 主程式
+// 美術升級(docs/art-upgrade-spec.md):
+//   P-1 ACES 色調映射、P-2 桌機陰影、P-3 後製(bloom ＋ 暗角顆粒)、P-4 動態解析度
+//   M-1 Catmull-Rom 航跡、M-2 船艦朝向重阻尼＋轉向側傾、M-3 隨浪縱橫搖、M-4 鏡頭手持／震動／跟拍
+//   N-2 動態尾流(scene/wake.js)
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
@@ -16,20 +20,33 @@ import { unitStateAt, interpolateTrack, newEvents } from './engine/timeline.js';
 // 行動裝置:縮小標籤、降低 pixelRatio,改善重疊與卡頓
 const isMobile = window.matchMedia('(max-width: 640px)').matches;
 const LABEL_SCALE = isMobile ? 0.6 : 1;
+const SHADOWS = !isMobile; // P-2:陰影桌機限定
+const POSTFX = !isMobile;  // P-3:後製桌機限定
 import { createEnvironment } from './scene/environment.js';
 import { createMidwayAtoll } from './scene/terrain.js';
 import { createShip, animateFlags } from './scene/ships.js';
 import { createAirGroup, updateAirGroup, createAcePlane } from './scene/aircraft.js';
 import { Effects } from './scene/effects.js';
+import { WakeField } from './scene/wake.js';
 import { makeLabel } from './scene/labels.js';
 import { Director } from './camera/director.js';
+import { createComposer } from './scene/postfx.js';
 import { createHUD } from './ui/hud.js';
 
 // ── 基本場景 ─────────────────────────────────────────
 const container = document.getElementById('scene-container');
-const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
+const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, powerPreference: 'high-performance', preserveDrawingBuffer: true });
+const DPR_CAP = Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2);
+renderer.setPixelRatio(DPR_CAP);
 renderer.setSize(window.innerWidth, window.innerHeight);
+// P-1:ACES 色調映射(手機桌機都開;environment.js 的調色盤已據此重校)
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+if (SHADOWS) {
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+}
 container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -43,16 +60,25 @@ controls.minDistance = 60;
 controls.maxDistance = 9000;
 controls.enableDamping = true;
 
+const environment = createEnvironment(scene, { shadows: SHADOWS, mobile: isMobile });
+createMidwayAtoll(scene, { shadows: SHADOWS, mobile: isMobile });
+const effects = new Effects(scene, { mobile: isMobile });
+const director = new Director(camera, controls);
+const wake = new WakeField(scene, { mobile: isMobile, ships: units.length });
+
+// 後製 composer(桌機);手機直接 renderer.render
+const post = POSTFX ? createComposer(renderer, scene, camera) : null;
+function renderFrame(dt) {
+  if (post) post.render(dt);
+  else renderer.render(scene, camera);
+}
+
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  if (post) post.setSize(window.innerWidth, window.innerHeight);
 });
-
-const environment = createEnvironment(scene);
-createMidwayAtoll(scene);
-const effects = new Effects(scene);
-const director = new Director(camera, controls);
 
 // 地名標籤
 const midwayLabel = makeLabel('中途島 Midway', { side: 'neutral', big: true });
@@ -61,10 +87,17 @@ midwayLabel.scale.multiplyScalar(LABEL_SCALE);
 scene.add(midwayLabel);
 
 // ── 船艦 ─────────────────────────────────────────────
+// M-2 側傾係數:大船不該像快艇一樣甩頭,航艦最小、驅逐艦最大
+const BANK_K = { carrier: 6, battleship: 7, cruiser: 9, destroyer: 12 };
+// M-3 隨浪搖晃振幅(rad):驅逐艦大、航艦小
+const SEA_AMP = { carrier: 0.0045, battleship: 0.0055, cruiser: 0.0085, destroyer: 0.012 };
+
 const shipObjs = new Map(); // id -> { group, label, spec, sunkT }
+let shipIdx = 0;
 for (const u of units) {
   if (u.kind === 'base') continue;
   const group = createShip(u);
+  group.rotation.order = 'YXZ'; // 先航向、再縱搖、後橫搖(側傾)
   scene.add(group);
   const isCarrier = u.kind === 'carrier';
   // 美軍英文在前、繁中在後;日軍繁中在前、原文在後
@@ -77,7 +110,19 @@ for (const u of units) {
   label.scale.multiplyScalar((isCarrier ? 1 : 0.72) * LABEL_SCALE);
   group.add(label);
   const sunk = (u.statusChanges ?? []).find((c) => c.status === 'sunk');
-  shipObjs.set(u.id, { group, spec: u, sunkT: sunk ? sunk.t : null });
+  const st0 = unitStateAt(u, TIME_START);
+  wake.register(u.id);
+  shipObjs.set(u.id, {
+    group, spec: u, sunkT: sunk ? sunk.t : null,
+    curRot: -st0.heading, angVel: 0,
+    bankK: BANK_K[u.kind] ?? 8,
+    seaAmp: SEA_AMP[u.kind] ?? 0.008,
+    phase: shipIdx * 1.37,
+    beam: group.userData.beam ?? u.length * 0.2,
+    len: group.userData.len ?? u.length,
+  });
+  group.rotation.y = -st0.heading;
+  shipIdx++;
 }
 
 // 部隊大標籤(跟隨編隊旗艦)
@@ -94,7 +139,7 @@ for (const f of formationLabels) {
 // ── 機隊 ─────────────────────────────────────────────
 const airObjs = [];
 for (const ag of airGroups) {
-  const group = createAirGroup(ag);
+  const group = createAirGroup(ag, { mobile: isMobile, scene });
   scene.add(group);
   const label = makeLabel(ag.label, { side: ag.side });
   label.position.y = 26;
@@ -157,6 +202,13 @@ let playing = false;
 let speed = 2; // 戰役分鐘 / 真實秒
 let started = false;
 let summaryShown = false;
+let snapRot = false; // M-2:拖曳/跳轉後下一幀直接對齊朝向(不做阻尼)
+
+function resetTransients() {
+  effects.clearTransients();
+  wake.clear();
+  snapRot = true;
+}
 
 const hud = createHUD({
   onStart: () => {
@@ -175,7 +227,7 @@ const hud = createHUD({
     battleT = t;
     prevT = t;
     summaryShown = false;
-    effects.clearTransients();
+    resetTransients();
     hud.hideEvent();
     hud.hideSummary();
   },
@@ -184,7 +236,7 @@ const hud = createHUD({
     battleT = t;
     prevT = t;
     summaryShown = false;
-    effects.clearTransients();
+    resetTransients();
     hud.hideSummary();
     const e = events.find((ev) => ev.t === t);
     if (e) fireEvent(e);
@@ -196,7 +248,7 @@ const hud = createHUD({
     prevT = TIME_START;
     summaryShown = false;
     playing = true;
-    effects.clearTransients();
+    resetTransients();
     hud.hideSummary();
     hud.setPlaying(true);
     triggerEventsBetween(TIME_START - 1, battleT);
@@ -242,7 +294,17 @@ function eventCameraTarget(e) {
 // 觸發單一事件:字卡 + 運鏡 + 特效
 function fireEvent(e) {
   hud.showEvent(e);
-  director.flyTo(eventCameraTarget(e), e.camera?.dist ?? 500);
+  // M-4:鎖定單位的事件改用持續跟拍(含前置量與手持噪聲),其餘沿用一次性飛入
+  if (e.camera?.unit && shipObjs.has(e.camera.unit)) {
+    const o = shipObjs.get(e.camera.unit);
+    director.follow(() => {
+      const st = unitStateAt(o.spec, battleT);
+      return new THREE.Vector3(st.pos.x, 0, st.pos.z);
+    }, e.camera.dist ?? 500, 0.5);
+  } else {
+    director.clearFollow();
+    director.flyTo(eventCameraTarget(e), e.camera?.dist ?? 500);
+  }
   for (const fx of e.fx ?? []) runFx(fx);
 }
 
@@ -250,17 +312,24 @@ function triggerEventsBetween(a, b) {
   for (const e of newEvents(events, a, b)) fireEvent(e);
 }
 
+// M-4:依鏡頭距離觸發震動(遠則弱/不觸發)
+const _shakePos = new THREE.Vector3();
+function shakeAt(pos, base) {
+  const d = camera.position.distanceTo(pos);
+  if (d < 1600) director.shake(base * (1 - d / 1600), 0.55);
+}
+
 function runFx(fx) {
   const obj = fx.unit ? shipObjs.get(fx.unit)?.group : null;
   switch (fx.kind) {
     case 'divebomb':
-      if (obj) effects.divebomb(obj, 4);
+      if (obj) { effects.divebomb(obj, 4); shakeAt(obj.position, 26); }
       break;
     case 'flak':
       if (obj) effects.flak(obj, 7);
       break;
     case 'torpedo-run':
-      if (obj) effects.torpedoRun(obj, new THREE.Vector3(1, 0, 0.4).normalize(), 3);
+      if (obj) { effects.torpedoRun(obj, new THREE.Vector3(1, 0, 0.4).normalize(), 3); shakeAt(obj.position, 20); }
       break;
     case 'launch':
       if (obj) effects.launchFlash(obj);
@@ -269,6 +338,7 @@ function runFx(fx) {
       effects.dogfight(new THREE.Vector3(fx.pos.x, 10, fx.pos.z), 9);
       effects.explosion(new THREE.Vector3(fx.pos.x + 20, 6, fx.pos.z + 10), 1.6);
       effects.explosion(new THREE.Vector3(fx.pos.x - 25, 6, fx.pos.z + 30), 1.3);
+      shakeAt(_shakePos.set(fx.pos.x, 6, fx.pos.z), 22);
       break;
     case 'dogfight':
       effects.dogfight(new THREE.Vector3(fx.pos.x, 0, fx.pos.z), 8);
@@ -289,7 +359,7 @@ function prepSinkMats(o) {
   if (o.sinkMats) return;
   o.sinkMats = [];
   o.group.traverse((m) => {
-    if (m.isMesh && m.material) {
+    if ((m.isMesh || m.isLine) && m.material) {
       const mats = Array.isArray(m.material) ? m.material : [m.material];
       for (const mat of mats) {
         o.sinkMats.push({ mat, op: mat.opacity ?? 1, col: mat.color ? mat.color.clone() : null });
@@ -317,13 +387,35 @@ function restoreSinkLook(o) {
   o.sinkLook = false;
 }
 
+// M-2:最短角差(處理 ±π 環繞)
+function shortestAngleDiff(target, current) {
+  let d = (target - current) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+const _camPos = new THREE.Vector3();
+
+renderer.info.autoReset = false; // 後製多 pass:draw call 需累加後自行歸零
+
+let frameCount = 0;
 function tick() {
   requestAnimationFrame(tick);
   const now = performance.now();
   const dt = Math.min((now - lastNow) / 1000, 0.1);
   lastNow = now;
+  frame(dt);
+}
+
+// 一個影格的全部更新 ＋ 算繪。抽出來是為了讓開發用的 __dbg.step() 能在
+// 分頁被隱藏、requestAnimationFrame 暫停時,仍然以固定步長推進畫面做美術驗收。
+function frame(dt) {
+  frameCount++;
+  renderer.info.reset();
   elapsed += dt;
   const time = elapsed;
+  fpsSample(dt);
 
   if (playing && started) {
     prevT = battleT;
@@ -341,11 +433,27 @@ function tick() {
   }
 
   // 船艦狀態
+  // M-2:海戰朝向阻尼要更重(0.01^dt),大船不該像快艇一樣甩頭
+  const rotK = 1 - Math.pow(0.01, dt);
+  const invDt = 1 / Math.max(dt, 1e-3);
   for (const [id, o] of shipObjs) {
     const st = unitStateAt(o.spec, battleT);
     o.group.position.x = st.pos.x;
     o.group.position.z = st.pos.z;
-    o.group.rotation.y = -st.heading;
+
+    // M-2:朝向阻尼 + 轉向側傾
+    const targetRot = -st.heading;
+    let step = 0;
+    if (snapRot) {
+      o.curRot = targetRot;
+      o.angVel = 0;
+    } else {
+      step = shortestAngleDiff(targetRot, o.curRot) * rotK;
+      o.curRot += step;
+      o.angVel += (step * invDt - o.angVel) * Math.min(1, dt * 1.8);
+    }
+    o.group.rotation.y = o.curRot;
+
     effects.setBurning(id, o.group, st.status === 'burning');
 
     if (st.status === 'sunk') {
@@ -357,17 +465,28 @@ function tick() {
       applySinkLook(o, f); // 配色變淺 + 淡出
       o.group.visible = f < 1;
       effects.setBurning(id, o.group, false);
-      if (o.group.userData.wake) o.group.userData.wake.visible = false;
+      effects.setSinking(id, o.group, f < 1, f); // N-7:油汙貼花 + 水面火光
+      wake.hideBow(id);
     } else {
-      o.group.position.y = 0;
-      o.group.rotation.z = 0;
-      o.group.rotation.x = 0;
+      // M-3:隨浪微幅縱搖／橫搖(兩個不同頻率的 sin 疊加)
+      const amp = o.seaAmp;
+      const ph = o.phase;
+      o.group.position.y = Math.sin(time * 0.62 + ph) * amp * 34;
+      o.group.rotation.x = Math.sin(time * 0.71 + ph) * amp + Math.sin(time * 1.13 + ph * 1.7) * amp * 0.55;
+      // M-2:轉向側傾(上限 ±0.06 rad)
+      const bank = Math.max(-0.06, Math.min(0.06, -o.angVel * o.bankK));
+      o.group.rotation.z = bank
+        + Math.sin(time * 0.53 + ph * 2.1) * amp * 1.25
+        + Math.sin(time * 0.97 + ph) * amp * 0.7;
       restoreSinkLook(o); // scrub 回戰役中段時還原艦體
       o.group.visible = true;
-      // 停止移動(中彈漂流)時隱藏艦艏波
-      if (o.group.userData.wake) o.group.userData.wake.visible = st.status === 'normal';
+      effects.setSinking(id, o.group, false, 0);
+      // N-2:動態尾流(中彈漂流 / 沉沒時不再發射)
+      wake.updateShip(id, st.pos.x, st.pos.z, st.heading, o.beam, o.len, st.status === 'normal', dt);
     }
   }
+  snapRot = false;
+  wake.update(dt);
 
   // 部隊大標籤
   for (const f of formationLabels) {
@@ -382,8 +501,9 @@ function tick() {
     if (battleT >= spawnT && battleT <= despawnT) {
       a.group.visible = true;
       const pos = interpolateTrack(a.spec.track, battleT);
-      updateAirGroup(a.group, pos, time);
+      updateAirGroup(a.group, pos, time, undefined, dt);
     } else {
+      if (a.group.visible) updateAirGroup(a.group, null, time, undefined, dt);
       a.group.visible = false;
     }
   }
@@ -406,6 +526,7 @@ function tick() {
 
   animateFlags(scene, time);
   environment.update(dt, battleT);
+  environment.setShadowFocus(controls.target); // P-2:陰影框跟著鏡頭焦點
   effects.update(dt);
   director.update(dt);
   controls.update();
@@ -427,8 +548,107 @@ function tick() {
     if (!playing) hud.setTime(battleT);
   }
 
-  renderer.render(scene, camera);
+  renderFrame(dt);
+}
+
+// ── 動態解析度(P-4):滾動平均 FPS,每 2 秒結算 ─────────────
+let fpsAcc = 0, fpsFrames = 0, fpsTimer = 0, goodStreak = 0;
+let curRatio = DPR_CAP;
+let lastFps = 60;
+const FLOOR = isMobile ? 1.0 : DPR_CAP * 0.75;
+function fpsSample(dt) {
+  fpsAcc += dt; fpsFrames++; fpsTimer += dt;
+  if (fpsTimer < 2) return;
+  const fps = fpsFrames / fpsAcc;
+  lastFps = fps;
+  fpsTimer = 0; fpsAcc = 0; fpsFrames = 0;
+  const lowT = isMobile ? 27 : 45;
+  if (fps < lowT && curRatio > FLOOR) {
+    curRatio = Math.max(FLOOR, curRatio - 0.25);
+    renderer.setPixelRatio(curRatio); if (post) post.setPixelRatio(curRatio);
+    goodStreak = 0;
+  } else if (fps > (isMobile ? 40 : 55)) {
+    goodStreak += 2;
+    if (goodStreak >= 4 && curRatio < DPR_CAP) {
+      curRatio = Math.min(DPR_CAP, curRatio + 0.25);
+      renderer.setPixelRatio(curRatio); if (post) post.setPixelRatio(curRatio);
+      goodStreak = 0;
+    }
+  } else goodStreak = 0;
 }
 
 hud.setTime(battleT);
 tick();
+
+// ── 開發用美術除錯掛勾(正式 build 由 import.meta.env.DEV 移除) ──
+if (import.meta.env && import.meta.env.DEV) {
+  const dbgSeek = (t) => {
+    battleT = t; prevT = t; snapRot = true;
+    resetTransients();
+    hud.setTime(t);
+    return t;
+  };
+  const dbgLook = (tx, ty, tz, px, py, pz) => {
+    director.setMode('free');
+    controls.target.set(tx, ty, tz);
+    camera.position.set(px, py, pz);
+    camera.lookAt(tx, ty, tz);
+    camera.updateMatrixWorld();
+  };
+  // 美術驗收深連結(dev only):#t=620&run=6&ship=0&off=120,58,150
+  //   t   = 戰役時刻;run = 先實際播放幾秒(讓尾流/特效長出來)後暫停
+  //   ship= 船艦索引(依 units 順序);off = 相對該艦的鏡頭偏移
+  //   cam = tx,ty,tz,px,py,pz(絕對指定,與 ship/off 二擇一)
+  //   放在 hash 是為了在 Vite 熱重載/整頁重載後仍然自動復原同一個畫面。
+  const shipList = [...shipObjs.values()];
+  function applyDbgHash() {
+    const h = location.hash;
+    if (!h.includes('t=')) return;
+    const q = new URLSearchParams(h.slice(1));
+    document.getElementById('btn-start')?.click();
+    const t = Number(q.get('t'));
+    const run = Number(q.get('run') ?? 0);
+    const place = () => {
+      if (q.has('cam')) {
+        const a = q.get('cam').split(',').map(Number);
+        dbgLook(a[0], a[1], a[2], a[3], a[4], a[5]);
+      } else if (q.has('ship')) {
+        const o = shipList[Number(q.get('ship'))];
+        const st = unitStateAt(o.spec, battleT); // 由航跡直接取,不依賴 tick 是否跑過
+        const off = (q.get('off') ?? '130,62,165').split(',').map(Number);
+        dbgLook(st.pos.x, Number(q.get('ly') ?? 8), st.pos.z,
+          st.pos.x + off[0], off[1], st.pos.z + off[2]);
+      }
+    };
+    setTimeout(() => {
+      dbgSeek(t);
+      if (run > 0) {
+        // 以「實際算繪出的影格數」計時,分頁在背景 rAF 暫停時不會提早結束(尾流才長得出來)
+        playing = true; started = true;
+        const start = frameCount;
+        const timer = setInterval(() => {
+          if (frameCount - start < run * 60) return;
+          clearInterval(timer);
+          playing = false;
+          place();
+        }, 100);
+      } else {
+        place();
+      }
+    }, 60);
+  }
+  applyDbgHash();
+  window.addEventListener('hashchange', applyDbgHash);
+
+  window.__dbg = {
+    THREE, scene, camera, controls, renderer, director, dbgSeek, dbgLook, applyDbgHash,
+    // 背景分頁 rAF 會暫停,量測時直接手動渲染一幀再讀數
+    measure: () => { renderer.info.reset(); renderFrame(0.016); return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; },
+    calls: () => renderer.info.render.calls,
+    tris: () => renderer.info.render.triangles,
+    fps: () => lastFps,
+    setPlaying: (v) => { playing = v; started = true; hud.setPlaying(v); },
+    // 分頁在背景時 rAF 會暫停,用固定步長手動推進 n 影格(美術驗收用)
+    step: (n = 60, dt = 1 / 60) => { for (let i = 0; i < n; i++) frame(dt); return frameCount; },
+  };
+}

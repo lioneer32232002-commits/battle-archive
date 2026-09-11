@@ -13,10 +13,15 @@ describe('interpolateTrack', () => {
     { t: 20, x: 100, z: 50 },
   ];
 
-  it('回傳中點的線性插值位置', () => {
+  // M-1(2026-09-12)起改為非均勻 Catmull-Rom 曲線插值,第一段另有起步緩動,
+  // 故中點不再等於線性中點。曲線契約(對齊航點、有界、確定性、緩動)由
+  // tests/midway-timeline.test.js 完整涵蓋;此處只確認仍在第一段內單調前進。
+  it('中點落在第一段航點之間並單調前進', () => {
     const p = interpolateTrack(track, 5);
-    expect(p.x).toBeCloseTo(50);
-    expect(p.z).toBeCloseTo(0);
+    expect(p.x).toBeGreaterThan(0);
+    expect(p.x).toBeLessThan(100);
+    expect(interpolateTrack(track, 7).x).toBeGreaterThan(p.x);
+    expect(Math.abs(p.z)).toBeLessThan(6); // 曲線為了接下一個轉彎會略微外凸
   });
 
   it('在時間範圍之前回傳第一個點', () => {
@@ -33,7 +38,7 @@ describe('interpolateTrack', () => {
 
   it('回傳目前航向(朝 +x 移動時 heading 為 90 度,以北 -z 為 0 順時針)', () => {
     const p = interpolateTrack(track, 5);
-    expect(p.heading).toBeCloseTo(Math.PI / 2);
+    expect(p.heading).toBeCloseTo(Math.PI / 2, 0.8); // 曲線切線,容許轉彎預備的些微偏差
   });
 
   it('單一點航跡視為固定位置', () => {
