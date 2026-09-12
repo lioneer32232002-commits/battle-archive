@@ -16,37 +16,37 @@ const PALETTES = {
   dawn: {   // 6/12 05:50 日出後不久：低斜金光、薄晨霧貼地
     top: 0x5c7a9b, horizon: 0xd8b789, sun: 0xffdca4, sunInt: 2.30, amb: 0.92,
     ground: 0x4d6231, fog: 0xc6bb99, fogNear: 240, fogFar: 3000,
-    dir: [0.918, 0.300, -0.260], sunSize: 1.45, sunCol: 0xffcf86, haze: 1.0,
+    dir: [0.918, 0.300, -0.260], sunSize: 1.45, sunCol: 0xffcf86, haze: 1.0, env: 0.34, hdri: 'sunrise',
     hemiSky: 0xdbcdb2, hemiGnd: 0x60663e,
   },
   morning: { // 6/12 07:00–07:50：市鎮肅清，晨光轉白、影子仍長
     top: 0x5387bd, horizon: 0xc6d1c4, sun: 0xffefd2, sunInt: 2.10, amb: 1.00,
     ground: 0x566c36, fog: 0xbcc7b2, fogNear: 320, fogFar: 4200,
-    dir: [0.760, 0.560, -0.330], sunSize: 1.0, sunCol: 0xffe9bd, haze: 0.62,
+    dir: [0.760, 0.560, -0.330], sunSize: 1.0, sunCol: 0xffe9bd, haze: 0.62, env: 0.46, hdri: 'sunrise',
     hemiSky: 0xcdd4cd, hemiGnd: 0x606c3e,
   },
   twilight: { // 6/13 04:20 前的藍調微光：德軍在西南集結（不做全黑夜，避免死暗）
     top: 0x16233a, horizon: 0x3d4a5c, sun: 0x88a0c2, sunInt: 0.58, amb: 0.62,
     ground: 0x222c1f, fog: 0x1e2938, fogNear: 180, fogFar: 2200,
-    dir: [0.880, 0.040, -0.470], sunSize: 0.0, sunCol: 0x9fb0cc, haze: 1.0,
+    dir: [0.880, 0.040, -0.470], sunSize: 0.0, sunCol: 0x9fb0cc, haze: 1.0, env: 0.10, hdri: 'sunrise',
     hemiSky: 0x35425c, hemiGnd: 0x252d22,
   },
   daybreak: { // 6/13 06:00 拂曉反撲：低日再起、圩田水氣重
     top: 0x62819c, horizon: 0xd2bb92, sun: 0xffdfae, sunInt: 2.15, amb: 0.92,
     ground: 0x4a5f2e, fog: 0xc0b89c, fogNear: 230, fogFar: 2900,
-    dir: [0.898, 0.290, -0.332], sunSize: 1.4, sunCol: 0xffcf90, haze: 1.0,
+    dir: [0.898, 0.290, -0.332], sunSize: 1.4, sunCol: 0xffcf90, haze: 1.0, env: 0.34, hdri: 'sunrise',
     hemiSky: 0xd6c9ae, hemiGnd: 0x5c6440,
   },
   noon: {   // 6/13 正午：白亮、短硬影、煙塵多（血腥溝）
     top: 0x3b78bd, horizon: 0xc9d5d2, sun: 0xfff8ea, sunInt: 1.88, amb: 1.06,
     ground: 0x5e7539, fog: 0xbcc7bc, fogNear: 400, fogFar: 5400,
-    dir: [0.230, 0.945, 0.232], sunSize: 0.7, sunCol: 0xfff4dd, haze: 0.45,
+    dir: [0.230, 0.945, 0.232], sunSize: 0.7, sunCol: 0xfff4dd, haze: 0.45, env: 0.62, hdri: 'day',
     hemiSky: 0xc4d6e4, hemiGnd: 0x667340,
   },
   afternoon: { // 6/13 16:30 解圍後：西斜暖光、揚塵未散
     top: 0x4a80b4, horizon: 0xd5c7a6, sun: 0xffe8c4, sunInt: 2.00, amb: 1.00,
     ground: 0x596e35, fog: 0xc2bba4, fogNear: 360, fogFar: 4800,
-    dir: [-0.560, 0.640, 0.526], sunSize: 1.05, sunCol: 0xffd9a0, haze: 0.7,
+    dir: [-0.560, 0.640, 0.526], sunSize: 1.05, sunCol: 0xffd9a0, haze: 0.7, env: 0.46, hdri: 'day',
     hemiSky: 0xd8ccb0, hemiGnd: 0x64723e,
   },
 };
@@ -237,6 +237,43 @@ export function createEnvironment(scene, { shadows = false, mobile = false } = {
 
   const _dir = new THREE.Vector3();
 
+  // ── HDRI 環境光（docs/asset-pipeline-spec.md §3）─────────────────
+  // 桌機：spruit_sunrise 1k .hdr 過 PMREM 當 scene.environment（金屬、玻璃、濕地的反射與間接光）；
+  //   白晝那張用 tonemapped JPG（省 1.2 MB，PMREM 之後差別看不出來）。
+  // 手機：兩張都用 tonemapped JPG。
+  // 日相切換不逐幀混兩張 cubemap（太貴）：換圖 ＋ 以 scene.environmentIntensity 做淡入淡出。
+  const envMaps = { sunrise: null, day: null };
+  let envKey = null;
+  let envOn = false;
+  let envFade = 0;            // 0–1，換圖時先壓到 0 再拉回，避免硬切
+  let envTarget = 0;
+
+  function pickEnv(key) {
+    const tex = envMaps[key] ?? envMaps.sunrise ?? envMaps.day;
+    if (!tex || envKey === key) return;
+    scene.environment = tex;
+    envKey = key;
+  }
+
+  async function applyAssets(assets) {
+    try {
+      const sunrise = await assets.envMap('spruit_sunrise');
+      if (sunrise) {
+        envMaps.sunrise = sunrise;
+        envOn = true;
+        scene.environmentIntensity = 0;
+        pickEnv('sunrise');
+      }
+      // 白晝那張晚一步載，不擋首屏
+      const day = await assets.envMap('noon_grass', { forceTonemapped: true });
+      if (day) { envMaps.day = day; envOn = true; }
+      return envOn;
+    } catch (e) {
+      console.warn('[carentan] HDRI 環境光載入失敗，保留程序化天光', e);
+      return false;
+    }
+  }
+
   function update(dt, battleT) {
     for (const c of clouds.children) {
       c.position.x += c.userData.drift * dt;
@@ -256,7 +293,8 @@ export function createEnvironment(scene, { shadows = false, mobile = false } = {
     ground.material.color = lerpColor(pa.ground, pb.ground, f);
     sun.color = lerpColor(pa.sun, pb.sun, f);
     sun.intensity = lerpNum(pa.sunInt, pb.sunInt, f);
-    hemi.intensity = lerpNum(pa.amb, pb.amb, f);
+    // HDRI 上場後半球光要讓位（否則等於天光算兩次，中間調整片發灰）
+    hemi.intensity = lerpNum(pa.amb, pb.amb, f) * (envOn ? 0.72 : 1);
     hemi.color = lerpColor(pa.hemiSky, pb.hemiSky, f);
     hemi.groundColor = lerpColor(pa.hemiGnd, pb.hemiGnd, f);
     scene.fog.color = lerpColor(pa.fog, pb.fog, f);
@@ -293,9 +331,26 @@ export function createEnvironment(scene, { shadows = false, mobile = false } = {
     const mistW = (p) => (p === 'noon' ? 0.22 : p === 'morning' ? 0.5 : p === 'afternoon' ? 0.4 : 1);
     const mistPeak = lerpNum(mistW(a), mistW(b), f);
     for (const m of mist.children) m.material.opacity = m.userData.baseOp * mistPeak;
+
+    // HDRI：依日相換圖（f > 0.5 就算換到後一個相），強度以 envFade 淡入淡出
+    if (envOn) {
+      const wantKey = (f > 0.5 ? pb.hdri : pa.hdri) ?? 'sunrise';
+      envTarget = lerpNum(pa.env ?? 0.4, pb.env ?? 0.4, f);
+      if (dt <= 0) {                      // 拖曳／除錯跳轉（dt=0）直接對齊，不做淡入
+        if (envMaps[wantKey]) pickEnv(wantKey);
+        envFade = 1;
+      } else if (wantKey !== envKey && envMaps[wantKey]) {
+        // 先把強度壓下去再換圖：換的那一幀不會亮度跳動
+        envFade = Math.max(0, envFade - dt * 3);
+        if (envFade <= 0.02) pickEnv(wantKey);
+      } else {
+        envFade = Math.min(1, envFade + dt * 1.5);
+      }
+      scene.environmentIntensity = envTarget * envFade;
+    }
   }
 
-  return { update, sun };
+  return { update, sun, applyAssets, envActive: () => envOn };
 }
 
 function makeCloudTexture() {

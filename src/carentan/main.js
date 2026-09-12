@@ -9,7 +9,8 @@ import {
 import { unitStateAt, newEvents } from './engine/timeline.js';
 import { createEnvironment } from './scene/environment.js';
 import { createCarentanTerrain } from './scene/terrain.js';
-import { createUnit } from './scene/soldiers.js';
+import { createUnit, applyUnitModels } from './scene/soldiers.js';
+import { createAssetHub } from './scene/assets.js';
 import { Effects } from './scene/effects.js';
 import { makeLabel } from './scene/labels.js';
 import { Director } from './camera/director.js';
@@ -481,6 +482,56 @@ function fpsSample(dt) {
 
 hud.setTime(battleT);
 tick();
+
+// ── 真實資產（docs/asset-pipeline-spec.md §3）────────────────────
+// 首屏不等資產：上面 tick() 已經開始畫程序化版本、HUD 與時間軸照常運作，
+// 這裡在第一幀之後才開始載，分兩批：
+//   core  —— 地表 PBR、市鎮 glb、HDRI 環境光（畫面觀感的主體）
+//   extra —— 陣地道具、Poly Haven 植被、單位模型（晚一點到不影響閱讀）
+// 任何一項失敗都只是那一項留在程序化版本（見各 applyAssets 的 try/catch）。
+// ?noassets=1 → 完全不載真實資產，整場停在程序化版本（QA 用的 A／B 開關，也是最後一道 fallback）
+const ASSETS_OFF = new URLSearchParams(location.search).has('noassets');
+const assets = createAssetHub({ mobile: isMobile, renderer });
+function afterFirstFrame(fn) {
+  let fired = false;
+  const go = () => { if (!fired) { fired = true; fn(); } };
+  requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(go, 0)));
+  setTimeout(go, 300);   // 背景分頁不跑 rAF：最多等 300 ms 也要開始載
+}
+if (!ASSETS_OFF) afterFirstFrame(async () => {
+  const t0 = performance.now();
+  await Promise.allSettled([
+    terrain.applyAssets(assets, { stage: 'core' }),
+    environment.applyAssets(assets),
+  ]);
+  const coreStats = assets.stats();
+  await Promise.allSettled([
+    terrain.applyAssets(assets, { stage: 'extra' }),
+    (async () => {
+      let swapped = 0;
+      for (const [, o] of unitObjs) {
+        swapped += await applyUnitModels(o.group, assets);
+        // 單位材質可能被換成 Standard：先把舊材質的淡出還原掉（避免資產到位前
+        // 已經拖到某單位陣亡、材質停在半透明／褪色），再清掉快取讓下次淡出重抓。
+        restoreLook(o);
+        o.mats = null; o.faded = false;
+      }
+      return swapped;
+    })(),
+  ]);
+  const all = assets.stats();
+  if (import.meta.env && import.meta.env.DEV) window.__assets = {
+    hub: assets,
+    core: coreStats,
+    all,
+    terrain: terrain.assetState(),
+    env: environment.envActive(),
+    ms: Math.round(performance.now() - t0),
+  };
+  if (import.meta.env && import.meta.env.DEV) {
+    console.info(`[carentan] 資產就緒：核心 ${coreStats.mb} MB／全部 ${all.mb} MB（${all.files} 個檔案，${Math.round(performance.now() - t0)} ms）`);
+  }
+});
 
 // ── 開發用美術除錯掛勾(正式 build 會被 import.meta.env.DEV 移除) ──
 if (import.meta.env && import.meta.env.DEV) {

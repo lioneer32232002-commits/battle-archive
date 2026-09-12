@@ -13,8 +13,17 @@
 //     (bake(): 把各部件的世界矩陣壓進幾何、材質顏色寫成頂點色後 mergeGeometries)。
 //     模型外觀完全不變,但 draw call 從每人約 22 個降到 1 個 —— 這是本場 fps 的關鍵,
 //     陰影 pass 也跟著便宜非常多。小兵仍是獨立物件,M-3 行進微動作照常運作。
+//
+// ── 資產管線升級（docs/asset-pipeline-spec.md §3）─────────────────
+// 雪曼／StuG／MG 巢／士兵改用 Blender glb：載入後把 glb 「烘焙成單一頂點色幾何」
+// （bakeToVertexColors）再換掉原本那顆程序化 mesh 的 geometry。這樣做的三個理由：
+//   ① draw call 不變（每個單位仍是 1 個）；② 材質仍是「每單位一份」，
+//   destroyed 淡出改 color/opacity 不會波及其他單位；③ userData.troopers 與
+//   M-3 行進微動作完全不用改（trooper 物件本身沒有被替換，只換了幾何）。
+// glb 缺席（例如士兵還在建模）時什麼都不做 —— 程序化版本就是 fallback。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { bakeToVertexColors, fitScale } from './assets.js';
 
 const SIDE_COLOR = { red: 0xd9442e, blue: 0x2e7bd9 };
 const UNIFORM = { blue: 0x6f7049, red: 0x565a4e };   // 美軍橄欖綠 / 德軍灰綠
@@ -125,6 +134,9 @@ function makeWeapon(type, mat) {
   return g;
 }
 
+// 姿態 → Blender 士兵 glb 的檔名尾段（soldier.py 的 pose 名）
+const POSE_MODEL = { advance: 'advance_rifle', kneel: 'kneel_fire', stand: 'stand_rifle' };
+
 // ── 單兵(放大的程序化小人,分姿態) ─────────────────────
 function makeSoldier(side, pose, weapon, mat, phase = 0) {
   const s = new THREE.Group();
@@ -186,6 +198,11 @@ function makeSoldier(side, pose, weapon, mat, phase = 0) {
 
   s.scale.setScalar(1.15);
   s.userData.phase = phase;            // M-3：行進微動作相位
+  // glb 換件用：姿態 → Blender 士兵模型（建好之前 assets.model() 會回 null，什麼都不會發生）
+  s.userData.modelSlot = {
+    id: `soldier_${side === 'blue' ? 'us' : 'de'}_${POSE_MODEL[pose] ?? 'stand_rifle'}`,
+    fit: 3.25, axis: 'y', rotY: Math.PI,
+  };
   return bake(s, mat.merged);          // 烘焙成單一 mesh（外觀不變、draw call 從 ~22 降到 1）
 }
 
@@ -268,6 +285,7 @@ function makeMGNest(mat, troopers) {
   g.add(at(box(0.5, 0.42, 0.42, mat.dark), apex.x + 0.2, apex.y - 0.25, apex.z + 0.45)); // 彈箱
 
   const nest = bake(g, mat.merged);   // 沙包＋三腳架＋MG42 烘焙成單一 mesh
+  nest.userData.modelSlot = { id: 'mg_nest', fit: 6.6, axis: 'x', rotY: Math.PI / 2 };   // glb 換件用
 
   // 射手(跪姿,面朝 -x 西) — 另外一個 mesh，要能做行進微動作
   const gunner = makeSoldier('red', 'kneel', 'kar98', mat, 1.7);
@@ -311,7 +329,10 @@ function makeArmor(side, variant, mat) {
     g.add(at(cyl(0.7, 0.7, 0.45, 12, body), 0.5, 3.95, -0.8));             // 車長指揮塔
   }
   g.scale.setScalar(1.05);
-  return bake(g, mat.merged);
+  const baked = bake(g, mat.merged);
+  // glb 換件用：車身沿 +z 前進，Blender 模型正面是 −Z → 轉 180°；長度對齊程序化車身 6.8 單位
+  baked.userData.modelSlot = { id: variant === 'stug' ? 'stug' : 'sherman', fit: 6.8, axis: 'z', rotY: Math.PI };
+  return baked;
 }
 
 // ── 陣營光圈(地面識別環) ─────────────────────────────
@@ -406,4 +427,60 @@ export function createUnit(spec, { shadows = false } = {}) {
 
   g.userData.troopers = troopers;   // M-3：主迴圈直接走訪做行進微動作
   return g;
+}
+
+// ══════════════════════════════════════════════════════════════
+// glb 換件（docs/asset-pipeline-spec.md §3）
+// 走訪單位底下所有帶 userData.modelSlot 的 mesh，把 Blender glb 烘焙成頂點色幾何後
+// 換掉 geometry；缺模型（還在建模／載入失敗）就原樣不動，程序化版本即 fallback。
+// 幾何依 slot 快取：同姿態的士兵、同型號的車輛共用一份幾何（§3「同姿態共用幾何」）。
+// ══════════════════════════════════════════════════════════════
+const GEO_CACHE = new Map();
+
+function bakedGeometry(assets, slot) {
+  const key = `${slot.id}|${slot.fit}|${slot.axis}|${slot.rotY}`;
+  if (GEO_CACHE.has(key)) return GEO_CACHE.get(key);
+  const p = (async () => {
+    const src = await assets.model(slot.id);
+    if (!src) return null;
+    const s = fitScale(src, slot.fit, slot.axis);
+    const mx = new THREE.Matrix4().makeRotationY(slot.rotY).multiply(new THREE.Matrix4().makeScale(s, s, s));
+    return bakeToVertexColors(src, { matrix: mx });
+  })().catch((e) => {
+    console.warn('[carentan] 單位模型載入失敗，保留程序化版本：', slot.id, e?.message ?? e);
+    return null;
+  });
+  GEO_CACHE.set(key, p);
+  return p;
+}
+
+export async function applyUnitModels(group, assets, { toStandard = true } = {}) {
+  const slots = [];
+  group.traverse((o) => { if (o.isMesh && o.userData?.modelSlot) slots.push(o); });
+  if (!slots.length) return 0;
+  let swapped = 0;
+  for (const mesh of slots) {
+    const geo = await bakedGeometry(assets, mesh.userData.modelSlot);
+    if (!geo) continue;
+    const old = mesh.geometry;
+    mesh.geometry = geo;           // 幾何共用：只 dispose 被換掉的那份程序化幾何
+    old.dispose();
+    mesh.userData.modelApplied = mesh.userData.modelSlot.id;
+    swapped++;
+  }
+  if (swapped && toStandard) {
+    // 換上 glb 之後材質升級成 Standard（§3：roughness 下限 0.35、吃得到 HDRI 環境光）。
+    // 仍舊「每單位一份」：用 Map 對映舊材質 → 新材質，同單位共用同一顆。
+    const remap = new Map();
+    group.traverse((o) => {
+      if (!o.isMesh || !o.material || !o.material.vertexColors || !o.material.isMeshLambertMaterial) return;
+      let m = remap.get(o.material.uuid);
+      if (!m) {
+        m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, metalness: 0.12 });
+        remap.set(o.material.uuid, m);
+      }
+      o.material = m;
+    });
+  }
+  return swapped;
 }

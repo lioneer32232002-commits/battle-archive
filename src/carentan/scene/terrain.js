@@ -15,8 +15,21 @@
 //     樹籬＝連續土堤（合併幾何）＋沿線灌木 InstancedMesh ＋頂端零星高樹；桌機再撒草叢交叉 quad。
 // L-3 建築：牆面／屋頂 canvas 貼圖（石砌／灰泥＋窗格百葉、瓦片橫線），煙囪、戰損缺角焦黑、
 //     教堂尖塔十字；靜態建築依材質 mergeGeometries（整個市鎮約 10 個 draw call）。
+//
+// ── 資產管線升級（docs/asset-pipeline-spec.md §3）─────────────────
+// A-1 地表：三層程序化 canvas 貼圖「保留為 macro 層」（田塊、道路、彈坑、車轍的格局），
+//     底下換 MeshStandardMaterial ＋ Poly Haven 細節 PBR（牧草 aerial_grass_rock、
+//     街道 cobblestone_floor_04、堤道 gravelly_sand、濕地 brown_mud_leaves_01），
+//     高 repeat ＋ normal ＋ arm，以 onBeforeCompile 在 map_fragment 之後相乘
+//     （細節先除以自己的平均亮度 → 只貢獻紋理起伏，不動 macro 定好的色調）。
+// A-2 建築：市鎮房舍／教堂改 Blender glb（含戰損變體），牆面套 painted_plaster_wall／
+//     rustic_stone_wall_02、屋頂套 roof_slates_03／ceramic_roof_01；glb 的 UV 以公尺平鋪，
+//     repeat = 1 / 貼圖涵蓋公尺數。仍以材質分組 mergeGeometries（整個市鎮 ~10 個 draw call）。
+// A-3 植被：樹與樹籬灌木改 Poly Haven glb 的 InstancedMesh（葉片 alphaTest，桌機投影）。
+// 以上全部是「載入完成後才 swap」，程序化版本原封不動留著當 fallback（手機、載入失敗）。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { fitScale, collectByMaterial, bakeToVertexColors } from './assets.js';
 
 // ── 可重現偽隨機（佈局固定，重整畫面不會變） ───────────────────
 function mulberry(seed) {
@@ -731,13 +744,136 @@ function makeBushGeometry(seed) {
 }
 
 // ══════════════════════════════════════════════════════════════════
+// A-1 地表 PBR 工具
+// ══════════════════════════════════════════════════════════════════
+
+// 量一張細節貼圖的平均亮度（線性空間）。細節層在 shader 裡要除以自己的均值，
+// 否則「macro × detail」兩張都是中間調的圖相乘 → 整片地面發黑。
+export function textureMeanLuminance(tex, fallback = 0.18) {
+  try {
+    const img = tex?.image;
+    if (!img) return fallback;
+    const c = document.createElement('canvas');
+    c.width = c.height = 8;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0, 8, 8);
+    const d = g.getImageData(0, 0, 8, 8).data;
+    const toLinear = (v) => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+    let sum = 0;
+    for (let i = 0; i < 64; i++) {
+      sum += 0.2126 * toLinear(d[i * 4] / 255) + 0.7152 * toLinear(d[i * 4 + 1] / 255) + 0.0722 * toLinear(d[i * 4 + 2] / 255);
+    }
+    return Math.min(0.9, Math.max(0.02, sum / 64));
+  } catch { return fallback; }
+}
+
+// 地表材質：Poly Haven 細節 PBR（map/normal/arm，高 repeat）×（程序化 macro canvas）。
+// macro 用原始 uv（0–1 對映整張平面，與世界座標一比一），細節用 repeat 後的 uv。
+// opts.mask：可選的第二張細節貼圖與遮罩（本場用於北面沼澤的濕地泥）。
+function makeGroundMaterial(pbr, macroMap, {
+  transparent = false, depthWrite = true, detail2 = null, mask = null, aoIntensity = 0.7,
+} = {}) {
+  const mean = textureMeanLuminance(pbr.map);
+  const mat = new THREE.MeshStandardMaterial({
+    ...pbr,
+    roughness: 1.0,
+    metalness: 0.0,
+    aoMapIntensity: aoIntensity,
+    transparent,
+    depthWrite,
+    polygonOffset: true,
+  });
+  if (mat.aoMap) mat.aoMap.channel = 0;   // 地面只有一組 uv，aoMap 直接吃 uv0
+  const mean2 = detail2 ? textureMeanLuminance(detail2) : 1;
+  mat.userData.uniforms = {
+    uMacro: { value: macroMap },
+    uInvMean: { value: 1 / mean },
+    uDetail2: { value: detail2 },
+    uInvMean2: { value: 1 / mean2 },
+    uMask: { value: mask ? new THREE.Vector4(mask.a, mask.b, mask.center, mask.size) : new THREE.Vector4(0, 0, 0, 1) },
+  };
+  const hasMask = !!(detail2 && mask);
+  mat.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, mat.userData.uniforms);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vMacroUv;')
+      .replace('#include <uv_vertex>', '#include <uv_vertex>\n\tvMacroUv = uv;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+         uniform sampler2D uMacro; uniform float uInvMean;
+         ${hasMask ? 'uniform sampler2D uDetail2; uniform float uInvMean2; uniform vec4 uMask;' : ''}
+         varying vec2 vMacroUv;`
+      )
+      .replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+         // 反平鋪：同一張細節貼圖再取一次低頻樣本（非整數倍縮放＋偏移）平均，
+         // 破掉「每 11 單位一格」的可見週期（aerial_grass_rock 有明顯的大尺度特徵）。
+         vec3 detailLow = texture2D(map, vMapUv * 0.271 + vec2(0.37, 0.61)).rgb;
+         diffuseColor.rgb = mix(diffuseColor.rgb, detailLow, 0.42);
+         vec3 detailRgb = diffuseColor.rgb * uInvMean;
+         ${hasMask ? `
+         // 世界 z 由 macro uv 反推（平面以 -90° 繞 X 轉：uv.y 大 → z 小）
+         float worldZ = uMask.z - (vMacroUv.y - 0.5) * uMask.w;
+         // uMask.y（濕）< uMask.x（乾）；GLSL smoothstep 要求 edge0 < edge1，故取補值
+         float wet = 1.0 - smoothstep(uMask.y, uMask.x, worldZ);
+         vec3 d2 = texture2D(uDetail2, vMapUv).rgb * uInvMean2;
+         detailRgb = mix(detailRgb, d2, wet);` : ''}
+         vec4 macroTexel = texture2D(uMacro, vMacroUv);
+         diffuseColor.rgb = macroTexel.rgb * detailRgb;
+         ${transparent ? 'diffuseColor.a *= macroTexel.a;' : ''}`
+      );
+  };
+  mat.customProgramCacheKey = () => `carentan-ground|${hasMask ? 1 : 0}|${transparent ? 1 : 0}`;
+  return mat;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// A-2 市鎮建築配置（程序化與 glb 共用同一份佈局 → 兩者位置必然一致）
+// wall/roof：程序化立面／屋頂種類；model：Blender glb 基底名（damage 時自動加 _damaged）
+// rot：模型正面（glb 的 −Z）要朝的方向已折算進來；程序化房舍是對稱盒子，同一個角度通用。
+// ══════════════════════════════════════════════════════════════════
+const TOWN_HOUSES = [
+  // 主街東排（正面朝西、對著街）
+  { x: 14, z: -2, rot: Math.PI / 2, w: 12, d: 9, h: 6, wall: 'cream', roof: 'tile', model: 'house_normandy_l' },
+  { x: 16, z: -16, rot: Math.PI / 2, w: 14, d: 9, h: 6.5, wall: 'ochre', roof: 'slate', model: 'house_normandy_l' },
+  { x: 15, z: -30, rot: Math.PI / 2, w: 12, d: 8, h: 6, wall: 'charred', roof: 'tile', damage: 1, model: 'house_normandy_l' },
+  // 主街西排（正面朝東）
+  { x: -14, z: -6, rot: -Math.PI / 2, w: 12, d: 9, h: 6, wall: 'ochre', roof: 'slate', model: 'house_normandy_l' },
+  { x: -15, z: -20, rot: -Math.PI / 2, w: 13, d: 9, h: 6.5, wall: 'cream', roof: 'tile', model: 'house_normandy_l' },
+  { x: -14, z: -34, rot: -Math.PI / 2, w: 11, d: 8, h: 5.5, wall: 'ochre', roof: 'slate', model: 'house_normandy_s' },
+  // 鎮外圍
+  { x: 30, z: -12, rot: Math.PI / 2, w: 11, d: 8, h: 5.5, wall: 'cream', roof: 'tile', model: 'house_normandy_s' },
+  { x: 28, z: -34, rot: Math.PI / 2, w: 12, d: 9, h: 6, wall: 'stone', roof: 'slate', model: 'house_normandy_s' },
+  { x: -30, z: -44, rot: Math.PI + 0.2, w: 13, d: 9, h: 6, wall: 'ochre', roof: 'tile', model: 'barn' },
+  { x: 20, z: 14, rot: Math.PI * 0.62, w: 10, d: 8, h: 5.5, wall: 'charred', roof: 'slate', damage: 1, model: 'house_normandy_s' },
+  { x: -26, z: 12, rot: Math.PI, w: 11, d: 8, h: 5.5, wall: 'cream', roof: 'tile', model: 'house_normandy_s' },
+  // Café du Stade — Y 形路口街頭、藏 MG42 的二層街屋（正面朝南街）
+  { x: 8, z: 9, rot: Math.PI, w: 12, d: 10, h: 8.5, wall: 'cream', roof: 'tile', model: 'house_normandy_l', cafe: true },
+];
+
+// 教堂：glb 的鐘塔在 −X 端，本場希望鐘塔朝北（−z）→ 模型 +X 對到世界 +Z → rot = −π/2
+const TOWN_CHURCH = { x: -22, z: -30, rot: -Math.PI / 2, model: 'church', height: 29 };
+
+// glb 牆面／屋頂的 Poly Haven 貼圖對應（材質名 → {id, 貼圖涵蓋公尺數}）
+const BUILDING_TEX = {
+  stone: { id: 'painted_plaster_wall', meters: 2.4 },
+  stone_dark: { id: 'rustic_stone_wall_02', meters: 2.0 },
+  roof_tile: { id: 'ceramic_roof_01', meters: 1.6 },
+  roof_slate: { id: 'roof_slates_03', meters: 1.6 },
+};
+
+// ══════════════════════════════════════════════════════════════════
 export function createCarentanTerrain(scene, { shadows = false, mobile = false } = {}) {
   const g = new THREE.Group();
   const rng = mulberry(777);
   const TEX = mobile ? 1024 : 2048;
   const SUB = mobile ? 512 : 1024;
 
-  // ── L-1：三層程序化地表 ───────────────────────────────────
+  // ── L-1：三層程序化地表（資產到位後改當 macro 層，見 applyAssets）──
+  const REGION = { cx: -40, cz: -40, size: 1400 };
   const regionTex = makeGroundTexture(TEX, -40, -40, 1400);
   const regionMat = new THREE.MeshLambertMaterial({
     map: regionTex, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2,
@@ -773,6 +909,13 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
   if (shadows) townPlane.receiveShadow = true;
   g.add(townPlane);
 
+  // 地表三層的 macro 貼圖與尺寸（applyAssets 用）
+  const groundLayers = [
+    { mesh: region, macro: regionTex, size: REGION.size, cz: REGION.cz, detail: 'aerial_grass_rock', tile: 11, transparent: false, poly: [2, 2] },
+    { mesh: gulch, macro: gulchTex, size: 400, cz: 70, detail: 'aerial_grass_rock', tile: 7, transparent: true, poly: [1, 1] },
+    { mesh: townPlane, macro: town.tex, size: town.size, cz: town.cz, detail: 'cobblestone_floor_04', tile: 5, transparent: true, poly: [0, 0] },
+  ];
+
   // ── 材質（3D 幾何用） ─────────────────────────────────────
   const bankMat = new THREE.MeshLambertMaterial({ color: 0x6a5a3c });    // 樹籬／路堤土堤
   const waterMat = new THREE.MeshLambertMaterial({ color: 0x4a5f52, transparent: true, opacity: 0.55, depthWrite: false });
@@ -807,7 +950,14 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
 
   // ── N13 堤道（紫心巷，502 團的）：堤體、橋墩、護欄 ──────────
   addBox(6, 2.2, 150, 0x6a5a3c, 26, 1.1, -150);                    // 堤體
-  addBox(5, 0.3, 150, 0x8d8158, 26, 2.3, -150);                    // 堤頂路面
+  // 堤頂路面獨立成一個 mesh（applyAssets 會換成 gravelly_sand 的 PBR 路面）
+  const causewayRoad = new THREE.Mesh(
+    new THREE.BoxGeometry(5, 0.3, 150),
+    new THREE.MeshLambertMaterial({ color: 0x8d8158 })
+  );
+  causewayRoad.position.set(26, 2.3, -150);
+  if (shadows) { causewayRoad.castShadow = true; causewayRoad.receiveShadow = true; }
+  g.add(causewayRoad);
   for (let i = 0; i < 4; i++) addBox(7, 1.0, 7, 0xa89c82, 26, 1.0, -90 - i * 34);   // 四座石橋墩
   for (let i = 0; i < 9; i++) addBox(0.5, 2.6, 0.5, 0x5a4127, 23.4, 1.3, -78 - i * 17); // 護欄柱（西側）
 
@@ -880,6 +1030,7 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
 
   const treeGeos = [makeTreeGeometry('tall', 401), makeTreeGeometry('round', 402)];
   const foliageMat = vcFlat();
+  const procVegetation = [];   // 程序化植被（glb 到位後整組隱藏，但不 dispose：仍是 fallback）
   for (let v = 0; v < 2; v++) {
     if (!treePlacements[v].length) continue;
     const im = new THREE.InstancedMesh(treeGeos[v], foliageMat, treePlacements[v].length);
@@ -887,6 +1038,7 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
     im.instanceMatrix.needsUpdate = true;
     if (shadows) { im.castShadow = true; im.receiveShadow = true; }
     g.add(im);
+    procVegetation.push(im);
   }
   {
     const bushIM = new THREE.InstancedMesh(makeBushGeometry(403), foliageMat, bushPlacements.length);
@@ -894,6 +1046,7 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
     bushIM.instanceMatrix.needsUpdate = true;
     if (shadows) { bushIM.castShadow = true; bushIM.receiveShadow = true; }
     g.add(bushIM);
+    procVegetation.push(bushIM);
   }
 
   // ── 草叢（桌機限定）：戰鬥核心區的交叉雙面 quad，隨風輕搖 ────────
@@ -902,8 +1055,10 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
   if (!mobile) {
     const quad = [];
     for (const ry of [0, Math.PI / 2]) {
-      const p = new THREE.PlaneGeometry(2.6, 2.4);
-      p.translate(0, 1.2, 0);
+      // 草叢尺寸：原本 2.6×2.4 單位在真實資產進場後顯得像蘆葦（比樹高的 1/4），
+      // 縮成 1.3×1.2（約 1.5 公尺）才跟 Poly Haven 的樹與灌木對得上尺度。
+      const p = new THREE.PlaneGeometry(1.3, 1.2);
+      p.translate(0, 0.6, 0);
       p.rotateY(ry);
       quad.push(ni(p));
     }
@@ -918,7 +1073,7 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
         .replace(
           '#include <begin_vertex>',
           `#include <begin_vertex>
-           float sway = max(transformed.y - 0.2, 0.0) * 0.20;
+           float sway = max(transformed.y - 0.1, 0.0) * 0.22;
            transformed.x += sin(uWind * 1.7 + instanceMatrix[3][0] * 0.4) * sway;
            transformed.z += cos(uWind * 1.3 + instanceMatrix[3][2] * 0.35) * sway * 0.6;`
         );
@@ -1018,24 +1173,16 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
     }
   }
 
-  // 主街沿 z 軸（南緣路口 → 鎮中心 → 北）；房舍夾街分佈
-  // 街東排屋
-  house(14, -2, -Math.PI / 2, 12, 9, 6, 'cream', 'tile');
-  house(16, -16, -Math.PI / 2, 14, 9, 6.5, 'ochre', 'slate');
-  house(15, -30, -Math.PI / 2, 12, 8, 6, 'charred', 'tile', { damage: 1 });   // 戰損：屋頂缺角、牆面焦黑
-  // 街西排屋
-  house(-14, -6, Math.PI / 2, 12, 9, 6, 'ochre', 'slate');
-  house(-15, -20, Math.PI / 2, 13, 9, 6.5, 'cream', 'tile');
-  house(-14, -34, Math.PI / 2, 11, 8, 5.5, 'ochre', 'slate');
-  // 鎮外圍再補幾棟，讓市鎮不是一條街
-  house(30, -12, -Math.PI / 2, 11, 8, 5.5, 'cream', 'tile');
-  house(28, -34, -Math.PI / 2, 12, 9, 6, 'stone', 'slate');
-  house(-30, -44, 0.2, 13, 9, 6, 'ochre', 'tile');
-  house(20, 14, Math.PI, 10, 8, 5.5, 'charred', 'slate', { damage: 1 });      // 路口東側被打爛的屋
-  house(-26, 12, Math.PI, 11, 8, 5.5, 'cream', 'tile');
-  // Café du Stade — Y 形路口街頭、藏 MG42 的二層街屋（醒目、偏高）
-  house(8, 9, Math.PI, 12, 10, 8.5, 'cream', 'tile');
-  addBox(2.0, 1.4, 0.3, 0x1d1f1c, 6.8, 6.2, 3.6);   // 二樓窗口（MG 射孔，朝南街）
+  // 主街沿 z 軸（南緣路口 → 鎮中心 → 北）；房舍夾街分佈（佈局見 TOWN_HOUSES）
+  for (const hp of TOWN_HOUSES) {
+    house(hp.x, hp.z, hp.rot, hp.w, hp.d, hp.h, hp.wall, hp.roof, { damage: hp.damage ?? 0 });
+  }
+  // Café du Stade 二樓窗口（MG 射孔，朝南街）— 屬於建築群，glb 版市鎮上場時一併隱藏
+  {
+    const port = new THREE.BoxGeometry(2.0, 1.4, 0.3);
+    port.translate(6.8, 6.2, 3.6);
+    trimParts.push(paint(port, 0x1d1f1c));
+  }
 
   // 教堂（諾曼第小鎮地標：石堂 + 鐘塔 + 尖頂 + 十字）
   house(-22, -26, 0, 14, 22, 9, 'stone', 'slate', { chimney: false });
@@ -1094,10 +1241,17 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
   }
   if (gableParts.length) townMeshes.push(new THREE.Mesh(mergeGeometries(gableParts, false), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })));
   if (trimParts.length) townMeshes.push(new THREE.Mesh(mergeGeometries(trimParts, false), vcMat()));
-  if (boxes.length) townMeshes.push(new THREE.Mesh(mergeGeometries(boxes, false), vcMat()));
+  // townProc：只裝「房舍／教堂」，glb 市鎮上場時整組隱藏（土堤、鐵道、堤道、矮牆不在裡面）
+  const townProc = new THREE.Group();
   for (const m of townMeshes) {
     if (shadows) { m.castShadow = true; m.receiveShadow = true; }
-    g.add(m);
+    townProc.add(m);
+  }
+  g.add(townProc);
+  if (boxes.length) {
+    const misc = new THREE.Mesh(mergeGeometries(boxes, false), vcMat());
+    if (shadows) { misc.castShadow = true; misc.receiveShadow = true; }
+    g.add(misc);
   }
 
   // ── 30 高地（鎮西南的低緩隆起；置於德軍進攻走廊「之外」的西側） ──
@@ -1121,12 +1275,299 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
     { name: '30 高地', side: 'red', pos: { x: -205, y: 9, z: 80 } },
   ];
 
+  // ══════════════════════════════════════════════════════════
+  // 資產升級（§3）：地表 PBR → HDRI 由 environment.js 管 → 建築 glb → 植被 glb
+  // 每一塊各自 try/catch：任一項失敗都只是那一塊留在程序化版本。
+  // ══════════════════════════════════════════════════════════
+  const glbGroup = new THREE.Group();
+  g.add(glbGroup);
+  const glbVegetation = [];      // {im, total}
+  let assetsApplied = { ground: false, buildings: false, vegetation: false, props: false };
+
+  // A-1 地表：三層 macro ＋ Poly Haven 細節 PBR、堤道路面 gravelly_sand
+  async function applyGround(assets) {
+    for (const L of groundLayers) {
+      const rep = L.size / L.tile;
+      const pbr = await assets.pbr(L.detail, { repeat: [rep, rep], normalScale: 0.75, aoIntensity: 0.6 });
+      if (!pbr) continue;
+      let detail2 = null, mask = null;
+      if (L.mesh === region) {
+        // 北面杜沃氾濫沼澤：草地細節換成濕地泥（brown_mud_leaves_01），以世界 z 平滑過渡
+        const mud = await assets.texture('brown_mud_leaves_01', 'diff');
+        if (mud) {
+          detail2 = mud.clone();
+          detail2.needsUpdate = true;
+          detail2.wrapS = detail2.wrapT = THREE.RepeatWrapping;
+          detail2.repeat.set(rep, rep);
+          mask = { a: -40, b: -130, center: L.cz, size: L.size };
+        }
+      }
+      const mat = makeGroundMaterial(pbr, L.macro, {
+        transparent: L.transparent, depthWrite: !L.transparent, detail2, mask,
+      });
+      mat.polygonOffsetFactor = L.poly[0];
+      mat.polygonOffsetUnits = L.poly[1];
+      const old = L.mesh.material;
+      L.mesh.material = mat;
+      old.dispose();
+    }
+    // N13 堤道頂的碎石路面
+    const road = await assets.pbr('gravelly_sand', { repeat: [5 / 6, 150 / 6], normalScale: 0.9, aoIntensity: 0.8 });
+    if (road) {
+      const old = causewayRoad.material;
+      const mat = new THREE.MeshStandardMaterial({ ...road, roughness: 1.0, metalness: 0.0 });
+      if (mat.aoMap) mat.aoMap.channel = 0;
+      causewayRoad.material = mat;
+      old.dispose();
+    }
+    assetsApplied.ground = true;
+  }
+
+  // A-2 市鎮建築：Blender glb ＋ Poly Haven 牆面／屋頂 PBR，依材質分組合併
+  const WALL_TINT = { cream: 0xd9cdab, ochre: 0xc2aa80, stone: 0xb0a692, charred: 0x7c7466 };
+  const ROOF_TINT = { tile: 0xc08a66, slate: 0xa8adb5 };
+  const modelIdFor = (hp) => (hp.damage ? `${hp.model}_damaged` : hp.model);
+  // 牆面的四種色調改「烘進頂點色」：cream／ochre／stone／charred 四棟不同色的街屋
+  // 因此可以共用同一顆材質合併成一個 draw call（材質 color 保持白、vertexColors = true）。
+  const _tint = new THREE.Color();
+  function tintGeometry(geo, hex) {
+    _tint.setHex(hex);
+    const n = geo.attributes.position.count;
+    const arr = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { arr[i * 3] = _tint.r; arr[i * 3 + 1] = _tint.g; arr[i * 3 + 2] = _tint.b; }
+    geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+    return geo;
+  }
+
+  async function applyBuildings(assets) {
+    const ids = new Set(TOWN_HOUSES.map(modelIdFor));
+    ids.add(TOWN_CHURCH.model);
+    const loaded = await assets.models([...ids]);
+    if (!Object.keys(loaded).length) return;
+
+    // 牆面／屋頂 PBR（glb 的 uv 以公尺平鋪 → repeat = 1 / 貼圖涵蓋公尺數）
+    const texes = {};
+    for (const [name, spec] of Object.entries(BUILDING_TEX)) {
+      const r = 1 / spec.meters;
+      texes[name] = await assets.pbr(spec.id, { repeat: [r, r], normalScale: 0.9, aoIntensity: 0.85 });
+    }
+    const matCache = new Map();
+    function pbrMaterial(texKey, tint, vertexColors = false) {
+      const key = `${texKey}|${tint}|${vertexColors ? 'vc' : ''}`;
+      if (matCache.has(key)) return matCache.get(key);
+      const p = texes[texKey];
+      const m = new THREE.MeshStandardMaterial({
+        ...(p ?? {}), color: new THREE.Color(tint), roughness: 0.92, metalness: 0.0, vertexColors,
+      });
+      if (m.aoMap) m.aoMap.channel = 0;
+      matCache.set(key, m);
+      return m;
+    }
+
+    const boxCache = new Map();
+    const sizeOf = (id, src) => {
+      if (!boxCache.has(id)) boxCache.set(id, new THREE.Box3().setFromObject(src).getSize(new THREE.Vector3()));
+      return boxCache.get(id);
+    };
+
+    // 分桶：key = glb 材質名 ＋ 牆面／屋頂種類（保住程序化版本的四色街景）
+    const buckets = new Map();
+    const push = (key, geos, material) => {
+      if (!buckets.has(key)) buckets.set(key, { geos: [], material });
+      buckets.get(key).geos.push(...geos);
+    };
+
+    const place = (src, id, { x, z, rot, scale }) => {
+      const mx = new THREE.Matrix4()
+        .makeRotationY(rot)
+        .setPosition(x, 0, z)
+        .multiply(new THREE.Matrix4().makeScale(scale, scale, scale));
+      return collectByMaterial(src, { matrix: mx });
+    };
+
+    let placed = 0;
+    for (const hp of TOWN_HOUSES) {
+      const id = modelIdFor(hp);
+      const src = loaded[id];
+      if (!src) continue;
+      const size = sizeOf(id, src);
+      // 與現有程序化房舍的 bbox 對齊：寬度與「屋脊高」取幾何平均，避免過扁或過瘦
+      const scale = Math.sqrt((hp.w / Math.max(size.x, 0.01)) * ((hp.h * 1.5) / Math.max(size.y, 0.01)));
+      const groups = place(src, id, { x: hp.x, z: hp.z, rot: hp.rot, scale });
+      for (const [name, item] of groups) {
+        // cream／ochre 走灰泥，stone／charred 走粗石砌 —— 保住程序化版本的四種街屋質感；
+        // 顏色烘進頂點色，四色共用兩顆材質（灰泥一顆、石砌一顆）
+        if (name === 'stone') {
+          const stony = hp.wall === 'stone' || hp.wall === 'charred';
+          const tex = stony ? 'stone_dark' : 'stone';
+          for (const g of item.geos) tintGeometry(g, WALL_TINT[hp.wall] ?? 0xffffff);
+          push(`wall|${tex}`, item.geos, pbrMaterial(tex, 0xffffff, true));
+        }
+        else if (name === 'stone_dark') push('stone_dark', item.geos, pbrMaterial('stone_dark', 0xb6ac97));
+        else if (name === 'roof_tile' || name === 'roof_slate') {
+          const kind = hp.roof === 'slate' ? 'roof_slate' : 'roof_tile';
+          push(`roof|${hp.roof}`, item.geos, pbrMaterial(kind, ROOF_TINT[hp.roof] ?? 0xffffff));
+        } else push(name, item.geos, item.material);
+      }
+      placed++;
+    }
+
+    // 教堂
+    const church = loaded[TOWN_CHURCH.model];
+    if (church) {
+      const size = sizeOf(TOWN_CHURCH.model, church);
+      const scale = TOWN_CHURCH.height / Math.max(size.y, 0.01);
+      const groups = place(church, TOWN_CHURCH.model, { x: TOWN_CHURCH.x, z: TOWN_CHURCH.z, rot: TOWN_CHURCH.rot, scale });
+      for (const [name, item] of groups) {
+        if (name === 'stone') {
+          for (const g of item.geos) tintGeometry(g, 0xb9b1a0);
+          push('wall|stone_dark', item.geos, pbrMaterial('stone_dark', 0xffffff, true));
+        }
+        else if (name === 'stone_dark') push('stone_dark', item.geos, pbrMaterial('stone_dark', 0xa79d88));
+        else if (name === 'roof_slate' || name === 'roof_tile') push('roof|slate', item.geos, pbrMaterial('roof_slate', ROOF_TINT.slate));
+        else push(name, item.geos, item.material);
+      }
+      placed++;
+    }
+    if (!placed) return;
+
+    for (const [, b] of buckets) {
+      if (!b.geos.length) continue;
+      const mesh = new THREE.Mesh(mergeGeometries(b.geos, false), b.material);
+      if (shadows) { mesh.castShadow = true; mesh.receiveShadow = true; }
+      glbGroup.add(mesh);
+    }
+    townProc.visible = false;   // 程序化市鎮退居 fallback（不 dispose）
+    assetsApplied.buildings = true;
+    return placed;
+  }
+
+  // A-3 植被：Poly Haven 樹與灌木的 InstancedMesh（沿用同一批 instance matrix）
+  async function applyVegetation(assets) {
+    if (mobile) return;   // 手機維持程序化樹（省 700 KB 與三角形）
+    // 樹種：island_tree_01（高，枝幹開展）＋ island_tree_02（圓，較密），灌木也用 02 縮小。
+    // tree_small_02 實測是細瘦的小樹苗，放大到 8 單位像一根竹竿，不用（也省 304 KB）。
+    // Poly Haven 的 shrub_01／shrub_04 實測是「又寬又扁的地被」（2.59 × 0.40 × 0.22 公尺），
+    // 放到 bocage 土堤上是一張趴著的葉片墊，撐不起樹籬剪影，故不用。
+    const [tall, round, shrub] = await Promise.all([
+      assets.model('island_tree_01'), assets.model('island_tree_02'), assets.model('island_tree_02'),
+    ]);
+    const add = (src, placements, target, axis, { cast = true, receive = true, leavesOnly = false } = {}) => {
+      if (!src || !placements.length) return false;
+      const s = fitScale(src, target, axis);
+      const mx = new THREE.Matrix4().makeScale(s, s, s);
+      const groups = collectByMaterial(src, { matrix: mx });
+      for (const [name, item] of groups) {
+        // 樹籬灌木只留葉片：4 單位高的灌木看不見樹幹，省兩個 draw call 與約 10% 三角形
+        if (leavesOnly && !/leaves/i.test(name)) continue;
+        const geo = item.geos.length === 1 ? item.geos[0] : mergeGeometries(item.geos, false);
+        if (!geo) continue;
+        // 葉片微微提亮（諾曼第六月的樹是飽滿的夏綠；Poly Haven 的葉片貼圖偏暗，
+        // 在本場 ACES ＋ 低斜晨光下會整棵看起來像枯樹）
+        const mat = item.material;
+        if (mat && /leaves/i.test(mat.name ?? '') && !mat.userData.carentanTint) {
+          mat.color.setHex(0xc9d8a6);
+          mat.userData.carentanTint = true;
+        }
+        const im = new THREE.InstancedMesh(geo, item.material, placements.length);
+        for (let i = 0; i < placements.length; i++) im.setMatrixAt(i, placements[i]);
+        im.instanceMatrix.needsUpdate = true;
+        if (shadows) { im.castShadow = cast; im.receiveShadow = receive; }
+        glbGroup.add(im);
+        glbVegetation.push({ im, total: placements.length });
+      }
+      return true;
+    };
+    let any = false;
+    // 尺度：闊葉樹 9.5 單位（約 7 公尺）。拉到 11 以上葉片會被拉稀，看起來像枯樹。
+    any = add(tall, treePlacements[0], 9.5, 'y') || any;
+    any = add(round, treePlacements[1], 7, 'y') || any;
+    // 樹籬灌木：每株近 1 萬三角形，沿線取 1/3 的位置（土堤本體已經撐住連續剪影）。
+    // 全場 glb 植被約 110 萬三角形；再多就算 InstancedMesh 也會在陰影 pass 上吃掉 fps。
+    const shrubSpots = bushPlacements.filter((_, i) => i % 3 === 0);
+    any = add(shrub, shrubSpots, 4.2, 'y', { cast: false, leavesOnly: true }) || any;
+    if (any) {
+      for (const im of procVegetation) im.visible = false;
+      assetsApplied.vegetation = true;
+    }
+  }
+
+  // A-4 陣地道具（Blender glb）：沙包、鹿砦、路標、木柵 — 全部烘焙成單一頂點色 mesh（1 draw call）
+  const PROPS = [
+    // Y 形路口的 MG42 陣地與街壘
+    { id: 'sandbag_wall', x: 6.5, z: 6.5, rot: 0.2, s: 1.9 },
+    { id: 'sandbag_wall', x: 10.5, z: 4.0, rot: 1.3, s: 1.9 },
+    { id: 'hedgehog', x: 1.5, z: 17, rot: 0.4, s: 2.0 },
+    { id: 'hedgehog', x: -3.5, z: 16, rot: -0.6, s: 2.0 },
+    { id: 'hedgehog', x: 5.0, z: 18, rot: 1.1, s: 2.0 },
+    { id: 'signpost', x: -6.5, z: 14, rot: 0.5, s: 2.0 },
+    // 鐵路路堤（血腥溝）的 E 連陣地
+    { id: 'sandbag_wall', x: -58, z: 52, rot: 0.72, s: 1.9 },
+    { id: 'sandbag_wall', x: -64, z: 58, rot: 0.72, s: 1.9 },
+    { id: 'sandbag_wall', x: -70, z: 64, rot: 0.72, s: 1.9 },
+    { id: 'ammo_crate', x: -62, z: 62, rot: 0.3, s: 2.2 },
+    { id: 'ammo_crate', x: -61.2, z: 61.0, rot: 1.1, s: 2.2 },
+    // 圩田邊的木柵
+    { id: 'fence_wood', x: -26, z: 92, rot: 0.1, s: 1.8 },
+    { id: 'fence_wood', x: -33.4, z: 91.2, rot: 0.1, s: 1.8 },
+    { id: 'fence_wood', x: -40.8, z: 90.4, rot: 0.1, s: 1.8 },
+    { id: 'signpost', x: 24, z: -58, rot: -0.3, s: 2.0 },
+  ];
+
+  async function applyProps(assets) {
+    const ids = [...new Set(PROPS.map((p) => p.id))];
+    const loaded = await assets.models(ids);
+    const parts = [];
+    for (const p of PROPS) {
+      const src = loaded[p.id];
+      if (!src) continue;
+      const mx = new THREE.Matrix4()
+        .makeRotationY(p.rot)
+        .setPosition(p.x, 0, p.z)
+        .multiply(new THREE.Matrix4().makeScale(p.s, p.s, p.s));
+      const geo = bakeToVertexColors(src, { matrix: mx });
+      if (geo) parts.push(geo);
+    }
+    if (!parts.length) return;
+    const mesh = new THREE.Mesh(
+      mergeGeometries(parts, false),
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0.05 })
+    );
+    if (shadows) { mesh.castShadow = true; mesh.receiveShadow = true; }
+    glbGroup.add(mesh);
+    assetsApplied.props = true;
+  }
+
+  async function applyAssets(assets, { stage = 'all' } = {}) {
+    const run = async (name, fn) => {
+      try { await fn(); } catch (e) { console.warn(`[carentan] ${name} 資產升級失敗，保留程序化版本`, e); }
+    };
+    if (stage === 'core' || stage === 'all') {
+      await Promise.all([
+        run('地表', () => applyGround(assets)),
+        run('建築', () => applyBuildings(assets)),
+      ]);
+    }
+    if (stage === 'extra' || stage === 'all') {
+      await Promise.all([
+        run('道具', () => applyProps(assets)),
+        run('植被', () => applyVegetation(assets)),
+      ]);
+    }
+    return assetsApplied;
+  }
+
   return {
     group: g,
     places,
+    applyAssets,
+    assetState: () => ({ ...assetsApplied }),
     // 草叢隨風輕搖（主迴圈每幀呼叫）
     update: (dt) => { windUniform.value += dt; },
-    // 動態解析度降級時砍半草叢
-    setDetail: (f) => { if (grassIM) grassIM.count = Math.max(0, Math.floor(grassTotal * f)); },
+    // 動態解析度降級時砍半草叢與 glb 植被
+    setDetail: (f) => {
+      if (grassIM) grassIM.count = Math.max(0, Math.floor(grassTotal * f));
+      for (const v of glbVegetation) v.im.count = Math.max(1, Math.floor(v.total * Math.max(f, 0.5)));
+    },
   };
 }
