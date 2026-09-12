@@ -170,13 +170,22 @@ export function createAssetLoader({ mobile = false, renderer = null } = {}) {
 
   // ── 模型 ──────────────────────────────────────────────
   const modelCache = new Map();
-  /** @returns {Promise<THREE.Object3D|null>} glb 的 scene（共用，呼叫端自己 clone） */
-  function model(id) {
-    if (modelCache.has(id)) return modelCache.get(id);
+  /**
+   * @param id manifest 的 model id，或 LOCAL_MODEL_IDS 裡的自有模型
+   * @param hi 取高規版（manifest 的 files.desktop.glb_hi）—— 闊葉樹的 300 KB 版葉量只有 1/5，
+   *           近景會看得出稀疏；核心區的 hero 樹才值得吃這個（約 1 MB／棵，手機一律不吃）
+   * @returns {Promise<THREE.Object3D|null>} glb 的 scene（共用，呼叫端自己 clone）
+   */
+  function model(id, { hi = false } = {}) {
+    const cacheKey = id + (hi ? '|hi' : '');
+    if (modelCache.has(cacheKey)) return modelCache.get(cacheKey);
     const p = (async () => {
       const m = await manifest();
       const a = m?.assets?.[id];
-      const path = (a?.type === 'model' && (a.files[quality] ?? a.files.desktop)?.glb?.path) || LOCAL_MODELS[id];
+      const bucket = a?.type === 'model' ? (a.files[quality] ?? a.files.desktop) : null;
+      const path = (hi && !mobile && bucket?.glb_hi?.path)
+        || bucket?.glb?.path
+        || LOCAL_MODELS[id];
       if (!path) return null;
       const gltf = await new Promise((resolve) => {
         gltfLoader.load(path, resolve, undefined, () => resolve(null));
@@ -192,7 +201,7 @@ export function createAssetLoader({ mobile = false, renderer = null } = {}) {
       });
       return root;
     })();
-    modelCache.set(id, p);
+    modelCache.set(cacheKey, p);
     return p;
   }
 

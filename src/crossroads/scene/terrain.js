@@ -844,16 +844,29 @@ export function createCrossroadsTerrain(scene, { shadows = false, mobile = false
 
     // ── 2. 植被：Poly Haven glb InstancedMesh（桌機限定） ──
     if (!mobile) {
-      const [tallTree, bankTree, willow] = await Promise.all([
-        assets.model('tree_small_02'), assets.model('island_tree_02'), assets.model('shrub_04'),
+      // 樹分三級（首屏預算 6 MB 擺不下「每一棵都是 1 MB 的高規版」，所以按鏡頭會不會看到來分）：
+      //   hero = 離十字路口 < HERO_R 的行道樹與農舍高樹（齊射／上刺刀／潰敗三段都入鏡）→ _hi 全幾何
+      //   mid  = 外側堤段的行道樹、北岸樹線 → 一般版（葉量較稀，但那個距離看不出來）
+      //   far  = 遠景剪影帶與蘆葦 → 維持程序化低面數樹
+      const HERO_R = 135;
+      const heroSlots = [], midSlots = [];
+      for (const m4 of glbSlots.roadTree) {
+        const x = m4.elements[12], z = m4.elements[14];
+        (Math.hypot(x, z) < HERO_R ? heroSlots : midSlots).push(m4);
+      }
+      const [heroTree, midTree, willow] = await Promise.all([
+        assets.model('tree_small_02', { hi: true }),
+        assets.model('island_tree_02'),
+        assets.model('shrub_04'),
       ]);
-      if (tallTree && bankTree) {
-        glbMeshes.push(...instanceGlb(tallTree, glbSlots.roadTree, PROC_H[0]));
+      if (heroTree && midTree) {
+        glbMeshes.push(...instanceGlb(heroTree, heroSlots, PROC_H[0]));
+        glbMeshes.push(...instanceGlb(midTree, midSlots, PROC_H[0]));
         // 北岸樹線在河對岸，影子落在沒人看的高地上；不投影可省掉一次 alphaTest 葉片的 shadow pass
-        glbMeshes.push(...instanceGlb(bankTree, glbSlots.bankTree, PROC_H[0], { cast: false }));
+        glbMeshes.push(...instanceGlb(midTree, glbSlots.bankTree, PROC_H[0], { cast: false }));
         treeMeshes[0].count = proceduralBase[0];          // 程序化近景樹整段退場（遠景剪影留著）
-        report.vegetation = true;
-      } else report.missing.push('tree_small_02/island_tree_02');
+        report.vegetation = { hero: heroSlots.length, mid: midSlots.length + glbSlots.bankTree.length };
+      } else report.missing.push('tree_small_02_hi/island_tree_02');
       if (willow) {
         // 灌木不投影：alphaTest 的葉片在 shadow pass 很吃 fill rate，收益又低
         glbMeshes.push(...instanceGlb(willow, glbSlots.willow, PROC_H[1], { cast: false }));
