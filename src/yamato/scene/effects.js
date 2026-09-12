@@ -21,11 +21,12 @@ const BLAST_FLASH = [7.0, 6.2, 5.0];
 const BLAST_FIRE = [3.2, 1.6, 0.55];
 
 export class Effects {
-  constructor(scene, { particles, surface, mobile = false } = {}) {
+  constructor(scene, { particles, surface, mobile = false, crashPlanes = null } = {}) {
     this.scene = scene;
     this.p = particles;
     this.surface = surface;
     this.mobile = mobile;
+    this.crashPlanes = crashPlanes; // CrashPlanePool:墜海機的完整 glb 機體(可為 null)
     this.transients = []; // { update(dt) -> false 表結束, dispose() }
     this.fires = new Map(); // unitId -> { obj, acc, age }
     this.sinking = new Map(); // unitId -> { x, z, acc }
@@ -53,6 +54,7 @@ export class Effects {
     this.p.clear();
     this.surface.clear();
     this.sinking.clear();
+    this.crashPlanes?.clear();
   }
 
   #push(update, dispose) {
@@ -272,6 +274,7 @@ export class Effects {
   }
 
   // 中彈的飛機:拖黑煙下墜,落水白濺(N-4)
+  // 資產接入後多了真正的機體(CrashPlanePool 的完整 glb):翻滾著掉下去,落水即收回池子。
   planeCrash(x, y, z) {
     const vx = (Math.random() - 0.5) * 55;
     const vz = (Math.random() - 0.5) * 55;
@@ -281,11 +284,26 @@ export class Effects {
     let vy = -18;
     let acc = 0;
     let done = false;
+    const plane = this.crashPlanes?.acquire() ?? null;
+    const spinX = 1.6 + Math.random() * 2.4;
+    const spinZ = (Math.random() - 0.5) * 5;
+    const yaw = Math.atan2(vx, -vz);
+    let age = 0;
+    const releasePlane = () => {
+      if (plane) this.crashPlanes?.release(plane);
+    };
     this.#push((dt) => {
       if (done) return false;
       vy -= 52 * dt;
       cx += vx * dt; cz += vz * dt; cy += vy * dt;
       acc += dt;
+      if (plane) {
+        age += dt;
+        plane.position.set(cx, cy, cz);
+        plane.rotation.y = yaw;
+        plane.rotation.x = -age * spinX;
+        plane.rotation.z = age * spinZ;
+      }
       if (acc > 0.05) {
         acc = 0;
         this.p.spawn(false, {
@@ -298,10 +316,11 @@ export class Effects {
         done = true;
         this.splash(cx, cz, 1.4);
         this.explosion(new THREE.Vector3(cx, 4, cz), 0.7);
+        releasePlane();
         return false;
       }
       return true;
-    });
+    }, releasePlane);
   }
 
   // ── 大和大爆炸(全站最重要的單一鏡頭,N-7) ───────────────

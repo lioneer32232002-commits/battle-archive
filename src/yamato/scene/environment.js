@@ -11,6 +11,22 @@
 //       但只有 1 個 draw call(舊版 110 個 Sprite = 110 個 draw call)。
 import * as THREE from 'three';
 import { BillboardField, makeAtlas, mulberry, OCEAN_WAVE_GLSL } from './gfx.js';
+import { loadHDRI } from './assets.js';
+
+// ── HDRI 環境光(asset-pipeline-spec §3) ────────────────
+// 天幕維持程序化 sky dome(時間變化較細、也才有本場專屬的雲隙光);HDRI 只當
+// `scene.environment` —— 也就是艦體鋼板、砲塔、機身這些 MeshStandardMaterial 的
+// 反射與間接光來源。沒有它,PBR 金屬在陰天只會是一塊死灰。
+//
+// 兩張圖、事件式 crossfade(規格明訂不必每幀混,切換時淡一下即可):
+//   overcast_soil_puresky —— 全程主環境(4/7 東海午後陰霾)。桌機 1k .hdr / 手機 tonemapped JPG。
+//   kloofendal_…_puresky  —— 14:14 第三波之後的「雲隙」,只用 tonemapped JPG(75 KB)。
+//   為什麼雲隙不用 .hdr:再拉一張 1.4 MB 只為了尾聲幾分鐘,首屏預算划不來;
+//   PMREM 吃 LDR 等距投影一樣能生出可用的 irradiance,陰↔晴的差別看得出來就夠了。
+const ENV_BASE = 'overcast_soil_puresky';
+const ENV_GAP = 'kloofendal_48d_partly_cloudy_puresky';
+const ENV_INTENSITY = { overcast: 0.35, gap: 0.58 };
+const ENV_GAP_T = 834; // 14:14 第三波攻擊隊出現,雲層轉薄
 
 // ACES 後重校:4 月東海午後陰晴,偏灰藍、雲隙透光
 const PALETTES = {
@@ -44,7 +60,7 @@ const SUN_DIR = new THREE.Vector3(-0.81, 0.56, -0.16).normalize();
 const WAVE_GLSL = OCEAN_WAVE_GLSL + `
   float waveSum(vec2 p) { return oceanHeight(p, uTime); }`;
 
-export function createEnvironment(scene, { shadows = false, mobile = false } = {}) {
+export function createEnvironment(scene, { shadows = false, mobile = false, renderer = null } = {}) {
   // ── 天空圓頂 ───────────────────────────────────────
   const skyUniforms = {
     uTop: { value: new THREE.Color(PALETTES.overcast.top) },
@@ -247,8 +263,45 @@ export function createEnvironment(scene, { shadows = false, mobile = false } = {
 
   const sunAz = Math.atan2(SUN_DIR.x, SUN_DIR.z);
 
+  // ── HDRI 環境光:非同步載入,首屏不等它 ─────────────
+  const envTex = { overcast: null, gap: null };
+  let envPhase = 'overcast';  // 目前貼在 scene.environment 上的
+  let envWant = 'overcast';   // 依戰役時刻想要的
+  let envMix = 0;             // 0 → 1 淡入(載入完成也走這條,不會突然一亮)
+  scene.environmentIntensity = 0;
+  if (renderer) {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    pmrem.compileEquirectangularShader();
+    const bake = (key, opts) =>
+      loadHDRI(key === 'gap' ? ENV_GAP : ENV_BASE, opts).then((t) => {
+        if (!t) return;
+        envTex[key] = pmrem.fromEquirectangular(t).texture;
+        t.dispose();
+        if (key === envPhase && !scene.environment) scene.environment = envTex[key];
+      });
+    // 雲隙圖等主環境進來之後再抓,免得兩張圖搶首屏頻寬
+    bake('overcast').then(() => bake('gap', { forceTonemapped: true }));
+  }
+
+  function updateEnvironment(dt, battleT) {
+    if (!renderer) return;
+    envWant = battleT >= ENV_GAP_T ? 'gap' : 'overcast';
+    if (envWant !== envPhase) {
+      envMix -= dt * 1.8;
+      if (envMix <= 0) {
+        envMix = 0;
+        if (envTex[envWant]) scene.environment = envTex[envWant];
+        envPhase = envWant; // 就算那張還沒載到,相位照切,強度回升後仍是舊圖
+      }
+    } else if (scene.environment && envMix < 1) {
+      envMix = Math.min(1, envMix + dt * 1.8);
+    }
+    scene.environmentIntensity = scene.environment ? ENV_INTENSITY[envPhase] * envMix : 0;
+  }
+
   function update(dt, battleT) {
     oceanUniforms.uTime.value += dt;
+    updateEnvironment(dt, battleT);
 
     const [a, b, f] = phaseAt(battleT);
     const pa = PALETTES[a];

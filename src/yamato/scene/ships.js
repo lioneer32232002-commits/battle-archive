@@ -8,8 +8,20 @@
 //   3. 全艦共用一張細鋼板貼圖(RepeatWrapping)當灰階顆粒,消掉「一整片塑膠灰」。
 //   4. 桅杆索具(LineSegments)、防空砲座叢集、艦島／寶塔投影(靠 P-2 陰影)。
 //   5. 舊的三角形貼圖尾流 plane 移除,改由 scene/wakes.js 的 SurfaceSystem 負責(N-2)。
+//
+// 2026-09-12 資產接入(asset-pipeline-spec §3):
+//   6. Blender 建模的 glb 取代程序化艦體 —— **先建程序化 fallback 再抽換**,首屏不等資產。
+//      抽換時保留同一個 Group(旗幟、識別環、標籤、尾流掛點 userData.beam/length 全部原封不動),
+//      main.js 完全不需要知道換過模。載入失敗就留著程序化版本,畫面不會缺船。
+//   7. glb 一個節點被拆成「每材質一個 primitive」(大和 6 個),直接放進場景等於一艘船 6 個
+//      draw call。改成烘成一份幾何 + 頂點色 + 每頂點 aRM(粗糙度/金屬度),配 makeGlbMaterial()
+//      的 shader 注入,一艘船 1 個 draw call 就保住每種塗裝的 PBR 參數。
+//   8. 大和的 turret_A/B/C 與 barrels_A/B/C 獨立成可轉動節點:對空時砲塔轉向來襲方向、砲管抬高。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import {
+  loadModel, bakeMerged, boxOf, findByName, makeGlbMaterial, attachDetailMaps,
+} from './assets.js';
 
 const SIDE_COLOR = { red: 0xd9442e, blue: 0x2e7bd9 };
 const HULL_COLOR = { red: 0x696e75, blue: 0x737a84 };  // 補上 OutputPass 後 ACES 真的會作用,數值調回接近實際塗裝
@@ -82,12 +94,17 @@ class Builder {
   build() {
     const merged = mergeGeometries(this.parts, false);
     for (const p of this.parts) p.dispose();
+    // 全場統一在 Standard 光照模型上(glb 換模後艦體是 PBR,程序化 fallback 與航艦要跟上,
+    // 否則同一個鏡頭裡會出現兩套不同的受光行為)。roughness 下限 0.35 見 asset-pipeline-spec §3。
     const mesh = new THREE.Mesh(
       merged,
-      new THREE.MeshLambertMaterial({ vertexColors: true, map: steel() })
+      new THREE.MeshStandardMaterial({
+        vertexColors: true, map: steel(), roughness: 0.72, metalness: 0.28, envMapIntensity: 0.8,
+      })
     );
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.userData.proc = 'body';
     return mesh;
   }
 }
@@ -271,10 +288,12 @@ function addAAGuns(b, count, L, W, y, rng) {
 // 桅杆索具:自桅頂拉向艦艏、艦艉的細灰線
 function makeRigging(points) {
   const geo = new THREE.BufferGeometry().setFromPoints(points);
-  return new THREE.LineSegments(
+  const seg = new THREE.LineSegments(
     geo,
     new THREE.LineBasicMaterial({ color: 0x9aa2ab, transparent: true, opacity: 0.55 })
   );
+  seg.userData.proc = 'rigging';
+  return seg;
 }
 
 function makeRing(radius, color) {
@@ -316,11 +335,12 @@ export function createCarrier(spec) {
   // 飛行甲板貼圖(單獨一片,1 個 draw call)
   const deckTop = new THREE.Mesh(
     new THREE.PlaneGeometry(W * 2.1, L * 0.96),
-    new THREE.MeshLambertMaterial({ map: makeDeckTexture(spec) })
+    new THREE.MeshStandardMaterial({ map: makeDeckTexture(spec), roughness: 0.85, metalness: 0.05 })
   );
   deckTop.rotation.x = -Math.PI / 2;
   deckTop.position.y = deckY + 0.85;
   deckTop.receiveShadow = true;
+  deckTop.userData.proc = 'deck';
   g.add(deckTop);
 
   g.add(makeRigging([
@@ -452,11 +472,12 @@ export function createYamato(spec) {
   // 柚木主甲板(單獨貼圖,1 個 draw call)
   const deckTop = new THREE.Mesh(
     new THREE.PlaneGeometry(W * 0.92, L * 0.96),
-    new THREE.MeshLambertMaterial({ map: makeYamatoDeckTexture() })
+    new THREE.MeshStandardMaterial({ map: makeYamatoDeckTexture(), roughness: 0.88, metalness: 0.04 })
   );
   deckTop.rotation.x = -Math.PI / 2;
   deckTop.position.y = hullH + 1.25;
   deckTop.receiveShadow = true;
+  deckTop.userData.proc = 'deck';
   g.add(deckTop);
 
   const towerTop = new THREE.Vector3(0, deckY + 19, -L * 0.05);
@@ -478,10 +499,199 @@ export function createYamato(spec) {
   return g;
 }
 
+// ── glb 抽換 ─────────────────────────────────────────
+// 哪一艘用哪個模型。航艦刻意留程序化:glb 沒有飛行甲板的舷號與艦艏日之丸,
+// 而那兩樣是「一眼認出是哪一艘」的關鍵;TF58 又全程在 2000 單位外,換模的收益近乎零。
+function modelIdFor(spec) {
+  if (spec.id === 'yamato') return 'yamato';
+  if (spec.kind === 'cruiser') return 'cruiser_ijn';
+  if (spec.kind === 'destroyer') return 'destroyer_ijn';
+  return null;
+}
+
+// 同型艦共用烘好的幾何(9 艘驅逐艦只烘一次)
+const bakedCache = new Map();
+function bakedShip(root, modelId, s) {
+  const key = `${modelId}|${s.toFixed(4)}`;
+  if (bakedCache.has(key)) return bakedCache.get(key);
+  const turretNames = ['A', 'B', 'C'];
+  const stop = new Set();
+  const turretNodes = [];
+  for (const n of turretNames) {
+    const t = findByName(root, `turret_${n}`);
+    const b = findByName(root, `barrels_${n}`);
+    if (t) { stop.add(t); turretNodes.push({ name: n, node: t, barrels: b }); }
+  }
+  // 艦體塗裝壓 metalness 上限 0.22(見 assets.js bakeMesh 註)
+  const hull = bakedMergedSafe(root, s, stop, 0.22);
+  const turrets = turretNodes.map(({ name, node, barrels }) => {
+    const bStop = barrels ? new Set([barrels]) : null;
+    return {
+      name,
+      // 砲塔座圈在艦體座標的位置(已乘上縮放)
+      pos: node.getWorldPosition(new THREE.Vector3()).multiplyScalar(s),
+      geo: bakedMergedSafe(node, s, bStop, 0.22),
+      barrelPos: barrels ? barrels.position.clone().multiplyScalar(s) : null,
+      barrelGeo: barrels ? bakedMergedSafe(barrels, s, null, 0.45) : null, // 砲管是裸鋼,亮一點
+      // barrels_C 的砲管朝 +z(艦艉砲塔),抬砲與轉向的零點都要反過來
+      aft: barrels ? barrels.position.z > 0 : false,
+    };
+  });
+  const out = { hull, turrets };
+  bakedCache.set(key, out);
+  return out;
+}
+
+function bakedMergedSafe(node, s, stop, metalClamp = 1) {
+  try {
+    return bakeMerged(node, s, stop, metalClamp);
+  } catch (e) {
+    console.warn('[ships] 幾何烘焙失敗', node?.name, e);
+    return null;
+  }
+}
+
+function disposeProcedural(group) {
+  const doomed = [];
+  group.traverse((o) => { if (o.userData.proc) doomed.push(o); });
+  for (const o of doomed) {
+    o.parent?.remove(o);
+    o.geometry?.dispose?.();
+    const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    for (const m of mats) m.dispose?.();
+  }
+}
+
+// 大和以外的艦都是單一艦體;大和多三座可轉動的主砲塔。
+async function upgradeShipModel(group, spec) {
+  const modelId = modelIdFor(spec);
+  if (!modelId) return;
+  const root = await loadModel(modelId);
+  if (!root) return;                       // 載入失敗 → 程序化 fallback 留著
+  const box = boxOf(root);
+  const modelLen = box.max.z - box.min.z;
+  if (!(modelLen > 0.01)) return;
+  const s = spec.length / modelLen;        // §0.4:以 u.length 對齊,不在 glTF 內硬編場景尺度
+  const { hull, turrets } = bakedShip(root, modelId, s);
+  if (!hull) return;
+
+  const isYamato = spec.id === 'yamato';
+  const mat = makeGlbMaterial({
+    detailScale: isYamato ? 0.16 : 0.26,   // 小船的鋼板要密一點才不會看起來像放大的大和
+    rust: true,
+    rustLo: -2,                       // 水線下:鏽痕最重
+    rustHi: 1.4,                      // 只在水線帶:1945 年 4 月剛出港的大和不該整段乾舷都鏽
+    envMapIntensity: isYamato ? 0.75 : 0.65,
+  });
+  attachDetailMaps(mat, {
+    detail: 'metal_plate',
+    rust: 'rusty_metal_02',
+    deck: 'wood_planks',            // 柚木主甲板(舊程序化版的甲板貼圖換模後就沒了)
+    detailK: isYamato ? 0.6 : 0.5,
+    rustK: isYamato ? 0.5 : 0.42,
+    deckK: isYamato ? 1.0 : 0.85,
+  });
+
+  const body = new THREE.Mesh(hull, mat);
+  body.castShadow = true;
+  body.receiveShadow = true;
+
+  disposeProcedural(group);
+  group.add(body);
+
+  // 砲塔(只有大和有):pivot 在座圈中心,砲管再掛一層 pivot 做俯仰
+  const list = [];
+  for (const t of turrets) {
+    if (!t.geo) continue;
+    const pivot = new THREE.Group();
+    pivot.position.copy(t.pos);
+    const tm = new THREE.Mesh(t.geo, mat);
+    tm.castShadow = true;
+    pivot.add(tm);
+    let barrelPivot = null;
+    if (t.barrelGeo && t.barrelPos) {
+      barrelPivot = new THREE.Group();
+      barrelPivot.position.copy(t.barrelPos);
+      const bm = new THREE.Mesh(t.barrelGeo, mat);
+      bm.castShadow = true;
+      barrelPivot.add(bm);
+      pivot.add(barrelPivot);
+    }
+    group.add(pivot);
+    list.push({ pivot, barrelPivot, aft: t.aft, yaw: 0, elev: 0 });
+  }
+  if (list.length) group.userData.turrets = list;
+
+  // 依 glb 真實剪影重建索具與旗桿位置(程序化版的常數是照程序化艦體算的)
+  const topY = box.max.y * s;
+  const beam = (box.max.x - box.min.x) * s;
+  const L = spec.length;
+  const mastTop = new THREE.Vector3(0, topY * 0.92, -L * 0.05);
+  const rig = makeRigging([
+    mastTop.clone(), new THREE.Vector3(0, topY * 0.16, -L * 0.47),
+    mastTop.clone(), new THREE.Vector3(0, topY * 0.16, L * 0.46),
+    mastTop.clone(), new THREE.Vector3(beam * 0.42, topY * 0.34, -L * 0.05),
+    mastTop.clone(), new THREE.Vector3(-beam * 0.42, topY * 0.34, -L * 0.05),
+  ]);
+  rig.userData.proc = 'rigging';
+  group.add(rig);
+
+  // 旗幟移到新桅頂(保留:規格要求換模後旗幟、識別環、尾流掛點都要在)
+  group.traverse((o) => {
+    if (o.userData.isFlag) o.position.set(beam * 0.22, topY * 0.96, -L * 0.05);
+  });
+
+  group.userData.beam = beam;
+  group.userData.length = L;
+  group.userData.modelId = modelId;
+  group.userData.modelScale = s;
+  // main.js 的沉沒淡出會快取材質清單,換模後必須重掃(否則淡出的是已經被丟掉的舊材質)
+  group.userData.matsVersion = (group.userData.matsVersion ?? 0) + 1;
+}
+
+// ── 主砲塔指向(對空時轉向來襲方向、砲管抬高) ───────────
+const _aimLocal = new THREE.Vector3();
+const _aimWorld = new THREE.Vector3();
+const MAX_YAW = 2.36;     // ±135°:背負砲塔打不到正後方
+const AA_ELEV = 0.62;     // 約 35°
+
+export function aimTurrets(group, target, dt) {
+  const list = group.userData.turrets;
+  if (!list) return;
+  let wantYaw = 0;
+  let wantElev = 0;
+  if (target) {
+    group.getWorldPosition(_aimWorld);
+    _aimLocal.copy(target).sub(_aimWorld);
+    // 只取水平分量,再扣掉艦體航向(側傾與縱搖忽略不計)
+    const a = Math.atan2(_aimLocal.x, -_aimLocal.z) - group.rotation.y;
+    wantYaw = Math.atan2(Math.sin(a), Math.cos(a)); // 正規化到 ±π
+    wantElev = AA_ELEV;
+  }
+  const k = 1 - Math.pow(0.08, dt); // 砲塔轉得慢,阻尼比艦體重
+  for (const t of list) {
+    // 艦艉砲塔的砲管天生朝 +z,零點差 π
+    const base = t.aft ? Math.PI : 0;
+    let d = wantYaw - base;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    const goal = target ? Math.max(-MAX_YAW, Math.min(MAX_YAW, d)) : 0;
+    t.yaw += (goal - t.yaw) * k;
+    t.pivot.rotation.y = t.yaw;
+    if (t.barrelPivot) {
+      t.elev += (wantElev - t.elev) * k;
+      t.barrelPivot.rotation.x = t.aft ? -t.elev : t.elev;
+    }
+  }
+}
+
 export function createShip(spec) {
-  if (spec.kind === 'carrier') return createCarrier(spec);
-  if (spec.kind === 'flagship') return createYamato(spec);
-  return createEscort(spec);
+  const g =
+    spec.kind === 'carrier' ? createCarrier(spec)
+      : spec.kind === 'flagship' ? createYamato(spec)
+        : createEscort(spec);
+  // 非同步抽換真實模型:這裡刻意不 await,場景第一幀就有船
+  upgradeShipModel(g, spec).catch((e) => console.warn('[ships] 換模失敗,保留程序化', spec.id, e));
+  return g;
 }
 
 // 軍旗飄動

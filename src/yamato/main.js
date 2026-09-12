@@ -24,8 +24,11 @@ const SHADOWS = !isMobile;   // P-2:陰影桌機限定
 const POSTFX = !isMobile;    // P-3:後製桌機限定
 import { createEnvironment } from './scene/environment.js';
 import { createOkinawa } from './scene/terrain.js';
-import { createShip, animateFlags } from './scene/ships.js';
-import { createAirGroup, updateAirGroup, createAcePlane, ContrailSystem } from './scene/aircraft.js';
+import { createShip, animateFlags, aimTurrets } from './scene/ships.js';
+import {
+  createAirGroup, updateAirGroup, createAcePlane, ContrailSystem, CrashPlanePool, spinAceProp,
+} from './scene/aircraft.js';
+import { configureAssets, assetBytes } from './scene/assets.js';
 import { Effects } from './scene/effects.js';
 import { ParticlePool } from './scene/particles.js';
 import { SurfaceSystem } from './scene/wakes.js';
@@ -49,7 +52,7 @@ renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 if (SHADOWS) {
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap; // three 0.184 已棄用 PCFSoftShadowMap(§9.4)
 }
 container.appendChild(renderer.domElement);
 
@@ -64,14 +67,18 @@ controls.minDistance = 60;
 controls.maxDistance = 9000;
 controls.enableDamping = true;
 
-const environment = createEnvironment(scene, { shadows: SHADOWS, mobile: isMobile });
+// 資產管線:桌機 1k 貼圖 + 1k .hdr;手機 512 貼圖 + tonemapped JPG(asset-pipeline-spec §3)
+configureAssets({ mobile: isMobile, anisotropy: Math.min(8, renderer.capabilities.getMaxAnisotropy()) });
+
+const environment = createEnvironment(scene, { shadows: SHADOWS, mobile: isMobile, renderer });
 const geo = createOkinawa(scene, { shadows: SHADOWS });
 const particles = new ParticlePool(scene, {
   addMax: isMobile ? 260 : 760, normMax: isMobile ? 320 : 900,
 });
 const surface = new SurfaceSystem(scene, { mobile: isMobile });
 const contrails = new ContrailSystem(scene, { mobile: isMobile });
-const effects = new Effects(scene, { particles, surface, mobile: isMobile });
+const crashPlanes = new CrashPlanePool(scene, { size: isMobile ? 2 : 4 });
+const effects = new Effects(scene, { particles, surface, mobile: isMobile, crashPlanes });
 const director = new Director(camera, controls);
 
 // 後製 composer(桌機);手機直接 renderer.render
@@ -157,7 +164,7 @@ for (const ag of airGroups) {
 
 // ── 王牌飛行員座機(個人行動) ─────────────────────────
 const aceObjs = aces.map((ace) => {
-  const group = createAcePlane(ace.side);
+  const group = createAcePlane(ace.side, ace.kind);
   group.userData.figureId = ace.id;
   scene.add(group);
   const label = makeLabel('★ ' + ace.name, { side: ace.side });
@@ -375,7 +382,12 @@ let panelAcc = 0;
 // (各艦材質為獨立實例,改寫不影響其他艦;scrub 回戰役中段時還原)
 const SINK_PALE = new THREE.Color(0x9fb0c0); // 海沫灰白
 function prepSinkMats(o) {
-  if (o.sinkMats) return;
+  // 換模(程序化 → glb)之後材質整組換過,快取必須作廢重掃,
+  // 否則淡出的是已經被 dispose 的舊材質,船會「沉不下去」。
+  const ver = o.group.userData.matsVersion ?? 0;
+  if (o.sinkMats && o.sinkMatsVersion === ver) return;
+  o.sinkMatsVersion = ver;
+  o.sinkLook = false;
   o.sinkMats = [];
   o.group.traverse((m) => {
     if (m.isMesh && m.material) {
@@ -404,6 +416,22 @@ function restoreSinkLook(o) {
     if (r.col) r.mat.color.copy(r.col);
   }
   o.sinkLook = false;
+}
+
+// 防空射擊目標:視野內最近的來襲機隊(2600 單位內,約主砲對空彈的有效射程),沒有就回傳 null
+const _aaTarget = new THREE.Vector3();
+function nearestAirThreat(shipGroup) {
+  let best = null;
+  let bestD = 2600 * 2600;
+  for (const a of airObjs) {
+    // 單機的跟蹤偵察機(PBM)不算「來襲」:為了一架水上機把主砲整組轉過去太誇張
+    if (!a.group.visible || a.spec.count < 3) continue;
+    const dx = a.group.position.x - shipGroup.position.x;
+    const dz = a.group.position.z - shipGroup.position.z;
+    const d = dx * dx + dz * dz;
+    if (d < bestD) { bestD = d; best = a.group; }
+  }
+  return best ? _aaTarget.copy(best.position) : null;
 }
 
 // M-2:最短角差(處理 ±π 環繞)
@@ -523,8 +551,16 @@ function frame(dt) {
     }
   }
 
+  // 大和主砲塔:有機隊在防空圈內就轉向來襲方向、砲管抬到對空仰角,沒有就慢慢歸位。
+  // (46 cm 主砲確實裝填過三式對空彈,坊之岬沖海戰當天對第一波開過火)
+  const yam = shipObjs.get('yamato');
+  if (yam && yam.group.userData.turrets) {
+    aimTurrets(yam.group, yam.group.visible ? nearestAirThreat(yam.group) : null, dt);
+  }
+
   // 王牌座機
   for (const a of aceObjs) {
+    spinAceProp(a.group, dt);
     const sortie = a.ace.sorties.find((s) => battleT >= s.spawnT && battleT <= s.despawnT);
     const target = sortie ? shipObjs.get(sortie.unit)?.group.position : null;
     if (sortie && target) {
@@ -623,9 +659,37 @@ if (import.meta.env && import.meta.env.DEV) {
     const r = renderer.info.render;
     return { calls: r.calls, triangles: r.triangles };
   };
+  // 美術驗收一鍵取景:跳到某時刻 → 等真實資產換好 → 把鏡頭擺到大和的相對位置 → 渲染一幀。
+  // (dev server 熱更新會讓分頁整個重載,驗收用的 helper 寫在原始碼裡才不會每次都要重新注入)
+  const dbgShot = async (t, cam = [0, 10, 0, 92, 44, 128], { fire = false, frames = 45, wait = 8000 } = {}) => {
+    const intro = document.querySelector('.intro-box button');
+    if (intro && intro.getBoundingClientRect().width > 0) intro.click();
+    const o = shipObjs.get('yamato');
+    const t0 = performance.now();
+    while (!o.group.userData.modelId && performance.now() - t0 < wait) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    playing = false;
+    hud.setPlaying(false);
+    dbgSeek(t);
+    resetTransients();
+    if (fire) {
+      const e = events.find((ev) => ev.t === t);
+      if (e) fireEvent(e);   // 特效要靠事件觸發(大爆炸這種鏡頭 dbgSeek 自己不會放)
+    }
+    for (let i = 0; i < frames; i++) frame(1 / 30);
+    const p = o.group.position;
+    // 注意:dbgLook 之後不能再跑 frame() —— director.update() 會把鏡頭拉回上一個事件的運鏡目標
+    dbgLook(p.x + cam[0], p.y + cam[1], p.z + cam[2], p.x + cam[3], p.y + cam[4], p.z + cam[5]);
+    renderFrame(0.016);
+    return { t, swapped: !!o.group.userData.modelId, ...dbgCalls(), bytes: assetBytes() };
+  };
+
   window.__dbg = {
+    dbgShot,
     THREE, scene, camera, controls, renderer, director, effects, particles, surface,
     dbgSeek, dbgLook, dbgCalls, frame, render: () => renderFrame(0.016),
+    assetBytes, // 驗收:本場真實資產的實際下載量
     // 手動推進 n 幀(每幀 dt 秒):分頁在背景時 rAF 會停,美術驗收靠這個
     run: (n = 60, dt = 1 / 30) => { for (let i = 0; i < n; i++) frame(dt); return battleT; },
     setPlaying: (v) => { playing = v; started = true; hud.setPlaying(v); },
