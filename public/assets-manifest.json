@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-12T02:26:05.092Z",
+  "generatedAt": "2026-09-12T03:43:32.350Z",
   "spec": "docs/asset-pipeline-spec.md §1",
   "source": "Poly Haven",
   "license": "CC0",
@@ -42,7 +42,7 @@
     },
     "model": {
       "count": 13,
-      "bytes": 2664308
+      "bytes": 4919584
     }
   },
   "byType": {
@@ -2718,11 +2718,34 @@
       "license": "CC0",
       "draco": true,
       "triBudget": 20000,
+      "simplified": true,
+      "keepNodes": [
+        "_a_"
+      ],
+      "droppedNodes": [
+        "fir_tree_01_b_LOD0",
+        "fir_tree_01_c_LOD0"
+      ],
       "stats": {
-        "triangles": 16945,
-        "materials": 6,
-        "textures": 12,
-        "maxTextureSize": 128
+        "triangles": 19967,
+        "materials": 4,
+        "textures": 9,
+        "maxTextureSize": 128,
+        "bboxSize": [
+          6.4021,
+          18.8232,
+          5.9934
+        ],
+        "bboxMin": [
+          -3.1184,
+          -0.0795,
+          -3.2829
+        ],
+        "bboxMax": [
+          3.2837,
+          18.7437,
+          2.7105
+        ]
       },
       "alphaMaterials": [
         {
@@ -2734,17 +2757,40 @@
       "alphaFixed": [
         "fir_tree_01_twig"
       ],
+      "hiVariant": {
+        "textureSize": 512,
+        "triBudget": 50000,
+        "maxBytes": 1200000
+      },
       "files": {
         "desktop": {
           "glb": {
             "path": "/models/fir_tree_01.glb",
-            "bytes": 279400
+            "bytes": 289408
+          },
+          "glb_hi": {
+            "path": "/models/fir_tree_01_hi.glb",
+            "bytes": 1076976,
+            "triangles": 45985,
+            "textureSize": 512,
+            "bboxSize": [
+              6.4012,
+              18.8652,
+              5.9912
+            ],
+            "alphaMaterials": [
+              {
+                "name": "fir_tree_01_twig",
+                "mode": "MASK",
+                "cutoff": 0.5
+              }
+            ]
           }
         },
         "mobile": {
           "glb": {
             "path": "/models/fir_tree_01.glb",
-            "bytes": 279400
+            "bytes": 289408
           }
         }
       }
@@ -2762,11 +2808,34 @@
       "license": "CC0",
       "draco": true,
       "triBudget": 20000,
+      "simplified": true,
+      "keepNodes": [
+        "_a_"
+      ],
+      "droppedNodes": [
+        "pine_tree_01_b_LOD0",
+        "pine_tree_01_c_LOD0"
+      ],
       "stats": {
-        "triangles": 29812,
-        "materials": 6,
-        "textures": 12,
-        "maxTextureSize": 128
+        "triangles": 19832,
+        "materials": 4,
+        "textures": 9,
+        "maxTextureSize": 128,
+        "bboxSize": [
+          7.4046,
+          20.1561,
+          8.085
+        ],
+        "bboxMin": [
+          -3.4057,
+          -0.0795,
+          -4.3968
+        ],
+        "bboxMax": [
+          3.9989,
+          20.0767,
+          3.6882
+        ]
       },
       "alphaMaterials": [
         {
@@ -2778,17 +2847,40 @@
       "alphaFixed": [
         "pine_tree_01_twig"
       ],
+      "hiVariant": {
+        "textureSize": 512,
+        "triBudget": 50000,
+        "maxBytes": 1200000
+      },
       "files": {
         "desktop": {
           "glb": {
             "path": "/models/pine_tree_01.glb",
-            "bytes": 280224
+            "bytes": 259044
+          },
+          "glb_hi": {
+            "path": "/models/pine_tree_01_hi.glb",
+            "bytes": 1051808,
+            "triangles": 48280,
+            "textureSize": 512,
+            "bboxSize": [
+              7.4854,
+              20.3081,
+              8.2283
+            ],
+            "alphaMaterials": [
+              {
+                "name": "pine_tree_01_twig",
+                "mode": "MASK",
+                "cutoff": 0.5
+              }
+            ]
           }
         },
         "mobile": {
           "glb": {
             "path": "/models/pine_tree_01.glb",
-            "bytes": 280224
+            "bytes": 259044
           }
         }
       }
@@ -2806,11 +2898,34 @@
       "license": "CC0",
       "draco": true,
       "triBudget": 20000,
+      "simplified": true,
+      "keepNodes": [
+        "_a_"
+      ],
+      "droppedNodes": [
+        "pine_sapling_medium_b_LOD0",
+        "pine_sapling_medium_c_LOD0"
+      ],
       "stats": {
-        "triangles": 19818,
+        "triangles": 19271,
         "materials": 3,
         "textures": 6,
-        "maxTextureSize": 128
+        "maxTextureSize": 128,
+        "bboxSize": [
+          5.1613,
+          11.2663,
+          4.666
+        ],
+        "bboxMin": [
+          -2.5918,
+          -0.0005,
+          -2.1507
+        ],
+        "bboxMax": [
+          2.5695,
+          11.2657,
+          2.5153
+        ]
       },
       "alphaMaterials": [
         {
@@ -2822,17 +2937,18 @@
       "alphaFixed": [
         "pine_sapling_medium_twig"
       ],
+      "hiVariant": null,
       "files": {
         "desktop": {
           "glb": {
             "path": "/models/pine_sapling_medium.glb",
-            "bytes": 259688
+            "bytes": 277576
           }
         },
         "mobile": {
           "glb": {
             "path": "/models/pine_sapling_medium.glb",
-            "bytes": 259688
+            "bytes": 277576
           }
         }
       }
@@ -2851,14 +2967,33 @@
       "license": "CC0",
       "draco": true,
       "triBudget": 8000,
+      "simplified": true,
+      "keepNodes": null,
+      "droppedNodes": [],
       "stats": {
         "triangles": 7988,
         "materials": 1,
         "textures": 3,
-        "maxTextureSize": 512
+        "maxTextureSize": 512,
+        "bboxSize": [
+          3.051,
+          0.2906,
+          0.2772
+        ],
+        "bboxMin": [
+          -1.5391,
+          -0.0277,
+          -0.1707
+        ],
+        "bboxMax": [
+          1.5119,
+          0.2628,
+          0.1065
+        ]
       },
       "alphaMaterials": [],
       "alphaFixed": [],
+      "hiVariant": null,
       "files": {
         "desktop": {
           "glb": {
@@ -2889,11 +3024,29 @@
       "license": "CC0",
       "draco": true,
       "triBudget": 20000,
+      "simplified": true,
+      "keepNodes": null,
+      "droppedNodes": [],
       "stats": {
         "triangles": 17015,
         "materials": 3,
         "textures": 9,
-        "maxTextureSize": 256
+        "maxTextureSize": 256,
+        "bboxSize": [
+          2.8698,
+          4.5349,
+          4.1423
+        ],
+        "bboxMin": [
+          -1.2819,
+          -0.0175,
+          -1.3422
+        ],
+        "bboxMax": [
+          1.5879,
+          4.5174,
+          2.8001
+        ]
       },
       "alphaMaterials": [
         {
@@ -2905,6 +3058,7 @@
       "alphaFixed": [
         "tree_small_02_leaves"
       ],
+      "hiVariant": null,
       "files": {
         "desktop": {
           "glb": {
@@ -2934,11 +3088,29 @@
       "license": "CC0",
       "draco": true,
       "triBudget": 20000,
+      "simplified": true,
+      "keepNodes": null,
+      "droppedNodes": [],
       "stats": {
         "triangles": 10340,
         "materials": 3,
         "textures": 9,
-        "maxTextureSize": 128
+        "maxTextureSize": 128,
+        "bboxSize": [
+          4.6971,
+          4.9812,
+          4.7883
+        ],
+        "bboxMin": [
+          -2.2948,
+          -0.0164,
+          -2.5717
+        ],
+        "bboxMax": [
+          2.4024,
+          4.9648,
+          2.2166
+        ]
       },
       "alphaMaterials": [
         {
@@ -2950,6 +3122,7 @@
       "alphaFixed": [
         "island_tree_01_leaves"
       ],
+      "hiVariant": null,
       "files": {
         "desktop": {
           "glb": {
@@ -2979,11 +3152,29 @@
       "license": "CC0",
       "draco": true,
       "triBudget": 20000,
+      "simplified": true,
+      "keepNodes": null,
+      "droppedNodes": [],
       "stats": {
         "triangles": 9838,
         "materials": 3,
         "textures": 9,
-        "maxTextureSize": 128
+        "maxTextureSize": 128,
+        "bboxSize": [
+          3.8186,
+          3.3979,
+          4.0292
+        ],
+        "bboxMin": [
+          -1.8439,
+          -0.0085,
+          -1.1
+        ],
+        "bboxMax": [
+          1.9747,
+          3.3894,
+          2.9292
+        ]
       },
       "alphaMaterials": [
         {
@@ -2995,6 +3186,7 @@
       "alphaFixed": [
         "island_tree_02_leaves"
       ],
+      "hiVariant": null,
       "files": {
         "desktop": {
           "glb": {
@@ -3013,7 +3205,7 @@
     "shrub_01": {
       "id": "shrub_01",
       "type": "model",
-      "use": "樹籬灌木主體",
+      "use": "低矮匍匐地被（林下、田埂雜草）",
       "battles": [
         "brecourt",
         "carentan"
@@ -3023,12 +3215,30 @@
       "sourceUrl": "https://polyhaven.com/a/shrub_01",
       "license": "CC0",
       "draco": true,
-      "triBudget": 12000,
+      "triBudget": 60000,
+      "simplified": true,
+      "keepNodes": null,
+      "droppedNodes": [],
       "stats": {
-        "triangles": 11898,
+        "triangles": 59991,
         "materials": 1,
         "textures": 3,
-        "maxTextureSize": 512
+        "maxTextureSize": 256,
+        "bboxSize": [
+          2.5864,
+          0.396,
+          0.2185
+        ],
+        "bboxMin": [
+          -1.8546,
+          -0.0088,
+          -0.1136
+        ],
+        "bboxMax": [
+          0.7318,
+          0.3873,
+          0.1049
+        ]
       },
       "alphaMaterials": [
         {
@@ -3040,17 +3250,18 @@
       "alphaFixed": [
         "shrub_01"
       ],
+      "hiVariant": null,
       "files": {
         "desktop": {
           "glb": {
             "path": "/models/shrub_01.glb",
-            "bytes": 194900
+            "bytes": 279056
           }
         },
         "mobile": {
           "glb": {
             "path": "/models/shrub_01.glb",
-            "bytes": 194900
+            "bytes": 279056
           }
         }
       }
@@ -3058,7 +3269,7 @@
     "shrub_04": {
       "id": "shrub_04",
       "type": "model",
-      "use": "樹籬灌木變體",
+      "use": "小型地被草株",
       "battles": [
         "brecourt",
         "crossroads"
@@ -3068,12 +3279,30 @@
       "sourceUrl": "https://polyhaven.com/a/shrub_04",
       "license": "CC0",
       "draco": true,
-      "triBudget": 12000,
+      "triBudget": 20000,
+      "simplified": false,
+      "keepNodes": null,
+      "droppedNodes": [],
       "stats": {
-        "triangles": 11968,
+        "triangles": 27327,
         "materials": 1,
         "textures": 3,
-        "maxTextureSize": 512
+        "maxTextureSize": 512,
+        "bboxSize": [
+          0.5837,
+          0.2192,
+          0.1461
+        ],
+        "bboxMin": [
+          -0.0244,
+          -0.0059,
+          -0.075
+        ],
+        "bboxMax": [
+          0.5592,
+          0.2133,
+          0.0711
+        ]
       },
       "alphaMaterials": [
         {
@@ -3085,17 +3314,18 @@
       "alphaFixed": [
         "shrub_04"
       ],
+      "hiVariant": null,
       "files": {
         "desktop": {
           "glb": {
             "path": "/models/shrub_04.glb",
-            "bytes": 136412
+            "bytes": 172032
           }
         },
         "mobile": {
           "glb": {
             "path": "/models/shrub_04.glb",
-            "bytes": 136412
+            "bytes": 172032
           }
         }
       }
@@ -3115,14 +3345,33 @@
       "license": "CC0",
       "draco": true,
       "triBudget": 4000,
+      "simplified": true,
+      "keepNodes": null,
+      "droppedNodes": [],
       "stats": {
         "triangles": 3998,
         "materials": 1,
         "textures": 3,
-        "maxTextureSize": 512
+        "maxTextureSize": 512,
+        "bboxSize": [
+          0.8253,
+          0.3495,
+          0.4085
+        ],
+        "bboxMin": [
+          -0.4126,
+          -0.0079,
+          -0.1957
+        ],
+        "bboxMax": [
+          0.4126,
+          0.3415,
+          0.2128
+        ]
       },
       "alphaMaterials": [],
       "alphaFixed": [],
+      "hiVariant": null,
       "files": {
         "desktop": {
           "glb": {
@@ -3152,14 +3401,33 @@
       "license": "CC0",
       "draco": true,
       "triBudget": 4000,
+      "simplified": true,
+      "keepNodes": null,
+      "droppedNodes": [],
       "stats": {
         "triangles": 3999,
         "materials": 1,
         "textures": 3,
-        "maxTextureSize": 512
+        "maxTextureSize": 512,
+        "bboxSize": [
+          0.5292,
+          0.464,
+          1.1663
+        ],
+        "bboxMin": [
+          -0.2646,
+          -0.0098,
+          -0.5833
+        ],
+        "bboxMax": [
+          0.2646,
+          0.4541,
+          0.583
+        ]
       },
       "alphaMaterials": [],
       "alphaFixed": [],
+      "hiVariant": null,
       "files": {
         "desktop": {
           "glb": {
@@ -3190,14 +3458,33 @@
       "license": "CC0",
       "draco": true,
       "triBudget": 4000,
+      "simplified": true,
+      "keepNodes": null,
+      "droppedNodes": [],
       "stats": {
         "triangles": 2682,
         "materials": 1,
         "textures": 3,
-        "maxTextureSize": 512
+        "maxTextureSize": 512,
+        "bboxSize": [
+          0.563,
+          0.88,
+          0.563
+        ],
+        "bboxMin": [
+          -0.2815,
+          -0.0066,
+          -0.2815
+        ],
+        "bboxMax": [
+          0.2815,
+          0.8734,
+          0.2815
+        ]
       },
       "alphaMaterials": [],
       "alphaFixed": [],
+      "hiVariant": null,
       "files": {
         "desktop": {
           "glb": {
@@ -3228,14 +3515,33 @@
       "license": "CC0",
       "draco": true,
       "triBudget": 20000,
+      "simplified": true,
+      "keepNodes": null,
+      "droppedNodes": [],
       "stats": {
         "triangles": 54122,
         "materials": 1,
         "textures": 3,
-        "maxTextureSize": 128
+        "maxTextureSize": 128,
+        "bboxSize": [
+          1.272,
+          1.0037,
+          1.8276
+        ],
+        "bboxMin": [
+          -0.748,
+          -0.0736,
+          -0.9457
+        ],
+        "bboxMax": [
+          0.5239,
+          0.9301,
+          0.8819
+        ]
       },
       "alphaMaterials": [],
       "alphaFixed": [],
+      "hiVariant": null,
       "files": {
         "desktop": {
           "glb": {

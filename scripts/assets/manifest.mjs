@@ -169,10 +169,21 @@ const M = (ph, use, battles, extra = {}) => ({
 
 export const MODELS = [
   // 針葉樹（bastogne 阿登森林）
-  M('fir_tree_01', '冷杉，阿登森林主樹種', ['bastogne']),
-  M('pine_tree_01', '松樹，阿登森林第二樹種', ['bastogne']),
-  // 樹苗的針葉是幾千塊互不相連的小面，meshoptimizer 簡化到 ~10k 就到底了，別設更低的目標
-  M('pine_sapling_medium', '松樹苗，林下層與林緣', ['bastogne']),
+  // 這三個來源檔的 scene 裡並排放了 _a／_b／_c 三個變體（translation x = 0／6／12），
+  // 不砍掉的話三角形預算被三棵分掉，optimize 的 flatten＋join 又會把位移烘進頂點，
+  // 產出是一叢 18–21 m 寬、其中兩棵只剩一兩百面的殘骸。keepNodes 只留第一個變體。
+  // 森林是巴斯通的招牌，這兩棵另出桌機高規版 <id>_hi.glb（512² 貼圖、4–6 萬面、≤1.2 MB）；
+  // 手機仍載 300 KB 的一般版。其他樹要比照辦理就加同樣的 hiVariant 欄位。
+  M('fir_tree_01', '冷杉，阿登森林主樹種', ['bastogne'], {
+    keepNodes: ['_a_'],
+    hiVariant: { textureSize: 512, triBudget: 50000, maxBytes: 1.2e6 },
+  }),
+  M('pine_tree_01', '松樹，阿登森林第二樹種', ['bastogne'], {
+    keepNodes: ['_a_'],
+    hiVariant: { textureSize: 512, triBudget: 50000, maxBytes: 1.2e6 },
+  }),
+  // 樹苗的針葉是幾千塊互不相連的小面，meshoptimizer 簡化到某個點就到底了，別設更低的目標
+  M('pine_sapling_medium', '松樹苗，林下層與林緣', ['bastogne'], { keepNodes: ['_a_'] }),
   M('dead_tree_trunk', '砲擊後的斷木殘幹（增補）', ['bastogne', 'brecourt'], { triBudget: 8000 }),
 
   // 闊葉樹（陸戰三場）
@@ -180,9 +191,15 @@ export const MODELS = [
   M('island_tree_01', '闊葉樹（含椰島感），環礁與農地', ['midway', 'carentan']),
   M('island_tree_02', '闊葉樹變體，避免重複', ['midway', 'brecourt']),
 
-  // 灌木（樹籬）
-  M('shrub_01', '樹籬灌木主體', ['brecourt', 'carentan'], { triBudget: 12000 }),
-  M('shrub_04', '樹籬灌木變體', ['brecourt', 'crossroads'], { triBudget: 12000 }),
+  // 地被植物。注意：Poly Haven 把這兩個歸在 ground cover，實際尺寸是
+  // shrub_01 約 2.59×0.40×0.22 m、shrub_04 約 0.58×0.22×0.15 m 的低矮匍匐草株，
+  // 不是 1.5–2 m 的樹籬灌木。當林下地被、田埂雜草、彈坑邊緣點綴用；
+  // brecourt 的樹籬要另外找資產或用程序化的。
+  // shrub_04 幾何本來就小（27k 面），simplify 直接關掉、原封不動進 Draco。
+  // shrub_01 原始 156k 面，即使貼圖降到 128² 也要 427 KB，塞不進 300 KB；
+  // 改用保守的 60k 面目標（仍是舊版 11.9k 的五倍細節）換 512² 貼圖。
+  M('shrub_01', '低矮匍匐地被（林下、田埂雜草）', ['brecourt', 'carentan'], { triBudget: 60000 }),
+  M('shrub_04', '小型地被草株', ['brecourt', 'crossroads'], { simplify: false }),
 
   // 雜物
   M('wooden_crate_01', '木箱（補給堆、陣地點綴）', ['brecourt', 'carentan', 'bastogne'], { triBudget: 4000 }),
