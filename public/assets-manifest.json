@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-12T03:43:32.350Z",
+  "generatedAt": "2026-09-12T04:10:46.996Z",
   "spec": "docs/asset-pipeline-spec.md §1",
   "source": "Poly Haven",
   "license": "CC0",
@@ -42,7 +42,7 @@
     },
     "model": {
       "count": 13,
-      "bytes": 4919584
+      "bytes": 7850488
     }
   },
   "byType": {
@@ -3058,12 +3058,34 @@
       "alphaFixed": [
         "tree_small_02_leaves"
       ],
-      "hiVariant": null,
+      "hiVariant": {
+        "textureSize": 512,
+        "triBudget": 50000,
+        "maxBytes": 1200000
+      },
       "files": {
         "desktop": {
           "glb": {
             "path": "/models/tree_small_02.glb",
             "bytes": 304052
+          },
+          "glb_hi": {
+            "path": "/models/tree_small_02_hi.glb",
+            "bytes": 837312,
+            "triangles": 49710,
+            "textureSize": 512,
+            "bboxSize": [
+              2.8838,
+              4.5453,
+              4.2011
+            ],
+            "alphaMaterials": [
+              {
+                "name": "tree_small_02_leaves",
+                "mode": "MASK",
+                "cutoff": 0.5
+              }
+            ]
           }
         },
         "mobile": {
@@ -3122,12 +3144,34 @@
       "alphaFixed": [
         "island_tree_01_leaves"
       ],
-      "hiVariant": null,
+      "hiVariant": {
+        "textureSize": 512,
+        "triBudget": 50000,
+        "maxBytes": 1200000
+      },
       "files": {
         "desktop": {
           "glb": {
             "path": "/models/island_tree_01.glb",
             "bytes": 215584
+          },
+          "glb_hi": {
+            "path": "/models/island_tree_01_hi.glb",
+            "bytes": 1069368,
+            "triangles": 48861,
+            "textureSize": 512,
+            "bboxSize": [
+              4.7363,
+              5.0232,
+              4.8174
+            ],
+            "alphaMaterials": [
+              {
+                "name": "island_tree_01_leaves",
+                "mode": "MASK",
+                "cutoff": 0.5
+              }
+            ]
           }
         },
         "mobile": {
@@ -3186,12 +3230,34 @@
       "alphaFixed": [
         "island_tree_02_leaves"
       ],
-      "hiVariant": null,
+      "hiVariant": {
+        "textureSize": 512,
+        "triBudget": 50000,
+        "maxBytes": 1200000
+      },
       "files": {
         "desktop": {
           "glb": {
             "path": "/models/island_tree_02.glb",
             "bytes": 204548
+          },
+          "glb_hi": {
+            "path": "/models/island_tree_02_hi.glb",
+            "bytes": 1024224,
+            "triangles": 48252,
+            "textureSize": 512,
+            "bboxSize": [
+              4.2077,
+              3.4028,
+              4.0704
+            ],
+            "alphaMaterials": [
+              {
+                "name": "island_tree_02_leaves",
+                "mode": "MASK",
+                "cutoff": 0.5
+              }
+            ]
           }
         },
         "mobile": {

@@ -186,10 +186,18 @@ export const MODELS = [
   M('pine_sapling_medium', '松樹苗，林下層與林緣', ['bastogne'], { keepNodes: ['_a_'] }),
   M('dead_tree_trunk', '砲擊後的斷木殘幹（增補）', ['bastogne', 'brecourt'], { triBudget: 8000 }),
 
-  // 闊葉樹（陸戰三場）
-  M('tree_small_02', '小闊葉樹，樹籬與田邊', ['brecourt', 'carentan', 'crossroads']),
-  M('island_tree_01', '闊葉樹（含椰島感），環礁與農地', ['midway', 'carentan']),
-  M('island_tree_02', '闊葉樹變體，避免重複', ['midway', 'brecourt']),
+  // 闊葉樹（陸戰三場）。來源都是單一 node（沒有 _a／_b／_c 變體），不用 keepNodes。
+  // 300 KB 版在 128²／1 萬面下葉片被簡化掉太多、只剩褐色枝幹，六月諾曼第看起來像枯樹，
+  // 所以同樣給桌機高規版。
+  M('tree_small_02', '小闊葉樹，樹籬與田邊', ['brecourt', 'carentan', 'crossroads'], {
+    hiVariant: { textureSize: 512, triBudget: 50000, maxBytes: 1.2e6 },
+  }),
+  M('island_tree_01', '闊葉樹（含椰島感），環礁與農地', ['midway', 'carentan'], {
+    hiVariant: { textureSize: 512, triBudget: 50000, maxBytes: 1.2e6 },
+  }),
+  M('island_tree_02', '闊葉樹變體，避免重複', ['midway', 'brecourt'], {
+    hiVariant: { textureSize: 512, triBudget: 50000, maxBytes: 1.2e6 },
+  }),
 
   // 地被植物。注意：Poly Haven 把這兩個歸在 ground cover，實際尺寸是
   // shrub_01 約 2.59×0.40×0.22 m、shrub_04 約 0.58×0.22×0.15 m 的低矮匍匐草株，
