@@ -98,3 +98,16 @@
 4. 整合者（Fable）：每階段截圖 QA、commit、build、push。
 
 *本規格由 Claude（Fable 5.1）於 2026-09-12 撰寫。*
+
+---
+
+## 5. 施工期間發現的資產陷阱（2026-09-12 整合時補記）
+
+1. **Poly Haven 樹模型一檔常含三棵變體並排**（node `_a/_b/_c`，x 位移 0/6/12 m），且葉片可能合在同一個 primitive。壓縮前必須先只保留一棵（manifest `keepNodes`），否則簡化預算被三棵分掉、bbox 變成 18 m 寬的一叢。
+2. **`shrub_01`／`shrub_04` 是低矮匍匐地被**（2.6×0.4×0.2 m、0.6×0.2×0.15 m），不是樹籬灌木；樹籬灌木改用縮小的 `island_tree_02` 或程序化。選素材前先看 Poly Haven metadata 的 dimensions 與 categories。
+3. **300 KB 預算下的樹只夠當遠景**：貼圖被壓到 128²、葉片卡抽掉九成，近景會露餡。招牌森林（巴斯通）另出桌機高規版 `*_hi.glb`（512²、4–6 萬面、≤ 1.2 MB），手機仍用小版。
+4. **Blender 產出的 glb 是純色平塗、無貼圖、每材質一個 primitive**：整合端把 baseColor 烘進頂點色並合併成單一幾何，一個小兵含武器仍是 1 個 draw call；材質「每單位一份」讓淡出不外溢。縮放一律用同一個「站姿 1.75 m → 場景單位」倍率，不要逐姿態用 bbox 對齊（跪姿會被拉壯）。
+5. **HDRI 環境光強度要壓低**（0.16–0.45），因為各戰役調色盤是在沒有 IBL 時校的；同時把半球光相應調降，避免天光算兩次。
+6. **細節貼圖疊乘前先除以自身平均亮度**，否則兩張中間調相乘整片發黑；`metal_plate` 的 diffuse 偏褐，艦體只取 nor＋arm。
+7. three r184：`RGBELoader` 已更名 `HDRLoader`；帶 `KHR_materials_specular` 的 glb 會被載成 MeshPhysicalMaterial 並噴 D3D 精度警告，沒有 transmission／clearcoat 的一律降級成 MeshStandardMaterial。
+8. 多個代理同時改同一個 repo 時，Vite 每次存檔都會整頁重載，任何需要「進場後量測」的驗收都會被打斷；下次多代理並行請各自跑一個 vite 實例（不同 port）。
