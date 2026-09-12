@@ -123,3 +123,4 @@
 4. three 0.184 已棄用 `PCFSoftShadowMap`（會退回 PCFShadowMap 並洗 console 警告），直接用 `PCFShadowMap`。
 5. `renderer.info.render.calls` 在開了 composer 之後只反映最後一個 pass；量 draw call 要另外直接 `renderer.render()` 一次再讀。
 6. 手機沒有 composer 時，自寫的 sky ShaderMaterial 不會過 tone mapping，需在 shader 內自做 ACES 近似（Narkowicz fit）＋ sRGB transfer，桌機則交給 OutputPass。
+7. **「一根針／一片葉一個三角形」的植被資產，遠距離會整棵消失**：次像素三角形常被光柵化整個丟棄（與 alphaTest、mipmap 無關，純紅色不透明材質對照實驗同樣消失）。解法是把三角形重心烘成屬性，在 vertex shader 依鏡頭距離沿重心放大三角形，維持螢幕空間最小寬度（巴斯通 `terrain-upgrade.js` 的 needle shader）；否則只能做 impostor billboard LOD。開 composer 後 `renderer.antialias` 無效，要在 render target 開 MSAA samples。
