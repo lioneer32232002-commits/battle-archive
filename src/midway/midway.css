@@ -198,10 +198,10 @@ body {
 /* ── 事件字卡 ── */
 #event-card {
   position: absolute;
-  left: 24px;
+  left: 284px; /* 左側陣營面板 14+252+3px 之右 */
   bottom: 164px;
   transform: none;
-  width: min(430px, calc(100vw - 48px));
+  width: clamp(260px, calc(100vw - 580px), 430px);
   background: rgba(8, 12, 20, 0.38);
   border: 1px solid rgba(49, 64, 94, 0.6);
   border-left: 4px solid #c9a227;
