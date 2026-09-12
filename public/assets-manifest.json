@@ -1,0 +1,3255 @@
+{
+  "generatedAt": "2026-09-12T02:26:05.092Z",
+  "spec": "docs/asset-pipeline-spec.md §1",
+  "source": "Poly Haven",
+  "license": "CC0",
+  "licenseNote": "全部資產為 Poly Haven CC0，可自由使用、修改、商用，不需署名（本專案仍於 manifest 保留來源）。",
+  "budgets": {
+    "texture": 358400,
+    "hdr": 1677722,
+    "hdrTonemapped": 409600,
+    "model": 307200
+  },
+  "draco": {
+    "decoderPath": "/draco/",
+    "files": [
+      {
+        "path": "/draco/draco_decoder.js",
+        "bytes": 512465
+      },
+      {
+        "path": "/draco/draco_decoder.wasm",
+        "bytes": 192420
+      },
+      {
+        "path": "/draco/draco_encoder.js",
+        "bytes": 954360
+      },
+      {
+        "path": "/draco/draco_wasm_wrapper.js",
+        "bytes": 58456
+      }
+    ]
+  },
+  "totals": {
+    "texture": {
+      "count": 34,
+      "bytes": 34521145
+    },
+    "hdri": {
+      "count": 11,
+      "bytes": 17602444
+    },
+    "model": {
+      "count": 13,
+      "bytes": 2664308
+    }
+  },
+  "byType": {
+    "texture": [
+      "aerial_grass_rock",
+      "leafy_grass",
+      "grass_path_2",
+      "forrest_ground_01",
+      "brown_mud_leaves_01",
+      "brown_mud_dry",
+      "dirt_floor",
+      "forest_leaves_03",
+      "snow_02",
+      "snow_field_aerial",
+      "snow_01",
+      "snow_03",
+      "asphalt_02",
+      "gravelly_sand",
+      "cobblestone_floor_04",
+      "painted_plaster_wall",
+      "rustic_stone_wall_02",
+      "plastered_stone_wall",
+      "red_brick_03",
+      "medieval_blocks_02",
+      "roof_09",
+      "roof_slates_03",
+      "ceramic_roof_01",
+      "grey_roof_tiles_02",
+      "metal_plate",
+      "rusty_metal_02",
+      "green_metal_rust",
+      "rusty_metal_sheet",
+      "wood_planks",
+      "wood_planks_dirt",
+      "sand_01",
+      "coast_sand_01",
+      "sandy_gravel",
+      "rock_boulder_dry"
+    ],
+    "hdri": [
+      "kiara_1_dawn",
+      "spruit_sunrise",
+      "kloofendal_48d_partly_cloudy_puresky",
+      "noon_grass",
+      "belfast_sunset_puresky",
+      "the_sky_is_on_fire",
+      "moonless_golf",
+      "satara_night_no_lamps",
+      "overcast_soil_puresky",
+      "cannon",
+      "mud_road_puresky"
+    ],
+    "model": [
+      "fir_tree_01",
+      "pine_tree_01",
+      "pine_sapling_medium",
+      "dead_tree_trunk",
+      "tree_small_02",
+      "island_tree_01",
+      "island_tree_02",
+      "shrub_01",
+      "shrub_04",
+      "wooden_crate_01",
+      "wooden_crate_02",
+      "barrel_01",
+      "boulder_01"
+    ]
+  },
+  "byBattle": {
+    "brecourt": [
+      "aerial_grass_rock",
+      "leafy_grass",
+      "grass_path_2",
+      "forrest_ground_01",
+      "brown_mud_dry",
+      "dirt_floor",
+      "forest_leaves_03",
+      "gravelly_sand",
+      "green_metal_rust",
+      "wood_planks_dirt",
+      "kiara_1_dawn",
+      "spruit_sunrise",
+      "noon_grass",
+      "dead_tree_trunk",
+      "tree_small_02",
+      "island_tree_02",
+      "shrub_01",
+      "shrub_04",
+      "wooden_crate_01",
+      "wooden_crate_02"
+    ],
+    "carentan": [
+      "aerial_grass_rock",
+      "leafy_grass",
+      "brown_mud_leaves_01",
+      "brown_mud_dry",
+      "cobblestone_floor_04",
+      "painted_plaster_wall",
+      "rustic_stone_wall_02",
+      "plastered_stone_wall",
+      "red_brick_03",
+      "medieval_blocks_02",
+      "roof_09",
+      "ceramic_roof_01",
+      "green_metal_rust",
+      "wood_planks_dirt",
+      "kloofendal_48d_partly_cloudy_puresky",
+      "noon_grass",
+      "mud_road_puresky",
+      "tree_small_02",
+      "island_tree_01",
+      "shrub_01",
+      "wooden_crate_01",
+      "barrel_01"
+    ],
+    "crossroads": [
+      "aerial_grass_rock",
+      "grass_path_2",
+      "brown_mud_dry",
+      "asphalt_02",
+      "gravelly_sand",
+      "painted_plaster_wall",
+      "red_brick_03",
+      "roof_slates_03",
+      "grey_roof_tiles_02",
+      "green_metal_rust",
+      "rusty_metal_sheet",
+      "rock_boulder_dry",
+      "kiara_1_dawn",
+      "spruit_sunrise",
+      "tree_small_02",
+      "shrub_04",
+      "barrel_01",
+      "boulder_01"
+    ],
+    "bastogne": [
+      "forrest_ground_01",
+      "brown_mud_leaves_01",
+      "dirt_floor",
+      "forest_leaves_03",
+      "snow_02",
+      "snow_field_aerial",
+      "snow_01",
+      "snow_03",
+      "rustic_stone_wall_02",
+      "roof_slates_03",
+      "green_metal_rust",
+      "rusty_metal_sheet",
+      "wood_planks_dirt",
+      "moonless_golf",
+      "satara_night_no_lamps",
+      "overcast_soil_puresky",
+      "cannon",
+      "mud_road_puresky",
+      "fir_tree_01",
+      "pine_tree_01",
+      "pine_sapling_medium",
+      "dead_tree_trunk",
+      "wooden_crate_01",
+      "wooden_crate_02",
+      "boulder_01"
+    ],
+    "midway": [
+      "metal_plate",
+      "rusty_metal_02",
+      "wood_planks",
+      "sand_01",
+      "coast_sand_01",
+      "sandy_gravel",
+      "rock_boulder_dry",
+      "kiara_1_dawn",
+      "kloofendal_48d_partly_cloudy_puresky",
+      "belfast_sunset_puresky",
+      "the_sky_is_on_fire",
+      "moonless_golf",
+      "satara_night_no_lamps",
+      "island_tree_01",
+      "island_tree_02",
+      "barrel_01",
+      "boulder_01"
+    ],
+    "yamato": [
+      "metal_plate",
+      "rusty_metal_02",
+      "belfast_sunset_puresky",
+      "the_sky_is_on_fire",
+      "overcast_soil_puresky",
+      "cannon"
+    ]
+  },
+  "assets": {
+    "aerial_grass_rock": {
+      "id": "aerial_grass_rock",
+      "type": "texture",
+      "use": "牧草地主層（航拍草皮夾石礫），地表 repeat 40×40",
+      "battles": [
+        "brecourt",
+        "carentan",
+        "crossroads"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "aerial_grass_rock",
+      "sourceUrl": "https://polyhaven.com/a/aerial_grass_rock",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/aerial_grass_rock_diff_1k.jpg",
+            "bytes": 172689,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/aerial_grass_rock_nor_1k.jpg",
+            "bytes": 317853,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/aerial_grass_rock_arm_1k.jpg",
+            "bytes": 333548,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/aerial_grass_rock_diff_512.jpg",
+            "bytes": 42278,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/aerial_grass_rock_nor_512.jpg",
+            "bytes": 153525,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/aerial_grass_rock_arm_512.jpg",
+            "bytes": 92280,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "leafy_grass": {
+      "id": "leafy_grass",
+      "type": "texture",
+      "use": "牧草地近景草葉，低空鏡頭用",
+      "battles": [
+        "brecourt",
+        "carentan"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "leafy_grass",
+      "sourceUrl": "https://polyhaven.com/a/leafy_grass",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/leafy_grass_diff_1k.jpg",
+            "bytes": 256099,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/leafy_grass_nor_1k.jpg",
+            "bytes": 322069,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/leafy_grass_arm_1k.jpg",
+            "bytes": 302149,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/leafy_grass_diff_512.jpg",
+            "bytes": 62280,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/leafy_grass_nor_512.jpg",
+            "bytes": 209986,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/leafy_grass_arm_512.jpg",
+            "bytes": 131996,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "grass_path_2": {
+      "id": "grass_path_2",
+      "type": "texture",
+      "use": "草地踏出的小徑／車轍邊緣",
+      "battles": [
+        "brecourt",
+        "crossroads"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "grass_path_2",
+      "sourceUrl": "https://polyhaven.com/a/grass_path_2",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/grass_path_2_diff_1k.jpg",
+            "bytes": 231755,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/grass_path_2_nor_1k.jpg",
+            "bytes": 347646,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/grass_path_2_arm_1k.jpg",
+            "bytes": 319963,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/grass_path_2_diff_512.jpg",
+            "bytes": 63972,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/grass_path_2_nor_512.jpg",
+            "bytes": 187390,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/grass_path_2_arm_512.jpg",
+            "bytes": 97111,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "forrest_ground_01": {
+      "id": "forrest_ground_01",
+      "type": "texture",
+      "use": "林地腐植落葉層",
+      "battles": [
+        "bastogne",
+        "brecourt"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "forrest_ground_01",
+      "sourceUrl": "https://polyhaven.com/a/forrest_ground_01",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/forrest_ground_01_diff_1k.jpg",
+            "bytes": 241059,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/forrest_ground_01_nor_1k.jpg",
+            "bytes": 354817,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/forrest_ground_01_arm_1k.jpg",
+            "bytes": 351177,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/forrest_ground_01_diff_512.jpg",
+            "bytes": 61674,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/forrest_ground_01_nor_512.jpg",
+            "bytes": 241902,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/forrest_ground_01_arm_512.jpg",
+            "bytes": 148966,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "brown_mud_leaves_01": {
+      "id": "brown_mud_leaves_01",
+      "type": "texture",
+      "use": "濕泥夾落葉（雨後樹籬底）",
+      "battles": [
+        "bastogne",
+        "carentan"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "brown_mud_leaves_01",
+      "sourceUrl": "https://polyhaven.com/a/brown_mud_leaves_01",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/brown_mud_leaves_01_diff_1k.jpg",
+            "bytes": 273220,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/brown_mud_leaves_01_nor_1k.jpg",
+            "bytes": 350067,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/brown_mud_leaves_01_arm_1k.jpg",
+            "bytes": 344965,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/brown_mud_leaves_01_diff_512.jpg",
+            "bytes": 69016,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/brown_mud_leaves_01_nor_512.jpg",
+            "bytes": 229814,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/brown_mud_leaves_01_arm_512.jpg",
+            "bytes": 129682,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "brown_mud_dry": {
+      "id": "brown_mud_dry",
+      "type": "texture",
+      "use": "乾裂泥地、彈坑周邊",
+      "battles": [
+        "brecourt",
+        "carentan",
+        "crossroads"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "brown_mud_dry",
+      "sourceUrl": "https://polyhaven.com/a/brown_mud_dry",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/brown_mud_dry_diff_1k.jpg",
+            "bytes": 308644,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/brown_mud_dry_nor_1k.jpg",
+            "bytes": 355374,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/brown_mud_dry_arm_1k.jpg",
+            "bytes": 335996,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/brown_mud_dry_diff_512.jpg",
+            "bytes": 74594,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/brown_mud_dry_nor_512.jpg",
+            "bytes": 269004,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/brown_mud_dry_arm_512.jpg",
+            "bytes": 123875,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "dirt_floor": {
+      "id": "dirt_floor",
+      "type": "texture",
+      "use": "散兵坑／掩體翻出的新土（增補）",
+      "battles": [
+        "brecourt",
+        "bastogne"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "dirt_floor",
+      "sourceUrl": "https://polyhaven.com/a/dirt_floor",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/dirt_floor_diff_1k.jpg",
+            "bytes": 158292,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/dirt_floor_nor_1k.jpg",
+            "bytes": 310251,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/dirt_floor_arm_1k.jpg",
+            "bytes": 219130,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/dirt_floor_diff_512.jpg",
+            "bytes": 35872,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/dirt_floor_nor_512.jpg",
+            "bytes": 140185,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/dirt_floor_arm_512.jpg",
+            "bytes": 62659,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "forest_leaves_03": {
+      "id": "forest_leaves_03",
+      "type": "texture",
+      "use": "樹籬底層厚落葉（增補，brecourt 樹籬）",
+      "battles": [
+        "brecourt",
+        "bastogne"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "forest_leaves_03",
+      "sourceUrl": "https://polyhaven.com/a/forest_leaves_03",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/forest_leaves_03_diff_1k.jpg",
+            "bytes": 214168,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/forest_leaves_03_nor_1k.jpg",
+            "bytes": 344037,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/forest_leaves_03_arm_1k.jpg",
+            "bytes": 323863,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/forest_leaves_03_diff_512.jpg",
+            "bytes": 65610,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/forest_leaves_03_nor_512.jpg",
+            "bytes": 238198,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/forest_leaves_03_arm_512.jpg",
+            "bytes": 180531,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "snow_02": {
+      "id": "snow_02",
+      "type": "texture",
+      "use": "雪地主層",
+      "battles": [
+        "bastogne"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "snow_02",
+      "sourceUrl": "https://polyhaven.com/a/snow_02",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/snow_02_diff_1k.jpg",
+            "bytes": 76199,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/snow_02_nor_1k.jpg",
+            "bytes": 333356,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/snow_02_arm_1k.jpg",
+            "bytes": 120636,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/snow_02_diff_512.jpg",
+            "bytes": 16319,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/snow_02_nor_512.jpg",
+            "bytes": 159188,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/snow_02_arm_512.jpg",
+            "bytes": 32959,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "snow_field_aerial": {
+      "id": "snow_field_aerial",
+      "type": "texture",
+      "use": "雪原遠景 macro 層",
+      "battles": [
+        "bastogne"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "snow_field_aerial",
+      "sourceUrl": "https://polyhaven.com/a/snow_field_aerial",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/snow_field_aerial_diff_1k.jpg",
+            "bytes": 245245,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/snow_field_aerial_nor_1k.jpg",
+            "bytes": 322165,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/snow_field_aerial_arm_1k.jpg",
+            "bytes": 334859,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/snow_field_aerial_diff_512.jpg",
+            "bytes": 64750,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/snow_field_aerial_nor_512.jpg",
+            "bytes": 117764,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/snow_field_aerial_arm_512.jpg",
+            "bytes": 110503,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "snow_01": {
+      "id": "snow_01",
+      "type": "texture",
+      "use": "積雪細節（踏痕與堆邊）",
+      "battles": [
+        "bastogne"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "snow_01",
+      "sourceUrl": "https://polyhaven.com/a/snow_01",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/snow_01_diff_1k.jpg",
+            "bytes": 98659,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/snow_01_nor_1k.jpg",
+            "bytes": 327703,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/snow_01_arm_1k.jpg",
+            "bytes": 219783,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/snow_01_diff_512.jpg",
+            "bytes": 27799,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/snow_01_nor_512.jpg",
+            "bytes": 230055,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/snow_01_arm_512.jpg",
+            "bytes": 64263,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "snow_03": {
+      "id": "snow_03",
+      "type": "texture",
+      "use": "雪地第三變化，破平鋪（增補）",
+      "battles": [
+        "bastogne"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "snow_03",
+      "sourceUrl": "https://polyhaven.com/a/snow_03",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/snow_03_diff_1k.jpg",
+            "bytes": 187341,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/snow_03_nor_1k.jpg",
+            "bytes": 323891,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/snow_03_arm_1k.jpg",
+            "bytes": 334731,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/snow_03_diff_512.jpg",
+            "bytes": 55540,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/snow_03_nor_512.jpg",
+            "bytes": 228349,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/snow_03_arm_512.jpg",
+            "bytes": 125312,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "asphalt_02": {
+      "id": "asphalt_02",
+      "type": "texture",
+      "use": "堤路柏油",
+      "battles": [
+        "crossroads"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "asphalt_02",
+      "sourceUrl": "https://polyhaven.com/a/asphalt_02",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/asphalt_02_diff_1k.jpg",
+            "bytes": 266017,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/asphalt_02_nor_1k.jpg",
+            "bytes": 328605,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/asphalt_02_arm_1k.jpg",
+            "bytes": 341025,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/asphalt_02_diff_512.jpg",
+            "bytes": 55499,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/asphalt_02_nor_512.jpg",
+            "bytes": 146233,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/asphalt_02_arm_512.jpg",
+            "bytes": 125308,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "gravelly_sand": {
+      "id": "gravelly_sand",
+      "type": "texture",
+      "use": "碎石土路",
+      "battles": [
+        "brecourt",
+        "crossroads"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "gravelly_sand",
+      "sourceUrl": "https://polyhaven.com/a/gravelly_sand",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/gravelly_sand_diff_1k.jpg",
+            "bytes": 208426,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/gravelly_sand_nor_1k.jpg",
+            "bytes": 326653,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/gravelly_sand_arm_1k.jpg",
+            "bytes": 320143,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/gravelly_sand_diff_512.jpg",
+            "bytes": 44897,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/gravelly_sand_nor_512.jpg",
+            "bytes": 179340,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/gravelly_sand_arm_512.jpg",
+            "bytes": 84059,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "cobblestone_floor_04": {
+      "id": "cobblestone_floor_04",
+      "type": "texture",
+      "use": "鋪石街（carentan 市鎮）",
+      "battles": [
+        "carentan"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "cobblestone_floor_04",
+      "sourceUrl": "https://polyhaven.com/a/cobblestone_floor_04",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/cobblestone_floor_04_diff_1k.jpg",
+            "bytes": 171890,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/cobblestone_floor_04_nor_1k.jpg",
+            "bytes": 321828,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/cobblestone_floor_04_arm_1k.jpg",
+            "bytes": 318338,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/cobblestone_floor_04_diff_512.jpg",
+            "bytes": 51535,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/cobblestone_floor_04_nor_512.jpg",
+            "bytes": 154277,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/cobblestone_floor_04_arm_512.jpg",
+            "bytes": 122142,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "painted_plaster_wall": {
+      "id": "painted_plaster_wall",
+      "type": "texture",
+      "use": "粉刷外牆",
+      "battles": [
+        "carentan",
+        "crossroads"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "painted_plaster_wall",
+      "sourceUrl": "https://polyhaven.com/a/painted_plaster_wall",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/painted_plaster_wall_diff_1k.jpg",
+            "bytes": 87105,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/painted_plaster_wall_nor_1k.jpg",
+            "bytes": 329594,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/painted_plaster_wall_arm_1k.jpg",
+            "bytes": 110878,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/painted_plaster_wall_diff_512.jpg",
+            "bytes": 13042,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/painted_plaster_wall_nor_512.jpg",
+            "bytes": 53056,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/painted_plaster_wall_arm_512.jpg",
+            "bytes": 22296,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "rustic_stone_wall_02": {
+      "id": "rustic_stone_wall_02",
+      "type": "texture",
+      "use": "粗石砌牆",
+      "battles": [
+        "carentan",
+        "bastogne"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "rustic_stone_wall_02",
+      "sourceUrl": "https://polyhaven.com/a/rustic_stone_wall_02",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/rustic_stone_wall_02_diff_1k.jpg",
+            "bytes": 147432,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/rustic_stone_wall_02_nor_1k.jpg",
+            "bytes": 342156,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/rustic_stone_wall_02_arm_1k.jpg",
+            "bytes": 305068,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/rustic_stone_wall_02_diff_512.jpg",
+            "bytes": 42958,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/rustic_stone_wall_02_nor_512.jpg",
+            "bytes": 187744,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/rustic_stone_wall_02_arm_512.jpg",
+            "bytes": 106905,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "plastered_stone_wall": {
+      "id": "plastered_stone_wall",
+      "type": "texture",
+      "use": "灰泥石牆",
+      "battles": [
+        "carentan"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "plastered_stone_wall",
+      "sourceUrl": "https://polyhaven.com/a/plastered_stone_wall",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/plastered_stone_wall_diff_1k.jpg",
+            "bytes": 96738,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/plastered_stone_wall_nor_1k.jpg",
+            "bytes": 316028,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/plastered_stone_wall_arm_1k.jpg",
+            "bytes": 263143,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/plastered_stone_wall_diff_512.jpg",
+            "bytes": 21759,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/plastered_stone_wall_nor_512.jpg",
+            "bytes": 137446,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/plastered_stone_wall_arm_512.jpg",
+            "bytes": 80897,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "red_brick_03": {
+      "id": "red_brick_03",
+      "type": "texture",
+      "use": "紅磚牆",
+      "battles": [
+        "carentan",
+        "crossroads"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "red_brick_03",
+      "sourceUrl": "https://polyhaven.com/a/red_brick_03",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/red_brick_03_diff_1k.jpg",
+            "bytes": 203881,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/red_brick_03_nor_1k.jpg",
+            "bytes": 329868,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/red_brick_03_arm_1k.jpg",
+            "bytes": 251172,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/red_brick_03_diff_512.jpg",
+            "bytes": 46996,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/red_brick_03_nor_512.jpg",
+            "bytes": 130724,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/red_brick_03_arm_512.jpg",
+            "bytes": 76860,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "medieval_blocks_02": {
+      "id": "medieval_blocks_02",
+      "type": "texture",
+      "use": "諾曼第切石塊牆／教堂基座（增補）",
+      "battles": [
+        "carentan"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "medieval_blocks_02",
+      "sourceUrl": "https://polyhaven.com/a/medieval_blocks_02",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/medieval_blocks_02_diff_1k.jpg",
+            "bytes": 207002,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/medieval_blocks_02_nor_1k.jpg",
+            "bytes": 325200,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/medieval_blocks_02_arm_1k.jpg",
+            "bytes": 350806,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/medieval_blocks_02_diff_512.jpg",
+            "bytes": 54399,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/medieval_blocks_02_nor_512.jpg",
+            "bytes": 209871,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/medieval_blocks_02_arm_512.jpg",
+            "bytes": 112196,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "roof_09": {
+      "id": "roof_09",
+      "type": "texture",
+      "use": "一般瓦屋頂",
+      "battles": [
+        "carentan"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "roof_09",
+      "sourceUrl": "https://polyhaven.com/a/roof_09",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/roof_09_diff_1k.jpg",
+            "bytes": 160882,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/roof_09_nor_1k.jpg",
+            "bytes": 232983,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/roof_09_arm_1k.jpg",
+            "bytes": 354569,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/roof_09_diff_512.jpg",
+            "bytes": 46835,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/roof_09_nor_512.jpg",
+            "bytes": 81849,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/roof_09_arm_512.jpg",
+            "bytes": 128591,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "roof_slates_03": {
+      "id": "roof_slates_03",
+      "type": "texture",
+      "use": "石板瓦（阿登木石屋）",
+      "battles": [
+        "bastogne",
+        "crossroads"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "roof_slates_03",
+      "sourceUrl": "https://polyhaven.com/a/roof_slates_03",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/roof_slates_03_diff_1k.jpg",
+            "bytes": 120108,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/roof_slates_03_nor_1k.jpg",
+            "bytes": 318672,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/roof_slates_03_arm_1k.jpg",
+            "bytes": 355806,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/roof_slates_03_diff_512.jpg",
+            "bytes": 37126,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/roof_slates_03_nor_512.jpg",
+            "bytes": 100494,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/roof_slates_03_arm_512.jpg",
+            "bytes": 116717,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "ceramic_roof_01": {
+      "id": "ceramic_roof_01",
+      "type": "texture",
+      "use": "陶瓦",
+      "battles": [
+        "carentan"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "ceramic_roof_01",
+      "sourceUrl": "https://polyhaven.com/a/ceramic_roof_01",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/ceramic_roof_01_diff_1k.jpg",
+            "bytes": 167356,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/ceramic_roof_01_nor_1k.jpg",
+            "bytes": 342696,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/ceramic_roof_01_arm_1k.jpg",
+            "bytes": 274558,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/ceramic_roof_01_diff_512.jpg",
+            "bytes": 53959,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/ceramic_roof_01_nor_512.jpg",
+            "bytes": 138906,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/ceramic_roof_01_arm_512.jpg",
+            "bytes": 88209,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "grey_roof_tiles_02": {
+      "id": "grey_roof_tiles_02",
+      "type": "texture",
+      "use": "灰瓦",
+      "battles": [
+        "crossroads"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "grey_roof_tiles_02",
+      "sourceUrl": "https://polyhaven.com/a/grey_roof_tiles_02",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/grey_roof_tiles_02_diff_1k.jpg",
+            "bytes": 113269,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/grey_roof_tiles_02_nor_1k.jpg",
+            "bytes": 312275,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/grey_roof_tiles_02_arm_1k.jpg",
+            "bytes": 273728,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/grey_roof_tiles_02_diff_512.jpg",
+            "bytes": 34216,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/grey_roof_tiles_02_nor_512.jpg",
+            "bytes": 99757,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/grey_roof_tiles_02_arm_512.jpg",
+            "bytes": 83317,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "metal_plate": {
+      "id": "metal_plate",
+      "type": "texture",
+      "use": "艦體鋼板",
+      "battles": [
+        "midway",
+        "yamato"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "metal_plate",
+      "sourceUrl": "https://polyhaven.com/a/metal_plate",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/metal_plate_diff_1k.jpg",
+            "bytes": 101120,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/metal_plate_nor_1k.jpg",
+            "bytes": 311102,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/metal_plate_arm_1k.jpg",
+            "bytes": 313144,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/metal_plate_diff_512.jpg",
+            "bytes": 32269,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/metal_plate_nor_512.jpg",
+            "bytes": 93563,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/metal_plate_arm_512.jpg",
+            "bytes": 158067,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "rusty_metal_02": {
+      "id": "rusty_metal_02",
+      "type": "texture",
+      "use": "鏽蝕鋼板（艦體戰損）",
+      "battles": [
+        "yamato",
+        "midway"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "rusty_metal_02",
+      "sourceUrl": "https://polyhaven.com/a/rusty_metal_02",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/rusty_metal_02_diff_1k.jpg",
+            "bytes": 151997,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/rusty_metal_02_nor_1k.jpg",
+            "bytes": 257202,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/rusty_metal_02_arm_1k.jpg",
+            "bytes": 217519,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/rusty_metal_02_diff_512.jpg",
+            "bytes": 48997,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/rusty_metal_02_nor_512.jpg",
+            "bytes": 51147,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/rusty_metal_02_arm_512.jpg",
+            "bytes": 63193,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "green_metal_rust": {
+      "id": "green_metal_rust",
+      "type": "texture",
+      "use": "軍綠鏽蝕（載具車身）",
+      "battles": [
+        "brecourt",
+        "carentan",
+        "crossroads",
+        "bastogne"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "green_metal_rust",
+      "sourceUrl": "https://polyhaven.com/a/green_metal_rust",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/green_metal_rust_diff_1k.jpg",
+            "bytes": 37261,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/green_metal_rust_nor_1k.jpg",
+            "bytes": 66603,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/green_metal_rust_arm_1k.jpg",
+            "bytes": 144427,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/green_metal_rust_diff_512.jpg",
+            "bytes": 9236,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/green_metal_rust_nor_512.jpg",
+            "bytes": 17226,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/green_metal_rust_arm_512.jpg",
+            "bytes": 35135,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "rusty_metal_sheet": {
+      "id": "rusty_metal_sheet",
+      "type": "texture",
+      "use": "戰損鐵皮／殘骸（增補）",
+      "battles": [
+        "bastogne",
+        "crossroads"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "rusty_metal_sheet",
+      "sourceUrl": "https://polyhaven.com/a/rusty_metal_sheet",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/rusty_metal_sheet_diff_1k.jpg",
+            "bytes": 113426,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/rusty_metal_sheet_nor_1k.jpg",
+            "bytes": 33963,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/rusty_metal_sheet_arm_1k.jpg",
+            "bytes": 281929,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/rusty_metal_sheet_diff_512.jpg",
+            "bytes": 27169,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/rusty_metal_sheet_nor_512.jpg",
+            "bytes": 5290,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/rusty_metal_sheet_arm_512.jpg",
+            "bytes": 83003,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "wood_planks": {
+      "id": "wood_planks",
+      "type": "texture",
+      "use": "日軍航艦木甲板",
+      "battles": [
+        "midway"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "wood_planks",
+      "sourceUrl": "https://polyhaven.com/a/wood_planks",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/wood_planks_diff_1k.jpg",
+            "bytes": 85585,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/wood_planks_nor_1k.jpg",
+            "bytes": 188526,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/wood_planks_arm_1k.jpg",
+            "bytes": 109302,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/wood_planks_diff_512.jpg",
+            "bytes": 23666,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/wood_planks_nor_512.jpg",
+            "bytes": 52458,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/wood_planks_arm_512.jpg",
+            "bytes": 38282,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "wood_planks_dirt": {
+      "id": "wood_planks_dirt",
+      "type": "texture",
+      "use": "穀倉木構、彈藥箱、木柵（增補）",
+      "battles": [
+        "brecourt",
+        "bastogne",
+        "carentan"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "wood_planks_dirt",
+      "sourceUrl": "https://polyhaven.com/a/wood_planks_dirt",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/wood_planks_dirt_diff_1k.jpg",
+            "bytes": 179729,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/wood_planks_dirt_nor_1k.jpg",
+            "bytes": 115365,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/wood_planks_dirt_arm_1k.jpg",
+            "bytes": 174075,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/wood_planks_dirt_diff_512.jpg",
+            "bytes": 40731,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/wood_planks_dirt_nor_512.jpg",
+            "bytes": 22301,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/wood_planks_dirt_arm_512.jpg",
+            "bytes": 43679,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "sand_01": {
+      "id": "sand_01",
+      "type": "texture",
+      "use": "環礁沙",
+      "battles": [
+        "midway"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "sand_01",
+      "sourceUrl": "https://polyhaven.com/a/sand_01",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/sand_01_diff_1k.jpg",
+            "bytes": 138174,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/sand_01_nor_1k.jpg",
+            "bytes": 337756,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/sand_01_arm_1k.jpg",
+            "bytes": 205501,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/sand_01_diff_512.jpg",
+            "bytes": 36381,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/sand_01_nor_512.jpg",
+            "bytes": 174475,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/sand_01_arm_512.jpg",
+            "bytes": 62799,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "coast_sand_01": {
+      "id": "coast_sand_01",
+      "type": "texture",
+      "use": "濱線濕沙",
+      "battles": [
+        "midway"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "coast_sand_01",
+      "sourceUrl": "https://polyhaven.com/a/coast_sand_01",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/coast_sand_01_diff_1k.jpg",
+            "bytes": 190838,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/coast_sand_01_nor_1k.jpg",
+            "bytes": 321244,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/coast_sand_01_arm_1k.jpg",
+            "bytes": 220840,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/coast_sand_01_diff_512.jpg",
+            "bytes": 43373,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/coast_sand_01_nor_512.jpg",
+            "bytes": 155121,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/coast_sand_01_arm_512.jpg",
+            "bytes": 61643,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "sandy_gravel": {
+      "id": "sandy_gravel",
+      "type": "texture",
+      "use": "碎珊瑚礫（增補）",
+      "battles": [
+        "midway"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "sandy_gravel",
+      "sourceUrl": "https://polyhaven.com/a/sandy_gravel",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/sandy_gravel_diff_1k.jpg",
+            "bytes": 111870,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/sandy_gravel_nor_1k.jpg",
+            "bytes": 340026,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/sandy_gravel_arm_1k.jpg",
+            "bytes": 275366,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/sandy_gravel_diff_512.jpg",
+            "bytes": 17385,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/sandy_gravel_nor_512.jpg",
+            "bytes": 115644,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/sandy_gravel_arm_512.jpg",
+            "bytes": 75871,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "rock_boulder_dry": {
+      "id": "rock_boulder_dry",
+      "type": "texture",
+      "use": "岩塊／礁岩（增補）",
+      "battles": [
+        "midway",
+        "crossroads"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "rock_boulder_dry",
+      "sourceUrl": "https://polyhaven.com/a/rock_boulder_dry",
+      "license": "CC0",
+      "maps": [
+        "diff",
+        "nor",
+        "arm"
+      ],
+      "files": {
+        "desktop": {
+          "diff": {
+            "path": "/tex/rock_boulder_dry_diff_1k.jpg",
+            "bytes": 160331,
+            "px": 1024,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/rock_boulder_dry_nor_1k.jpg",
+            "bytes": 300609,
+            "px": 1024,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/rock_boulder_dry_arm_1k.jpg",
+            "bytes": 296801,
+            "px": 1024,
+            "colorSpace": "linear"
+          }
+        },
+        "mobile": {
+          "diff": {
+            "path": "/tex/rock_boulder_dry_diff_512.jpg",
+            "bytes": 44036,
+            "px": 512,
+            "colorSpace": "srgb"
+          },
+          "nor": {
+            "path": "/tex/rock_boulder_dry_nor_512.jpg",
+            "bytes": 90779,
+            "px": 512,
+            "colorSpace": "linear"
+          },
+          "arm": {
+            "path": "/tex/rock_boulder_dry_arm_512.jpg",
+            "bytes": 91682,
+            "px": 512,
+            "colorSpace": "linear"
+          }
+        }
+      }
+    },
+    "kiara_1_dawn": {
+      "id": "kiara_1_dawn",
+      "type": "hdri",
+      "use": "黎明環境光（暖低角）",
+      "battles": [
+        "midway",
+        "crossroads",
+        "brecourt"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "kiara_1_dawn",
+      "sourceUrl": "https://polyhaven.com/a/kiara_1_dawn",
+      "license": "CC0",
+      "phase": "dawn",
+      "files": {
+        "desktop": {
+          "hdr": {
+            "path": "/hdri/kiara_1_dawn_1k.hdr",
+            "bytes": 1475077
+          },
+          "tonemapped": {
+            "path": "/hdri/kiara_1_dawn_tm.jpg",
+            "bytes": 202505,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        },
+        "mobile": {
+          "tonemapped": {
+            "path": "/hdri/kiara_1_dawn_tm.jpg",
+            "bytes": 202505,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        }
+      }
+    },
+    "spruit_sunrise": {
+      "id": "spruit_sunrise",
+      "type": "hdri",
+      "use": "日出環境光（草原晨霧）",
+      "battles": [
+        "brecourt",
+        "crossroads"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "spruit_sunrise",
+      "sourceUrl": "https://polyhaven.com/a/spruit_sunrise",
+      "license": "CC0",
+      "phase": "dawn",
+      "files": {
+        "desktop": {
+          "hdr": {
+            "path": "/hdri/spruit_sunrise_1k.hdr",
+            "bytes": 1500948
+          },
+          "tonemapped": {
+            "path": "/hdri/spruit_sunrise_tm.jpg",
+            "bytes": 255715,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        },
+        "mobile": {
+          "tonemapped": {
+            "path": "/hdri/spruit_sunrise_tm.jpg",
+            "bytes": 255715,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        }
+      }
+    },
+    "kloofendal_48d_partly_cloudy_puresky": {
+      "id": "kloofendal_48d_partly_cloudy_puresky",
+      "type": "hdri",
+      "use": "白晝多雲純天空",
+      "battles": [
+        "midway",
+        "carentan"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "kloofendal_48d_partly_cloudy_puresky",
+      "sourceUrl": "https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky",
+      "license": "CC0",
+      "phase": "day",
+      "files": {
+        "desktop": {
+          "hdr": {
+            "path": "/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr",
+            "bytes": 1435119
+          },
+          "tonemapped": {
+            "path": "/hdri/kloofendal_48d_partly_cloudy_puresky_tm.jpg",
+            "bytes": 75185,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        },
+        "mobile": {
+          "tonemapped": {
+            "path": "/hdri/kloofendal_48d_partly_cloudy_puresky_tm.jpg",
+            "bytes": 75185,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        }
+      }
+    },
+    "noon_grass": {
+      "id": "noon_grass",
+      "type": "hdri",
+      "use": "正午草地環境光",
+      "battles": [
+        "carentan",
+        "brecourt"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "noon_grass",
+      "sourceUrl": "https://polyhaven.com/a/noon_grass",
+      "license": "CC0",
+      "phase": "day",
+      "files": {
+        "desktop": {
+          "hdr": {
+            "path": "/hdri/noon_grass_1k.hdr",
+            "bytes": 1557132
+          },
+          "tonemapped": {
+            "path": "/hdri/noon_grass_tm.jpg",
+            "bytes": 287227,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        },
+        "mobile": {
+          "tonemapped": {
+            "path": "/hdri/noon_grass_tm.jpg",
+            "bytes": 287227,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        }
+      }
+    },
+    "belfast_sunset_puresky": {
+      "id": "belfast_sunset_puresky",
+      "type": "hdri",
+      "use": "黃昏純天空",
+      "battles": [
+        "midway",
+        "yamato"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "belfast_sunset_puresky",
+      "sourceUrl": "https://polyhaven.com/a/belfast_sunset_puresky",
+      "license": "CC0",
+      "phase": "dusk",
+      "files": {
+        "desktop": {
+          "hdr": {
+            "path": "/hdri/belfast_sunset_puresky_1k.hdr",
+            "bytes": 1190247
+          },
+          "tonemapped": {
+            "path": "/hdri/belfast_sunset_puresky_tm.jpg",
+            "bytes": 42149,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        },
+        "mobile": {
+          "tonemapped": {
+            "path": "/hdri/belfast_sunset_puresky_tm.jpg",
+            "bytes": 42149,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        }
+      }
+    },
+    "the_sky_is_on_fire": {
+      "id": "the_sky_is_on_fire",
+      "type": "hdri",
+      "use": "火燒雲黃昏",
+      "battles": [
+        "midway",
+        "yamato"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "the_sky_is_on_fire",
+      "sourceUrl": "https://polyhaven.com/a/the_sky_is_on_fire",
+      "license": "CC0",
+      "phase": "dusk",
+      "files": {
+        "desktop": {
+          "hdr": {
+            "path": "/hdri/the_sky_is_on_fire_1k.hdr",
+            "bytes": 1526564
+          },
+          "tonemapped": {
+            "path": "/hdri/the_sky_is_on_fire_tm.jpg",
+            "bytes": 114801,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        },
+        "mobile": {
+          "tonemapped": {
+            "path": "/hdri/the_sky_is_on_fire_tm.jpg",
+            "bytes": 114801,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        }
+      }
+    },
+    "moonless_golf": {
+      "id": "moonless_golf",
+      "type": "hdri",
+      "use": "無月夜",
+      "battles": [
+        "midway",
+        "bastogne"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "moonless_golf",
+      "sourceUrl": "https://polyhaven.com/a/moonless_golf",
+      "license": "CC0",
+      "phase": "night",
+      "files": {
+        "desktop": {
+          "hdr": {
+            "path": "/hdri/moonless_golf_1k.hdr",
+            "bytes": 1672754
+          },
+          "tonemapped": {
+            "path": "/hdri/moonless_golf_tm.jpg",
+            "bytes": 78497,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        },
+        "mobile": {
+          "tonemapped": {
+            "path": "/hdri/moonless_golf_tm.jpg",
+            "bytes": 78497,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        }
+      }
+    },
+    "satara_night_no_lamps": {
+      "id": "satara_night_no_lamps",
+      "type": "hdri",
+      "use": "無人造光夜空",
+      "battles": [
+        "bastogne",
+        "midway"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "satara_night_no_lamps",
+      "sourceUrl": "https://polyhaven.com/a/satara_night_no_lamps",
+      "license": "CC0",
+      "phase": "night",
+      "files": {
+        "desktop": {
+          "hdr": {
+            "path": "/hdri/satara_night_no_lamps_1k.hdr",
+            "bytes": 1859650
+          },
+          "tonemapped": {
+            "path": "/hdri/satara_night_no_lamps_tm.jpg",
+            "bytes": 185882,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        },
+        "mobile": {
+          "tonemapped": {
+            "path": "/hdri/satara_night_no_lamps_tm.jpg",
+            "bytes": 185882,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        }
+      }
+    },
+    "overcast_soil_puresky": {
+      "id": "overcast_soil_puresky",
+      "type": "hdri",
+      "use": "陰霾天（大和最終戰）",
+      "battles": [
+        "yamato",
+        "bastogne"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "overcast_soil_puresky",
+      "sourceUrl": "https://polyhaven.com/a/overcast_soil_puresky",
+      "license": "CC0",
+      "phase": "overcast",
+      "files": {
+        "desktop": {
+          "hdr": {
+            "path": "/hdri/overcast_soil_puresky_1k.hdr",
+            "bytes": 1195816
+          },
+          "tonemapped": {
+            "path": "/hdri/overcast_soil_puresky_tm.jpg",
+            "bytes": 43009,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        },
+        "mobile": {
+          "tonemapped": {
+            "path": "/hdri/overcast_soil_puresky_tm.jpg",
+            "bytes": 43009,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        }
+      }
+    },
+    "cannon": {
+      "id": "cannon",
+      "type": "hdri",
+      "use": "陰霾漫射（室外灰白）",
+      "battles": [
+        "yamato",
+        "bastogne"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "cannon",
+      "sourceUrl": "https://polyhaven.com/a/cannon",
+      "license": "CC0",
+      "phase": "overcast",
+      "files": {
+        "desktop": {
+          "hdr": {
+            "path": "/hdri/cannon_1k.hdr",
+            "bytes": 1516385
+          },
+          "tonemapped": {
+            "path": "/hdri/cannon_tm.jpg",
+            "bytes": 247073,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        },
+        "mobile": {
+          "tonemapped": {
+            "path": "/hdri/cannon_tm.jpg",
+            "bytes": 247073,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        }
+      }
+    },
+    "mud_road_puresky": {
+      "id": "mud_road_puresky",
+      "type": "hdri",
+      "use": "陰雨泥路天空",
+      "battles": [
+        "bastogne",
+        "carentan"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "mud_road_puresky",
+      "sourceUrl": "https://polyhaven.com/a/mud_road_puresky",
+      "license": "CC0",
+      "phase": "overcast",
+      "files": {
+        "desktop": {
+          "hdr": {
+            "path": "/hdri/mud_road_puresky_1k.hdr",
+            "bytes": 1109840
+          },
+          "tonemapped": {
+            "path": "/hdri/mud_road_puresky_tm.jpg",
+            "bytes": 30869,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        },
+        "mobile": {
+          "tonemapped": {
+            "path": "/hdri/mud_road_puresky_tm.jpg",
+            "bytes": 30869,
+            "px": [
+              2048,
+              1024
+            ]
+          }
+        }
+      }
+    },
+    "fir_tree_01": {
+      "id": "fir_tree_01",
+      "type": "model",
+      "use": "冷杉，阿登森林主樹種",
+      "battles": [
+        "bastogne"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "fir_tree_01",
+      "sourceUrl": "https://polyhaven.com/a/fir_tree_01",
+      "license": "CC0",
+      "draco": true,
+      "triBudget": 20000,
+      "stats": {
+        "triangles": 16945,
+        "materials": 6,
+        "textures": 12,
+        "maxTextureSize": 128
+      },
+      "alphaMaterials": [
+        {
+          "name": "fir_tree_01_twig",
+          "mode": "MASK",
+          "cutoff": 0.5
+        }
+      ],
+      "alphaFixed": [
+        "fir_tree_01_twig"
+      ],
+      "files": {
+        "desktop": {
+          "glb": {
+            "path": "/models/fir_tree_01.glb",
+            "bytes": 279400
+          }
+        },
+        "mobile": {
+          "glb": {
+            "path": "/models/fir_tree_01.glb",
+            "bytes": 279400
+          }
+        }
+      }
+    },
+    "pine_tree_01": {
+      "id": "pine_tree_01",
+      "type": "model",
+      "use": "松樹，阿登森林第二樹種",
+      "battles": [
+        "bastogne"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "pine_tree_01",
+      "sourceUrl": "https://polyhaven.com/a/pine_tree_01",
+      "license": "CC0",
+      "draco": true,
+      "triBudget": 20000,
+      "stats": {
+        "triangles": 29812,
+        "materials": 6,
+        "textures": 12,
+        "maxTextureSize": 128
+      },
+      "alphaMaterials": [
+        {
+          "name": "pine_tree_01_twig",
+          "mode": "MASK",
+          "cutoff": 0.5
+        }
+      ],
+      "alphaFixed": [
+        "pine_tree_01_twig"
+      ],
+      "files": {
+        "desktop": {
+          "glb": {
+            "path": "/models/pine_tree_01.glb",
+            "bytes": 280224
+          }
+        },
+        "mobile": {
+          "glb": {
+            "path": "/models/pine_tree_01.glb",
+            "bytes": 280224
+          }
+        }
+      }
+    },
+    "pine_sapling_medium": {
+      "id": "pine_sapling_medium",
+      "type": "model",
+      "use": "松樹苗，林下層與林緣",
+      "battles": [
+        "bastogne"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "pine_sapling_medium",
+      "sourceUrl": "https://polyhaven.com/a/pine_sapling_medium",
+      "license": "CC0",
+      "draco": true,
+      "triBudget": 20000,
+      "stats": {
+        "triangles": 19818,
+        "materials": 3,
+        "textures": 6,
+        "maxTextureSize": 128
+      },
+      "alphaMaterials": [
+        {
+          "name": "pine_sapling_medium_twig",
+          "mode": "MASK",
+          "cutoff": 0.5
+        }
+      ],
+      "alphaFixed": [
+        "pine_sapling_medium_twig"
+      ],
+      "files": {
+        "desktop": {
+          "glb": {
+            "path": "/models/pine_sapling_medium.glb",
+            "bytes": 259688
+          }
+        },
+        "mobile": {
+          "glb": {
+            "path": "/models/pine_sapling_medium.glb",
+            "bytes": 259688
+          }
+        }
+      }
+    },
+    "dead_tree_trunk": {
+      "id": "dead_tree_trunk",
+      "type": "model",
+      "use": "砲擊後的斷木殘幹（增補）",
+      "battles": [
+        "bastogne",
+        "brecourt"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "dead_tree_trunk",
+      "sourceUrl": "https://polyhaven.com/a/dead_tree_trunk",
+      "license": "CC0",
+      "draco": true,
+      "triBudget": 8000,
+      "stats": {
+        "triangles": 7988,
+        "materials": 1,
+        "textures": 3,
+        "maxTextureSize": 512
+      },
+      "alphaMaterials": [],
+      "alphaFixed": [],
+      "files": {
+        "desktop": {
+          "glb": {
+            "path": "/models/dead_tree_trunk.glb",
+            "bytes": 161524
+          }
+        },
+        "mobile": {
+          "glb": {
+            "path": "/models/dead_tree_trunk.glb",
+            "bytes": 161524
+          }
+        }
+      }
+    },
+    "tree_small_02": {
+      "id": "tree_small_02",
+      "type": "model",
+      "use": "小闊葉樹，樹籬與田邊",
+      "battles": [
+        "brecourt",
+        "carentan",
+        "crossroads"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "tree_small_02",
+      "sourceUrl": "https://polyhaven.com/a/tree_small_02",
+      "license": "CC0",
+      "draco": true,
+      "triBudget": 20000,
+      "stats": {
+        "triangles": 17015,
+        "materials": 3,
+        "textures": 9,
+        "maxTextureSize": 256
+      },
+      "alphaMaterials": [
+        {
+          "name": "tree_small_02_leaves",
+          "mode": "MASK",
+          "cutoff": 0.5
+        }
+      ],
+      "alphaFixed": [
+        "tree_small_02_leaves"
+      ],
+      "files": {
+        "desktop": {
+          "glb": {
+            "path": "/models/tree_small_02.glb",
+            "bytes": 304052
+          }
+        },
+        "mobile": {
+          "glb": {
+            "path": "/models/tree_small_02.glb",
+            "bytes": 304052
+          }
+        }
+      }
+    },
+    "island_tree_01": {
+      "id": "island_tree_01",
+      "type": "model",
+      "use": "闊葉樹（含椰島感），環礁與農地",
+      "battles": [
+        "midway",
+        "carentan"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "island_tree_01",
+      "sourceUrl": "https://polyhaven.com/a/island_tree_01",
+      "license": "CC0",
+      "draco": true,
+      "triBudget": 20000,
+      "stats": {
+        "triangles": 10340,
+        "materials": 3,
+        "textures": 9,
+        "maxTextureSize": 128
+      },
+      "alphaMaterials": [
+        {
+          "name": "island_tree_01_leaves",
+          "mode": "MASK",
+          "cutoff": 0.5
+        }
+      ],
+      "alphaFixed": [
+        "island_tree_01_leaves"
+      ],
+      "files": {
+        "desktop": {
+          "glb": {
+            "path": "/models/island_tree_01.glb",
+            "bytes": 215584
+          }
+        },
+        "mobile": {
+          "glb": {
+            "path": "/models/island_tree_01.glb",
+            "bytes": 215584
+          }
+        }
+      }
+    },
+    "island_tree_02": {
+      "id": "island_tree_02",
+      "type": "model",
+      "use": "闊葉樹變體，避免重複",
+      "battles": [
+        "midway",
+        "brecourt"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "island_tree_02",
+      "sourceUrl": "https://polyhaven.com/a/island_tree_02",
+      "license": "CC0",
+      "draco": true,
+      "triBudget": 20000,
+      "stats": {
+        "triangles": 9838,
+        "materials": 3,
+        "textures": 9,
+        "maxTextureSize": 128
+      },
+      "alphaMaterials": [
+        {
+          "name": "island_tree_02_leaves",
+          "mode": "MASK",
+          "cutoff": 0.5
+        }
+      ],
+      "alphaFixed": [
+        "island_tree_02_leaves"
+      ],
+      "files": {
+        "desktop": {
+          "glb": {
+            "path": "/models/island_tree_02.glb",
+            "bytes": 204548
+          }
+        },
+        "mobile": {
+          "glb": {
+            "path": "/models/island_tree_02.glb",
+            "bytes": 204548
+          }
+        }
+      }
+    },
+    "shrub_01": {
+      "id": "shrub_01",
+      "type": "model",
+      "use": "樹籬灌木主體",
+      "battles": [
+        "brecourt",
+        "carentan"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "shrub_01",
+      "sourceUrl": "https://polyhaven.com/a/shrub_01",
+      "license": "CC0",
+      "draco": true,
+      "triBudget": 12000,
+      "stats": {
+        "triangles": 11898,
+        "materials": 1,
+        "textures": 3,
+        "maxTextureSize": 512
+      },
+      "alphaMaterials": [
+        {
+          "name": "shrub_01",
+          "mode": "MASK",
+          "cutoff": 0.5
+        }
+      ],
+      "alphaFixed": [
+        "shrub_01"
+      ],
+      "files": {
+        "desktop": {
+          "glb": {
+            "path": "/models/shrub_01.glb",
+            "bytes": 194900
+          }
+        },
+        "mobile": {
+          "glb": {
+            "path": "/models/shrub_01.glb",
+            "bytes": 194900
+          }
+        }
+      }
+    },
+    "shrub_04": {
+      "id": "shrub_04",
+      "type": "model",
+      "use": "樹籬灌木變體",
+      "battles": [
+        "brecourt",
+        "crossroads"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "shrub_04",
+      "sourceUrl": "https://polyhaven.com/a/shrub_04",
+      "license": "CC0",
+      "draco": true,
+      "triBudget": 12000,
+      "stats": {
+        "triangles": 11968,
+        "materials": 1,
+        "textures": 3,
+        "maxTextureSize": 512
+      },
+      "alphaMaterials": [
+        {
+          "name": "shrub_04",
+          "mode": "MASK",
+          "cutoff": 0.5
+        }
+      ],
+      "alphaFixed": [
+        "shrub_04"
+      ],
+      "files": {
+        "desktop": {
+          "glb": {
+            "path": "/models/shrub_04.glb",
+            "bytes": 136412
+          }
+        },
+        "mobile": {
+          "glb": {
+            "path": "/models/shrub_04.glb",
+            "bytes": 136412
+          }
+        }
+      }
+    },
+    "wooden_crate_01": {
+      "id": "wooden_crate_01",
+      "type": "model",
+      "use": "木箱（補給堆、陣地點綴）",
+      "battles": [
+        "brecourt",
+        "carentan",
+        "bastogne"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "wooden_crate_01",
+      "sourceUrl": "https://polyhaven.com/a/wooden_crate_01",
+      "license": "CC0",
+      "draco": true,
+      "triBudget": 4000,
+      "stats": {
+        "triangles": 3998,
+        "materials": 1,
+        "textures": 3,
+        "maxTextureSize": 512
+      },
+      "alphaMaterials": [],
+      "alphaFixed": [],
+      "files": {
+        "desktop": {
+          "glb": {
+            "path": "/models/wooden_crate_01.glb",
+            "bytes": 101768
+          }
+        },
+        "mobile": {
+          "glb": {
+            "path": "/models/wooden_crate_01.glb",
+            "bytes": 101768
+          }
+        }
+      }
+    },
+    "wooden_crate_02": {
+      "id": "wooden_crate_02",
+      "type": "model",
+      "use": "木箱變體（增補）",
+      "battles": [
+        "brecourt",
+        "bastogne"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "wooden_crate_02",
+      "sourceUrl": "https://polyhaven.com/a/wooden_crate_02",
+      "license": "CC0",
+      "draco": true,
+      "triBudget": 4000,
+      "stats": {
+        "triangles": 3999,
+        "materials": 1,
+        "textures": 3,
+        "maxTextureSize": 512
+      },
+      "alphaMaterials": [],
+      "alphaFixed": [],
+      "files": {
+        "desktop": {
+          "glb": {
+            "path": "/models/wooden_crate_02.glb",
+            "bytes": 106176
+          }
+        },
+        "mobile": {
+          "glb": {
+            "path": "/models/wooden_crate_02.glb",
+            "bytes": 106176
+          }
+        }
+      }
+    },
+    "barrel_01": {
+      "id": "barrel_01",
+      "type": "model",
+      "use": "油桶",
+      "battles": [
+        "carentan",
+        "crossroads",
+        "midway"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "Barrel_01",
+      "sourceUrl": "https://polyhaven.com/a/Barrel_01",
+      "license": "CC0",
+      "draco": true,
+      "triBudget": 4000,
+      "stats": {
+        "triangles": 2682,
+        "materials": 1,
+        "textures": 3,
+        "maxTextureSize": 512
+      },
+      "alphaMaterials": [],
+      "alphaFixed": [],
+      "files": {
+        "desktop": {
+          "glb": {
+            "path": "/models/barrel_01.glb",
+            "bytes": 111532
+          }
+        },
+        "mobile": {
+          "glb": {
+            "path": "/models/barrel_01.glb",
+            "bytes": 111532
+          }
+        }
+      }
+    },
+    "boulder_01": {
+      "id": "boulder_01",
+      "type": "model",
+      "use": "巨石／掩蔽岩",
+      "battles": [
+        "crossroads",
+        "midway",
+        "bastogne"
+      ],
+      "source": "Poly Haven",
+      "sourceId": "boulder_01",
+      "sourceUrl": "https://polyhaven.com/a/boulder_01",
+      "license": "CC0",
+      "draco": true,
+      "triBudget": 20000,
+      "stats": {
+        "triangles": 54122,
+        "materials": 1,
+        "textures": 3,
+        "maxTextureSize": 128
+      },
+      "alphaMaterials": [],
+      "alphaFixed": [],
+      "files": {
+        "desktop": {
+          "glb": {
+            "path": "/models/boulder_01.glb",
+            "bytes": 308500
+          }
+        },
+        "mobile": {
+          "glb": {
+            "path": "/models/boulder_01.glb",
+            "bytes": 308500
+          }
+        }
+      }
+    }
+  }
+}

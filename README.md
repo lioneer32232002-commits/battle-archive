@@ -12,6 +12,11 @@ battle_video/                  ← 專案根目錄(= 這個 git repo = 整個網
 ├─ vite.config.js              建置設定(每場戰役一個進入點)
 ├─ package.json
 ├─ public/                     靜態圖檔:各戰役 OG/橫幅/縮圖(og-*.png、banner-*.jpg、thumb-*.jpg)
+│  ├─ tex/                     Poly Haven CC0 貼圖:地表、牆面、屋頂、金屬(<id>_{diff,nor,arm}_{1k,512}.jpg,桌機 1k/手機 512)
+│  ├─ hdri/                    Poly Haven CC0 環境光:<id>_1k.hdr(桌機 PMREM)、<id>_tm.jpg(手機 2048×1024)
+│  ├─ models/                  壓好的 glTF 模型 <id>.glb(貼圖 ≤512²、Draco 壓縮)
+│  ├─ draco/                   Draco 解碼器(從 three 複製,DRACOLoader 的 decoderPath)
+│  └─ assets-manifest.json     以上資產的登記檔(id、用途、桌機/手機路徑、bytes、來源、授權);程式一律讀 manifest,不寫死路徑
 ├─ src/
 │  ├─ site/                    首頁共用程式(battles.js 戰役清單、main.js、main.css)
 │  ├─ midway/                  戰役模組:中途島
@@ -33,6 +38,7 @@ battle_video/                  ← 專案根目錄(= 這個 git repo = 整個網
 npm install      # 第一次
 npm run dev      # 本機預覽 http://localhost:5173
 npm run build    # 產生 dist/
+npm run assets   # 抓 Poly Haven CC0 貼圖/HDRI/模型並壓成 public/tex|hdri|models|draco 與 assets-manifest.json(可重跑,冪等;原始檔落在 assets-src/,不進 git)
 ```
 
 ## 新增一場戰役(標準流程)
