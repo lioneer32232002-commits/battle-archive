@@ -236,6 +236,8 @@ export function createEnvironment(scene, { shadows = false, mobile = false } = {
     skyUniforms.uHaze.value = 0.42 + dawnPeak * 0.58;
     const cloudVis = (0.45 + 0.55 * (1 - night)) * (1.05 - dawnPeak * 0.62);
     for (const c of clouds.children) c.material.opacity = c.userData.baseOp * cloudVis;
+
+    updateEnvironment(battleT);
   }
 
   // 供 terrain 判斷「日出後水溝反光」強度（0=夜、1=完全天亮）
@@ -245,7 +247,45 @@ export function createEnvironment(scene, { shadows = false, mobile = false } = {
     return lerpNum(w(a), w(b), f);
   }
 
-  return { update, sun, daylightAt };
+  // ══ HDRI 環境光（asset-pipeline-spec §3）═══════════════════
+  // 桌機用 1k .hdr 過 PMREM、手機用 tonemapped JPG 同樣過 PMREM（assets.js 已分流）。
+  // 兩張：kiara_1_dawn（拂曉暖低角）與 overcast_soil_puresky（霧散後的十月陰空）。
+  // 天幕維持既有的程序化 sky dome（規格明寫），HDRI 只當 scene.environment 用。
+  // ⚠️ scene.environment 只影響 MeshStandardMaterial（地表、建築、樹），
+  //    程序化小人還是 Lambert，所以 environmentIntensity 壓得保守，免得地表比人亮一截。
+  let envDawn = null, envDay = null, envCurrent = null;
+  const ENV_MAX = mobile ? 0.30 : 0.42;
+  async function applyAssets(assets) {
+    if (!assets) return { hdri: [] };
+    const got = [];
+    const [dawn, day] = await Promise.all([
+      // 拂曉那張是本役的招牌（低角暖光），桌機吃完整 1k .hdr
+      assets.environment('kiara_1_dawn'),
+      // 霧散後的十月陰空幾乎是平光，用 tonemapped JPG 就夠 —— 少載 1.1 MB，首屏預算差這一張
+      assets.environment('overcast_soil_puresky', { tonemapped: true }),
+    ]);
+    envDawn = dawn; envDay = day;
+    if (dawn) got.push('kiara_1_dawn');
+    if (day) got.push('overcast_soil_puresky');
+    if (envDawn || envDay) {
+      scene.environment = envCurrent = envDawn ?? envDay;
+      scene.environmentIntensity = 0;
+    }
+    return { hdri: got };
+  }
+
+  // 日相切換：不逐幀混兩張（會要兩組 PMREM），改成在霧散那一刻換圖＋淡入淡出強度
+  function updateEnvironment(battleT) {
+    if (!envDawn && !envDay) return;
+    const d = daylightAt(battleT);
+    const wantDay = d > 0.62 && envDay;
+    const want = wantDay ? envDay : (envDawn ?? envDay);
+    if (want !== envCurrent) { scene.environment = envCurrent = want; }
+    // 夜裡幾乎不給環境光（濃霧夜本來就沒有天光），拂曉起漸強
+    scene.environmentIntensity = ENV_MAX * (0.12 + 0.88 * Math.min(1, d * 1.25));
+  }
+
+  return { update, sun, daylightAt, applyAssets };
 }
 
 // 中心實、外緣柔的圓（太陽本體用 stop 靠外、光暈用 stop 靠內）

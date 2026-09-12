@@ -8,7 +8,14 @@
 // M-3／L-4 升級:每個小兵記 userData.phase(用檔內 rng 保持可重現);單位工廠把所有小兵 mesh
 //   收進 group.userData.troopers 陣列,主迴圈直接走訪做「行進微動作」(起伏＋輕搖)。
 //   桌機開 castShadow;手機(無 shadow map)改在單位底下放一張柔邊深色圓 sprite 當接地影。
+//
+// 資產升級（docs/asset-pipeline-spec.md §3）：MG 巢與單兵改 Blender glb。
+//   * 同姿態共用幾何（clone() 只複製 node，geometry 是同一份），但**材質每單位 clone 一份** ——
+//     否則 main.js 的 applyDestroyedLook 會一淡全淡（原本「每單位一份材質」的約定要守住）。
+//   * `userData.troopers` 仍是「每個小兵一個 Object3D」，M-3 微動作照舊。
+//   * 載不到就完全維持程序化小人（createUnit 的對外 API 不變）。
 import * as THREE from 'three';
+import { fitToHeight, fitToWidth, normalizeMaterial } from './assets.js';
 
 const SIDE_COLOR = { red: 0xd9442e, blue: 0x2e7bd9 };
 const UNIFORM = { blue: 0x6f7049, red: 0x565a4e };   // 美軍橄欖綠 / 德軍灰綠
@@ -153,8 +160,15 @@ function makeSoldier(side, pose, weapon, mat, phase = 0) {
 
   s.scale.setScalar(1.15);
   s.userData.phase = phase;            // M-3：行進微動作相位
+  s.userData.pose = pose;              // 資產升級：換 glb 姿態時要知道原本是哪一種
+  s.userData.side = side;
+  s.userData.weapon = weapon;
   return s;
 }
+
+// 程序化小人在 group.scale = 1 時的身高（頭盔頂 ≈ HIP 1.45 + 1.5 + 盔半徑 0.34）。
+// glb 士兵依這個高度對齊 bounding box，站在同一群裡才不會一高一矮。
+const PROC_SOLDIER_H = 3.29;
 
 // ── 班/組:一叢小人(依設定分姿態/武器/朝向) ────────────
 function makeSquad(side, count, spread, seed, cfg, mat, troopers) {
@@ -213,7 +227,9 @@ function makeHowitzer(mat) {
 
 // ── MG42 機槍巢(雙層沙包 + 三腳架 MG42 + 射手) ──────────
 function makeMGNest(mat, troopers) {
-  const g = new THREE.Group();
+  const outer = new THREE.Group();
+  const g = new THREE.Group();   // 沙包＋機槍本體（之後整組換成 mg_nest.glb）
+  outer.add(g);
 
   // 雙層沙包半圈(以 +x 為中心,西側 -x 開口為射界)
   for (let row = 0; row < 2; row++) {
@@ -239,9 +255,10 @@ function makeMGNest(mat, troopers) {
   gunner.position.set(apex.x + 0.9, 0, apex.z); gunner.rotation.y = -Math.PI / 2;
   gunner.scale.multiplyScalar(0.95);
   gunner.userData.baseY = 0; troopers.push(gunner);
-  g.add(gunner);
+  outer.add(gunner);   // 射手掛在外層：換 glb 巢時不會被一起換掉
 
-  return g;
+  outer.userData.hardware = g;
+  return outer;
 }
 
 // ── 陣營光圈(地面識別環) ─────────────────────────────
@@ -304,7 +321,9 @@ export function createUnit(spec, { shadows = false } = {}) {
     g.add(makeRing(7, SIDE_COLOR[spec.side]));
     radius = 7;
   } else if (spec.kind === 'mg') {
-    g.add(makeMGNest(mat, troopers));
+    const nest = makeMGNest(mat, troopers);
+    g.add(nest);
+    g.userData.mgHardware = nest.userData.hardware;
     g.add(makeRing(6, SIDE_COLOR[spec.side]));
     radius = 6;
   } else {
@@ -326,4 +345,99 @@ export function createUnit(spec, { shadows = false } = {}) {
 
   g.userData.troopers = troopers;   // M-3：主迴圈直接走訪做行進微動作
   return g;
+}
+
+// ══ 真實資產替換（asset-pipeline-spec §3）═══════════════════
+// 姿態對照：程序化的 advance／kneel／stand → Blender 的 <pose>.glb。
+// 「上刺刀衝鋒」的突擊隊用 crouch_run（低姿快跑），其餘推進用 advance_rifle。
+const POSE_MODEL = { advance: 'advance_rifle', kneel: 'kneel_fire', stand: 'stand_rifle' };
+// 德軍用 coat 變體：國民擲彈兵的長大衣正是溫特斯把他們誤判成「精銳」的關鍵，程序化版本也做了這件事。
+const SIDE_TAG = { blue: 'us', red: 'de_coat' };
+function poseModelId(side, pose, kind) {
+  const p = (kind === 'assault' && pose === 'advance') ? 'crouch_run' : (POSE_MODEL[pose] ?? 'stand_rifle');
+  return `soldier_${SIDE_TAG[side] ?? 'us'}_${p}`;
+}
+// 程序化武器名 → 武器 glb（掛在 glb 士兵的 hand_r 空節點上）
+const WEAPON_MODEL = { thompson: 'thompson', bar: 'bar', garand: 'garand', kar98: 'kar98k' };
+
+// 每單位一份材質：clone 整棵樹的材質（幾何仍共用），維持「一起淡出、互不影響」的約定
+function cloneWithOwnMaterials(root, cache) {
+  const inst = root.clone(true);
+  inst.traverse((o) => {
+    if (!o.isMesh) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    const next = mats.map((m) => {
+      if (!cache.has(m)) cache.set(m, normalizeMaterial(m.clone()));
+      return cache.get(m);
+    });
+    o.material = next.length === 1 ? next[0] : next;
+  });
+  return inst;
+}
+
+/**
+ * 把一個已建好的單位 Group 就地換成 glb 版本。載不到就什麼都不做（畫面維持程序化）。
+ * @returns {Promise<{mg:boolean, soldiers:boolean, missing:string[]}>}
+ */
+export async function applyUnitAssets(group, spec, assets, { shadows = false } = {}) {
+  const out = { mg: false, soldiers: false, missing: [] };
+  if (!assets) return out;
+  const matCache = new Map();   // 這個單位自己的材質副本
+
+  // ── MG 巢 ───────────────────────────────────────────
+  if (spec.kind === 'mg' && group.userData.mgHardware) {
+    const root = await assets.model('mg_nest');
+    if (!root) out.missing.push('mg_nest');
+    else {
+      const hw = group.userData.mgHardware;
+      const inst = cloneWithOwnMaterials(root, matCache);
+      // 程序化沙包半圈外徑約 3 單位（直徑 6）；glb 依包圍盒寬度對齊
+      const { scale } = fitToWidth(root, 6.4);
+      inst.scale.setScalar(scale);
+      inst.rotation.y = -Math.PI / 2;    // glb −Z 為正面；巢的射界朝西（-x）
+      if (shadows) inst.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+      hw.parent.add(inst);
+      hw.traverse((m) => { if (m.isMesh) m.geometry.dispose(); });
+      hw.parent.remove(hw);
+      group.userData.mgHardware = inst;
+      out.mg = true;
+    }
+  }
+
+  // ── 單兵 ────────────────────────────────────────────
+  const troopers = group.userData.troopers ?? [];
+  if (troopers.length) {
+    const poseIds = [...new Set(troopers.map((t) => poseModelId(t.userData.side, t.userData.pose, spec.kind)))];
+    const wpnIds = [...new Set(troopers.map((t) => WEAPON_MODEL[t.userData.weapon]).filter(Boolean))];
+    const ids = [...poseIds, ...wpnIds];
+    const loaded = await Promise.all(ids.map((id) => assets.model(id)));
+    const byId = new Map(ids.map((id, i) => [id, loaded[i]]));
+    const missing = poseIds.filter((id) => !byId.get(id));
+    if (missing.length) {
+      out.missing.push(...missing);      // 有任何一個姿態缺就整單位維持程序化（免得一半 glb 一半積木）
+    } else {
+      const fitCache = new Map();
+      for (const tr of troopers) {
+        const id = poseModelId(tr.userData.side, tr.userData.pose, spec.kind);
+        const root = byId.get(id);
+        if (!fitCache.has(id)) fitCache.set(id, fitToHeight(root, PROC_SOLDIER_H).scale);
+        const inst = cloneWithOwnMaterials(root, matCache);
+        inst.scale.setScalar(fitCache.get(id));
+        inst.rotation.y = Math.PI;       // 程序化小人面朝 +z、glb 慣例 −Z 為正面
+        // 武器掛右手（hand_r 空節點與武器同為公尺單位，直接當子節點即可）
+        const hand = inst.getObjectByName('hand_r');
+        const wpn = byId.get(WEAPON_MODEL[tr.userData.weapon]);
+        if (hand && wpn) hand.add(cloneWithOwnMaterials(wpn, matCache));
+        else if (!wpn && WEAPON_MODEL[tr.userData.weapon]) out.missing.push(WEAPON_MODEL[tr.userData.weapon]);
+        if (shadows) inst.traverse((m) => { if (m.isMesh) m.castShadow = true; });
+        for (const c of [...tr.children]) {
+          c.traverse((m) => { if (m.isMesh) m.geometry.dispose(); });
+          tr.remove(c);
+        }
+        tr.add(inst);
+      }
+      out.soldiers = true;
+    }
+  }
+  return out;
 }

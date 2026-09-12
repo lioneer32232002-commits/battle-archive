@@ -9,7 +9,8 @@ import {
 import { unitStateAt, newEvents } from './engine/timeline.js';
 import { createEnvironment } from './scene/environment.js';
 import { createCrossroadsTerrain } from './scene/terrain.js';
-import { createUnit } from './scene/soldiers.js';
+import { createUnit, applyUnitAssets } from './scene/soldiers.js';
+import { createAssetLoader } from './scene/assets.js';
 import { Effects } from './scene/effects.js';
 import { makeLabel } from './scene/labels.js';
 import { Director } from './camera/director.js';
@@ -17,7 +18,11 @@ import { createHUD } from './ui/hud.js';
 import { AudioEngine } from './scene/audio.js';
 import { createComposer } from './scene/postfx.js';
 
-const isMobile = window.matchMedia('(max-width: 640px)').matches;
+// dev 時可用 ?mobile 強制走手機分流（無陰影／無後製／512 貼圖／tonemapped 環境光／植被不換 glb），
+// 方便在桌機視窗上驗收手機路徑；正式 build 走的永遠是 matchMedia。
+const FORCE_MOBILE = !!(import.meta.env && import.meta.env.DEV)
+  && new URLSearchParams(location.search).has('mobile');
+const isMobile = FORCE_MOBILE || window.matchMedia('(max-width: 640px)').matches;
 const LABEL_SCALE = isMobile ? 0.6 : 1;
 const SHADOWS = !isMobile;   // P-2：陰影桌機限定
 const POSTFX = !isMobile;    // P-3：後製桌機限定
@@ -466,6 +471,46 @@ function fpsSample(dt) {
 hud.setTime(battleT);
 tick();
 
+// ── 真實資產（docs/asset-pipeline-spec.md §3）：首屏不阻塞 ──────
+// 程序化場景已經跑起來、HUD 與時間軸都能動了，才開始抓貼圖／HDRI／glb；
+// 到一項換一項，任何一項失敗都只是維持原本的程序化版本。
+const assets = createAssetLoader({ mobile: isMobile, renderer });
+const assetReport = { terrain: null, env: null, units: [] };
+let assetsKicked = false;
+async function loadAssets() {
+  if (assetsKicked) return;
+  assetsKicked = true;
+  try {
+    const [terrainRep, envRep] = await Promise.all([
+      terrain.applyAssets(assets),
+      environment.applyAssets(assets),
+    ]);
+    assetReport.terrain = terrainRep;
+    assetReport.env = envRep;
+    for (const [, o] of unitObjs) {
+      const rep = await applyUnitAssets(o.group, o.spec, assets, { shadows: SHADOWS });
+      if (rep.mg || rep.soldiers) {
+        o.mats = null;          // 淡出用的材質快取要重建（模型已經換過）
+        o.troopers = o.group.userData.troopers ?? [];
+        assetReport.units.push({ id: o.spec.id, ...rep });
+      }
+    }
+  } catch (err) {
+    console.warn('[crossroads] 資產升級中止，維持程序化版本：', err);
+  }
+  // dev QA 用：__dbg 是模組載入當下就建好的快照物件，熱更新後可能不是這一份，
+  // 所以升級結束時再把報告掛一次到 window 上（要看「哪些資產真的換上去了」看這個）。
+  if (import.meta.env && import.meta.env.DEV) window.__assetReport = assetReport;
+}
+// 正常情況走「畫完第一幀再開始抓」；分頁在背景時 rAF 會被瀏覽器凍結，用 setTimeout 兜底。
+// dev 時可用 ?plain 停掉資產升級，拿來跟升級後的畫面做同機位 A／B 對照。
+const SKIP_ASSETS = !!(import.meta.env && import.meta.env.DEV)
+  && new URLSearchParams(location.search).has('plain');
+if (!SKIP_ASSETS) {
+  requestAnimationFrame(() => requestAnimationFrame(loadAssets));
+  setTimeout(loadAssets, 600);
+}
+
 // ── 開發用美術除錯掛勾(正式 build 會被 import.meta.env.DEV 移除) ──
 if (import.meta.env && import.meta.env.DEV) {
   const dbgSeek = (t) => {
@@ -491,6 +536,7 @@ if (import.meta.env && import.meta.env.DEV) {
   };
   window.__dbg = {
     THREE, scene, camera, controls, renderer, director, effects, terrain, environment, dbgSeek, dbgLook,
+    assets, assetReport,
     render: () => renderFrame(0.016),
   };
 }

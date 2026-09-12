@@ -12,8 +12,20 @@
 //        兩個變體各一個 InstancedMesh；桌機另撒交叉 quad 草叢 InstancedMesh。
 //   L-3 建築：農舍／磚廠／風車牆面與屋頂改 canvas 貼圖（灰泥、磚砌、瓦片橫線、窗戶暗格）。
 //   日出後圩田水溝與河面反光（update(dt, battleT) 由 main.js 每幀呼叫）。
+//
+// 資產升級（docs/asset-pipeline-spec.md §3）：
+//   地表 PBR：圩田／堤坡／堤路／渡船道／北岸高地改 MeshStandardMaterial，Poly Haven 細節貼圖
+//        （grass_path_2、leafy_grass、asphalt_02、brown_mud_dry、dirt_floor、aerial_grass_rock）
+//        高 repeat 當近景，上面那些程序化 canvas 貼圖**原封不動**保留為 macro 層，用 onBeforeCompile 疊乘。
+//   植被：行道樹／北岸樹線／柳叢改 Poly Haven glb 的 InstancedMesh（桌機），遠景剪影仍用程序化低面數樹。
+//   建築：農舍、風車、磚廠側屋改 Blender glb（farmhouse_dutch／windmill／barn）＋磚牆瓦頂 PBR。
+//   以上全部是「載到才換」：資產沒到、404 或手機低階，畫面維持原本的程序化版本。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import {
+  makeMacroStandardMaterial, ensureUV1, fitToHeight,
+  flattenForInstancing, applyMaterialTextures, normalizeMaterial,
+} from './assets.js';
 
 // ── 可重現偽隨機（佈局固定） ───────────────────────────────
 function mulberry(seed) {
@@ -403,7 +415,7 @@ export function createCrossroadsTerrain(scene, { shadows = false, mobile = false
 
   // ── L-1：圩田大地表（單一平面＋程序化貼圖，取代原本四塊硬邊田野） ──
   // 平面刻意做得比 fogFar 還大：邊緣落在霧外看不見，才不會在畫面上切出一條硬邊。
-  const polder = new THREE.Mesh(new THREE.PlaneGeometry(2600, 1600), polderMat);
+  const polder = new THREE.Mesh(ensureUV1(new THREE.PlaneGeometry(2600, 1600)), polderMat);
   polder.rotation.x = -Math.PI / 2;
   polder.position.set(0, 0.04, 200);
   if (shadows) polder.receiveShadow = true;
@@ -433,6 +445,24 @@ export function createCrossroadsTerrain(scene, { shadows = false, mobile = false
   const sec = new THREE.Shape();
   sec.moveTo(-5.2, 0); sec.lineTo(5.2, 0); sec.lineTo(2.2, DIKE_H); sec.lineTo(-2.2, DIKE_H); sec.closePath();
   const dikeGeo = new THREE.ExtrudeGeometry(sec, { depth: DIKE_LEN, bevelEnabled: false });
+  // ExtrudeGeometry 的預設 UV 產生器直接拿頂點座標當 uv（側面 u 會到 460），細節貼圖照那個 uv 貼
+  // 會被平鋪到糊成一片。改成沿「擠出方向 × 斷面周長方向」的平面投影，單位 = DIKE_UV_TILE 個場景單位。
+  const DIKE_UV_TILE = 3.5;
+  (function reuvDike() {
+    const pos = dikeGeo.attributes.position;
+    const uv = dikeGeo.attributes.uv;
+    for (let i = 0; i < pos.count; i++) {
+      uv.setXY(i, pos.getZ(i) / DIKE_UV_TILE, (pos.getX(i) + pos.getY(i) * 0.7) / DIKE_UV_TILE);
+    }
+    uv.needsUpdate = true;
+    ensureUV1(dikeGeo);
+  })();
+  // macro（既有的堤草 canvas）：⚠️ 兩軸必須等比，否則貼圖裡的草點會被拉成「沿堤方向的長條紋」——
+  // 原本的 repeat(26, 2) 配上 ExtrudeGeometry 的原始 uv 是 2.5:1 的拉伸，實機看就是一條條豎紋。
+  // 這裡改成「一格 macro ≈ 12 個場景單位」的等比平鋪。
+  const DIKE_MACRO_TILE = 12;
+  const DIKE_MACRO_REPEAT = [DIKE_UV_TILE / DIKE_MACRO_TILE, DIKE_UV_TILE / DIKE_MACRO_TILE];
+  dikeGrassMat.map.repeat.set(DIKE_MACRO_REPEAT[0], DIKE_MACRO_REPEAT[1]);   // fallback 也要跟著新 uv 走
   const dike = new THREE.Mesh(dikeGeo, dikeGrassMat);
   dike.rotation.y = -Math.PI / 2;
   dike.position.set(DIKE_LEN / 2, 0, DIKE_Z); // 擠出軸映射到 -X，置中後沿 X 展開
@@ -464,22 +494,24 @@ export function createCrossroadsTerrain(scene, { shadows = false, mobile = false
   // ── 渡口與磚廠（德軍夜渡的登陸點，堤北近河） ────────────────
   box(3.2, 0.4, 14, woodMat, 0, 0.22, -30);    // 渡口棧橋
   box(16, 6, 9, brickMat, 16, 3, -34);         // 磚廠主廠房
-  box(20, 4.5, 7, brickDark, 16, 2.25, -42, 0.2);
+  const brickAnnex = box(20, 4.5, 7, brickDark, 16, 2.25, -42, 0.2);   // 側屋（之後換 barn.glb）
   const chimney = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.5, 16, 12), brickDark);
   chimney.position.set(8, 8, -38);
   if (shadows) chimney.castShadow = true;
   g.add(chimney);
 
   // ── 風車（堤北近河的地標；德軍次波連據此） ─────────────────
-  (function windmill(x, z) {
+  const WINDMILL_POS = [40, -28];
+  const windmillGroup = (function windmill(x, z) {
+    const wg = new THREE.Group();
     const tower = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 3.4, 11, 12), stoneMat);
     tower.position.set(x, 5.5, z);
     if (shadows) tower.castShadow = true;
-    g.add(tower);
+    wg.add(tower);
     const cap = new THREE.Mesh(new THREE.ConeGeometry(2.8, 3.2, 12), roofMat);
     cap.position.set(x, 12.4, z);
     if (shadows) cap.castShadow = true;
-    g.add(cap);
+    wg.add(cap);
     const hub = new THREE.Group(); hub.position.set(x, 11, z + 2.8);
     for (let i = 0; i < 4; i++) {
       const arm = new THREE.Group(); arm.rotation.z = (i / 4) * Math.PI * 2;
@@ -489,21 +521,30 @@ export function createCrossroadsTerrain(scene, { shadows = false, mobile = false
       arm.add(blade);
       hub.add(arm);
     }
-    g.add(hub);
-  })(40, -28);
+    wg.add(hub);
+    g.add(wg);
+    return wg;
+  })(WINDMILL_POS[0], WINDMILL_POS[1]);
 
   // ── 前哨建物（巡邏隊奉命佔領的堤邊房舍） ───────────────────
+  const farmhouses = [];
   function farmhouse(x, z, w, d, h, rot = 0) {
-    box(w, h, d, plasterMat, x, h / 2, z, rot);
+    const fg = new THREE.Group();
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), plasterMat);
+    wall.position.set(x, h / 2, z); wall.rotation.y = rot;
+    if (shadows) { wall.castShadow = true; wall.receiveShadow = true; }
+    fg.add(wall);
     const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.hypot(w, d) * 0.5, h * 0.7, 4), roofMat);
     roof.position.set(x, h + h * 0.34, z); roof.rotation.y = rot + Math.PI / 4;
     if (shadows) roof.castShadow = true;
-    g.add(roof);
+    fg.add(roof);
     // 煙囪
     const ch = new THREE.Mesh(new THREE.BoxGeometry(w * 0.14, h * 0.5, w * 0.14), brickDark);
     ch.position.set(x + Math.cos(rot) * w * 0.22, h * 1.2, z + Math.sin(rot) * w * 0.22);
     if (shadows) ch.castShadow = true;
-    g.add(ch);
+    fg.add(ch);
+    g.add(fg);
+    farmhouses.push({ group: fg, x, z, w, d, h, rot });
   }
   farmhouse(30, -9, 7, 6, 4, 0.2);     // 堤南前哨房舍
   farmhouse(-92, 32, 9, 7, 5, 0.3);    // 蘭德韋克方向農舍
@@ -547,19 +588,32 @@ export function createCrossroadsTerrain(scene, { shadows = false, mobile = false
     dummy.updateMatrix();
     placements[v].push(dummy.matrix.clone());
   };
-  // ① 北岸樹線（河對岸德軍高地前緣，取代原本 14 顆球）＋更遠一排作地平線剪影，
-  //    讓北岸不是一條硬邊天際線。
-  for (let i = 0; i < 22; i++) pushTree(0, -420 + i * 39 + (rng() - 0.5) * 10, -160 + (rng() - 0.5) * 16, 1.0, 1.5);
+  // ⚠️ 擺放順序有意義：每個變體的矩陣陣列是「純程序化的遠景」在前、「之後可換成 glb 的近景」在後。
+  //    glb 到位時只要把 InstancedMesh.count 砍回 proceduralBase，尾段就整段消失、不必重建矩陣。
+  // ⑤ 南面遠景樹帶（讓圩田盡頭不是直接接天）＋ ① 的更遠一排地平線剪影 → 永遠程序化（在霧裡，換 glb 不划算）
   for (let i = 0; i < (mobile ? 18 : 34); i++) pushTree(0, -640 + rng() * 1280, -300 - rng() * 180, 1.1, 1.8);
-  // 河岸蘆葦叢（南北兩岸水際；用矮冠變體縮小當蘆葦）
+  for (let i = 0; i < (mobile ? 24 : 44); i++) pushTree(0, -560 + rng() * 1120, 190 + rng() * 120, 0.9, 1.4);
+  // 河岸蘆葦叢（南北兩岸水際；用矮冠變體縮小當蘆葦）→ 永遠程序化
   for (let i = 0; i < (mobile ? 14 : 30); i++) pushTree(1, -420 + rng() * 840, -24 - rng() * 6, 0.30, 0.55);
   for (let i = 0; i < (mobile ? 12 : 26); i++) pushTree(1, -420 + rng() * 840, -126 - rng() * 8, 0.30, 0.55);
+  const proceduralBase = [placements[0].length, placements[1].length];
+
+  // ── 以下是「近景」段，桌機會被 Poly Haven glb 取代 ──
+  // ① 北岸樹線（河對岸德軍高地前緣）
+  const bankTreeFrom = placements[0].length;
+  for (let i = 0; i < 22; i++) pushTree(0, -420 + i * 39 + (rng() - 0.5) * 10, -160 + (rng() - 0.5) * 16, 1.0, 1.5);
+  const bankTreeTo = placements[0].length;
   // ② 堤防沿線行道樹：只長在戰場兩翼的堤段（|x| > 95），中央十字路口保持淨空
   for (let i = 0; i < 20; i++) {
     const east = i % 2 === 0;
     const x = east ? 100 + rng() * 120 : -100 - rng() * 120;
     pushTree(0, x, DIKE_Z + (rng() > 0.5 ? 7.5 : -7.5), 0.85, 1.25);
   }
+  // ④ 農舍旁的高樹
+  for (const [hx, hz] of [[-92, 32], [-72, 52], [30, -9]]) {
+    for (let k = 0; k < 2; k++) pushTree(0, hx + (rng() - 0.5) * 16, hz + 8 + rng() * 8, 0.8, 1.15);
+  }
+  const roadTreeTo = placements[0].length;
   // ③ 圩田田界／溝渠邊的柳樹叢（南面縱深與兩翼，不擋衝鋒開闊地）
   const willowSpots = [
     [-150, 30], [-120, 62], [-100, 24], [-80, 44], [-60, 74], [-46, 96],
@@ -570,12 +624,6 @@ export function createCrossroadsTerrain(scene, { shadows = false, mobile = false
     const n = 2 + Math.floor(rng() * 3);
     for (let k = 0; k < n; k++) pushTree(1, wx + (rng() - 0.5) * 14, wz + (rng() - 0.5) * 14, 0.85, 1.35);
   }
-  // ④ 農舍旁的高樹
-  for (const [hx, hz] of [[-92, 32], [-72, 52], [30, -9]]) {
-    for (let k = 0; k < 2; k++) pushTree(0, hx + (rng() - 0.5) * 16, hz + 8 + rng() * 8, 0.8, 1.15);
-  }
-  // ⑤ 南面遠景樹帶（讓圩田盡頭不是直接接天）
-  for (let i = 0; i < (mobile ? 24 : 44); i++) pushTree(0, -560 + rng() * 1120, 190 + rng() * 120, 0.9, 1.4);
 
   const treeMeshes = [];
   for (let v = 0; v < 2; v++) {
@@ -585,6 +633,12 @@ export function createCrossroadsTerrain(scene, { shadows = false, mobile = false
     if (shadows) { im.castShadow = true; im.receiveShadow = true; }
     g.add(im); treeMeshes.push(im);
   }
+  // glb 版植被的擺放來源（矩陣本身是「程序化樹」的尺度，換 glb 時再依 bbox 換算）
+  const glbSlots = {
+    bankTree: placements[0].slice(bankTreeFrom, bankTreeTo),   // 北岸樹線
+    roadTree: placements[0].slice(bankTreeTo, roadTreeTo),     // 堤防行道樹＋農舍旁高樹
+    willow: placements[1].slice(proceduralBase[1]),            // 圩田柳叢
+  };
 
   // ── L-2：草叢（桌機限定；核心區交叉雙面 quad，隨風輕擺） ──────
   let grassMesh = null;
@@ -662,11 +716,237 @@ export function createCrossroadsTerrain(scene, { shadows = false, mobile = false
       s.material.opacity = s.userData.base * d * (0.62 + 0.38 * Math.sin(tAcc * 1.7 + s.position.x * 0.15));
     }
     if (grassMesh) grassMesh.rotation.z = Math.sin(tAcc * 0.9) * 0.012;   // 隨風輕擺
+    if (windmillSails) windmillSails.pivot.rotation[windmillSails.axis] -= dt * 0.16;   // 風車慢轉
   }
 
   // P-4 降級時砍半草叢
   function setDetail(f) {
     if (grassMesh) grassMesh.count = Math.max(0, Math.floor(GRASS_BASE * f));
+  }
+
+  // ══ 真實資產升級（asset-pipeline-spec §3）══════════════════
+  // 全部「載到才換」；任何一項沒到就維持上面那套程序化版本。
+  const disposables = [];
+  function swapMaterial(oldMat, newMat) {
+    if (!oldMat || !newMat) return;
+    let used = false;
+    g.traverse((m) => {
+      if (!m.isMesh && !m.isInstancedMesh) return;
+      if (Array.isArray(m.material)) {
+        m.material = m.material.map((x) => (x === oldMat ? (used = true, newMat) : x));
+      } else if (m.material === oldMat) { m.material = newMat; used = true; }
+    });
+    if (used) disposables.push(oldMat);
+  }
+
+  // 程序化樹的高度基準（glb 依 bbox 換算縮放時要對齊的目標）
+  const PROC_H = [7.8, 4.4];
+  const _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3();
+
+  // 用既有的程序化擺放矩陣蓋一棵 glb 樹的 InstancedMesh 群（glb 可能多材質 → 每個材質一個）
+  function instanceGlb(root, slots, procHeight, { cast = true } = {}) {
+    const { scale: fit } = fitToHeight(root, procHeight);
+    const parts = flattenForInstancing(root);
+    const made = [];
+    for (const part of parts) {
+      const im = new THREE.InstancedMesh(part.geometry, normalizeMaterial(part.material), slots.length);
+      for (let i = 0; i < slots.length; i++) {
+        slots[i].decompose(_p, _q, _s);
+        const m = new THREE.Matrix4().compose(_p, _q, _s.clone().multiplyScalar(fit));
+        im.setMatrixAt(i, m);
+      }
+      im.instanceMatrix.needsUpdate = true;
+      if (shadows) { im.castShadow = cast; im.receiveShadow = true; }
+      g.add(im); made.push(im);
+    }
+    return made;
+  }
+
+  const glbMeshes = [];
+  let windmillSails = null;   // { pivot, axis }：glb 風車的車翼，update() 讓它慢慢轉
+  async function applyAssets(assets) {
+    if (!assets) return { textures: false, vegetation: false, buildings: [] };
+    const report = { textures: false, vegetation: false, buildings: [], missing: [] };
+
+    // ── 1. 地表 PBR ─────────────────────────────────────
+    const [grassSet, dikeSet, asphaltSet, mudSet, dirtSet, bankSet, brickSet, plasterSet, roofSet] =
+      await Promise.all([
+        assets.textureSet('grass_path_2', { maps: ['diff', 'nor', 'arm'], repeat: [420, 260], px: 1024 }),
+        assets.textureSet('leafy_grass', { maps: ['diff', 'nor'], repeat: [1.5, 1.5], px: 1024 }),
+        assets.textureSet('asphalt_02', { maps: ['diff', 'nor', 'arm'], repeat: [60, 2], px: 512 }),
+        assets.textureSet('brown_mud_dry', { maps: ['diff', 'arm'], repeat: [2, 28], px: 512 }),
+        assets.textureSet('dirt_floor', { maps: ['diff', 'nor'], repeat: [12, 12], px: 512 }),
+        assets.textureSet('aerial_grass_rock', { maps: ['diff'], repeat: [160, 4], px: 512 }),
+        assets.textureSet('red_brick_03', { maps: ['diff', 'nor'], repeat: [3, 2], px: 512 }),
+        assets.textureSet('painted_plaster_wall', { maps: ['diff', 'nor'], repeat: [2, 2], px: 512 }),
+        assets.textureSet('roof_09', { maps: ['diff', 'nor'], repeat: [3, 2], px: 512 }),
+      ]);
+
+    if (grassSet) {
+      swapMaterial(polderMat, makeMacroStandardMaterial({
+        macroMap: polderTex, macroRepeat: [13, 8], set: grassSet, detailMix: 0.62, roughness: 0.95,
+      }));
+      report.textures = true;
+    }
+    if (dikeSet) {
+      swapMaterial(dikeGrassMat, makeMacroStandardMaterial({
+        macroMap: dikeGrassMat.map, macroRepeat: DIKE_MACRO_REPEAT, set: dikeSet,
+        detailMix: 0.6, color: 0xe6ecd8, roughness: 0.95,
+      }));
+    }
+    if (asphaltSet) {
+      swapMaterial(roadMat, makeMacroStandardMaterial({
+        macroMap: asphaltTex, macroRepeat: [1, 46], set: asphaltSet, detailMix: 0.5, roughness: 0.82,
+      }));
+    }
+    if (mudSet) {
+      swapMaterial(mudMat, makeMacroStandardMaterial({
+        macroMap: mudTex, macroRepeat: [1, 9], set: mudSet, detailMix: 0.55, roughness: 0.9,
+      }));
+    }
+    if (dirtSet) {
+      // 堤腳土帶：翻出來的濕土，tint 壓到偏灰 —— 純泥土貼圖直接用會亮成一條土黃色塑膠帶。
+      swapMaterial(dikeEarth, new THREE.MeshStandardMaterial({
+        color: 0x8d8570, map: dirtSet.map, normalMap: dirtSet.normalMap ?? null, roughness: 0.96,
+      }));
+      // 圩田溝坎：這些是 1.3 單位寬、76 單位長的細條，貼圖一定會被拉爛 ——
+      // 所以只做材質升級、不貼泥土圖，維持原本那種「草掩的土坎」的低調感（實測貼了會變一格格褐色木板）。
+      swapMaterial(ditchMat, new THREE.MeshStandardMaterial({ color: 0x4c553e, roughness: 0.98 }));
+    }
+    if (bankSet) {
+      swapMaterial(bankMat, new THREE.MeshStandardMaterial({
+        color: 0x93a07e, map: bankSet.map, roughness: 0.95,
+      }));
+    }
+    // 建築：磚牆／灰泥牆／瓦頂（既有 canvas 貼圖含窗格與瓦線，留作 macro）
+    if (brickSet) {
+      swapMaterial(brickMat, makeMacroStandardMaterial({
+        macroMap: brickMat.map, macroRepeat: [1, 1], set: brickSet, detailMix: 0.6, roughness: 0.88,
+      }));
+      swapMaterial(brickDark, makeMacroStandardMaterial({
+        macroMap: brickDark.map, macroRepeat: [1, 1], set: brickSet, detailMix: 0.6,
+        color: 0x8a6250, roughness: 0.9,
+      }));
+    }
+    if (plasterSet) {
+      swapMaterial(plasterMat, makeMacroStandardMaterial({
+        macroMap: plasterMat.map, macroRepeat: [1, 1], set: plasterSet, detailMix: 0.5, roughness: 0.9,
+      }));
+      swapMaterial(stoneMat, new THREE.MeshStandardMaterial({
+        color: 0xbdb49a, map: plasterSet.map, normalMap: plasterSet.normalMap ?? null, roughness: 0.9,
+      }));
+    }
+    if (roofSet) {
+      swapMaterial(roofMat, makeMacroStandardMaterial({
+        macroMap: roofMat.map, macroRepeat: [1, 1], set: roofSet, detailMix: 0.55, roughness: 0.8,
+      }));
+    }
+
+    // ── 2. 植被：Poly Haven glb InstancedMesh（桌機限定） ──
+    if (!mobile) {
+      const [tallTree, bankTree, willow] = await Promise.all([
+        assets.model('tree_small_02'), assets.model('island_tree_02'), assets.model('shrub_04'),
+      ]);
+      if (tallTree && bankTree) {
+        glbMeshes.push(...instanceGlb(tallTree, glbSlots.roadTree, PROC_H[0]));
+        // 北岸樹線在河對岸，影子落在沒人看的高地上；不投影可省掉一次 alphaTest 葉片的 shadow pass
+        glbMeshes.push(...instanceGlb(bankTree, glbSlots.bankTree, PROC_H[0], { cast: false }));
+        treeMeshes[0].count = proceduralBase[0];          // 程序化近景樹整段退場（遠景剪影留著）
+        report.vegetation = true;
+      } else report.missing.push('tree_small_02/island_tree_02');
+      if (willow) {
+        // 灌木不投影：alphaTest 的葉片在 shadow pass 很吃 fill rate，收益又低
+        glbMeshes.push(...instanceGlb(willow, glbSlots.willow, PROC_H[1], { cast: false }));
+        treeMeshes[1].count = proceduralBase[1];
+      } else report.missing.push('shrub_04');
+    }
+
+    // ── 3. 建築 glb（Blender 自有模型） ────────────────────
+    const buildingTable = {
+      brick: { set: brickSet, roughness: 0.88 },
+      stone: { set: plasterSet, roughness: 0.9 },
+      stone_dark: { set: plasterSet, color: 0x9a927e, roughness: 0.9 },
+      roof_tile: { set: roofSet, roughness: 0.8 },
+      thatch: { set: roofSet, color: 0xa8935e, roughness: 1 },
+    };
+    const [fhGlb, wmGlb, barnGlb] = await Promise.all([
+      assets.model('farmhouse_dutch'), assets.model('windmill'), assets.model('barn'),
+    ]);
+    for (const [glb, name] of [[fhGlb, 'farmhouse_dutch'], [wmGlb, 'windmill'], [barnGlb, 'barn']]) {
+      if (glb) applyMaterialTextures(glb, buildingTable, { shadows });
+      else report.missing.push(name);
+    }
+    if (fhGlb) {
+      for (const fh of farmhouses) {
+        const { scale } = fitToHeight(fhGlb, fh.h * 1.7);
+        const inst = fhGlb.clone(true);
+        inst.scale.setScalar(scale);
+        inst.position.set(fh.x, 0, fh.z);
+        inst.rotation.y = fh.rot;
+        g.add(inst); glbMeshes.push(inst);
+        fh.group.visible = false;
+        disposeSubtree(fh.group);
+      }
+      report.buildings.push('farmhouse_dutch ×' + farmhouses.length);
+    }
+    if (wmGlb) {
+      const { scale } = fitToHeight(wmGlb, 16);
+      const inst = wmGlb.clone(true);
+      inst.scale.setScalar(scale);
+      inst.position.set(WINDMILL_POS[0], 0, WINDMILL_POS[1]);
+      // glb 的正面（車翼那一面）是 −Z；戰場在堤南（+z），維持 0 讓車翼盤面正對南北，
+      // 從圩田這一側看過去才是一整面車翼，而不是側面一條線。
+      inst.rotation.y = 0;
+      g.add(inst); glbMeshes.push(inst);
+      // 車翼：glb 的 sails node 原點不一定在輪轂上，所以另外做一個「以車翼包圍盒中心為原點」的
+      // pivot，用 attach() 保世界變換地把 sails 掛過去再轉；轉軸取包圍盒最扁的那一軸。
+      const sails = inst.getObjectByName('sails');
+      if (sails) {
+        inst.updateMatrixWorld(true);
+        const sb = new THREE.Box3().setFromObject(sails);
+        const sc = sb.getCenter(new THREE.Vector3());
+        const ss = sb.getSize(new THREE.Vector3());
+        const pivot = new THREE.Group();
+        pivot.position.copy(sc);
+        g.add(pivot);
+        pivot.attach(sails);
+        const axis = ss.x <= ss.y && ss.x <= ss.z ? 'x' : (ss.z <= ss.y ? 'z' : 'y');
+        windmillSails = { pivot, axis };
+      }
+      windmillGroup.visible = false;
+      disposeSubtree(windmillGroup);
+      report.buildings.push('windmill');
+    }
+    if (barnGlb) {
+      const { scale } = fitToHeight(barnGlb, 7.0);
+      const inst = barnGlb.clone(true);
+      inst.scale.setScalar(scale);
+      inst.position.set(16, 0, -42);
+      inst.rotation.y = 0.2;
+      g.add(inst); glbMeshes.push(inst);
+      brickAnnex.visible = false;
+      report.buildings.push('barn（磚廠側屋）');
+    }
+    // 十字路口的路標（這場戰役就叫「十字路口」，堤頂路口立一根很值得）
+    const signGlb = await assets.model('signpost');
+    if (signGlb) {
+      applyMaterialTextures(signGlb, buildingTable, { shadows });
+      const { scale } = fitToHeight(signGlb, 3.6);
+      const inst = signGlb.clone(true);
+      inst.scale.setScalar(scale);
+      inst.position.set(-4.4, DIKE_H + 0.2, DIKE_Z + 1.6);
+      inst.rotation.y = Math.PI * 0.15;
+      g.add(inst); glbMeshes.push(inst);
+      report.buildings.push('signpost');
+    } else report.missing.push('signpost');
+
+    for (const d of disposables.splice(0)) d.dispose();
+    return report;
+  }
+
+  function disposeSubtree(root) {
+    root.traverse((m) => { if (m.isMesh) m.geometry.dispose(); });
+    root.parent?.remove(root);
   }
 
   const places = [
@@ -678,7 +958,7 @@ export function createCrossroadsTerrain(scene, { shadows = false, mobile = false
     { name: '風車', side: 'neutral', pos: { x: 40, y: 16, z: -28 } },
   ];
 
-  return { group: g, places, update, setDetail, treeMeshes };
+  return { group: g, places, update, setDetail, treeMeshes, applyAssets };
 }
 
 // 水面反光用的細長柔光
