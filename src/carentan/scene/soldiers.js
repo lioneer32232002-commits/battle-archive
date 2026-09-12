@@ -136,6 +136,8 @@ function makeWeapon(type, mat) {
 
 // 姿態 → Blender 士兵 glb 的檔名尾段（soldier.py 的 pose 名）
 const POSE_MODEL = { advance: 'advance_rifle', kneel: 'kneel_fire', stand: 'stand_rifle' };
+// 程序化武器種類 → 武器 glb（原點在握把）
+const WEAPON_MODEL = { garand: 'garand', thompson: 'thompson', bar: 'bar', kar98: 'kar98k' };
 
 // ── 單兵(放大的程序化小人,分姿態) ─────────────────────
 function makeSoldier(side, pose, weapon, mat, phase = 0) {
@@ -198,10 +200,14 @@ function makeSoldier(side, pose, weapon, mat, phase = 0) {
 
   s.scale.setScalar(1.15);
   s.userData.phase = phase;            // M-3：行進微動作相位
-  // glb 換件用：姿態 → Blender 士兵模型（建好之前 assets.model() 會回 null，什麼都不會發生）
+  // glb 換件用：姿態 → Blender 士兵模型 ＋ 掛在 hand_r 的武器。
+  // refMeters：所有姿態共用「站姿 1.75 公尺」換算出來的同一個縮放倍率。
+  //   不可以逐姿態用 bounding box 對齊 —— 跪射的 glb 只有 1.36 公尺高，
+  //   照 bbox 拉到同樣高度的話跪著的人會比站著的人還壯一圈。
   s.userData.modelSlot = {
     id: `soldier_${side === 'blue' ? 'us' : 'de'}_${POSE_MODEL[pose] ?? 'stand_rifle'}`,
-    fit: 3.25, axis: 'y', rotY: Math.PI,
+    weapon: WEAPON_MODEL[weapon] ?? null,
+    fit: 3.25, refMeters: 1.75, axis: 'y', rotY: Math.PI,
   };
   return bake(s, mat.merged);          // 烘焙成單一 mesh（外觀不變、draw call 從 ~22 降到 1）
 }
@@ -438,14 +444,28 @@ export function createUnit(spec, { shadows = false } = {}) {
 const GEO_CACHE = new Map();
 
 function bakedGeometry(assets, slot) {
-  const key = `${slot.id}|${slot.fit}|${slot.axis}|${slot.rotY}`;
+  // 快取鍵含武器：同姿態同武器的小兵共用一份幾何（38 名小兵實際只烘出個位數份）
+  const key = `${slot.id}|${slot.weapon ?? '-'}|${slot.fit}|${slot.axis}|${slot.rotY}`;
   if (GEO_CACHE.has(key)) return GEO_CACHE.get(key);
   const p = (async () => {
     const src = await assets.model(slot.id);
     if (!src) return null;
-    const s = fitScale(src, slot.fit, slot.axis);
+    let root = src;
+    if (slot.weapon) {
+      const wpn = await assets.model(slot.weapon);
+      const hand = wpn ? src.getObjectByName('hand_r') : null;
+      if (hand) {
+        // 不動共用的 gltf.scene：整棵 clone 之後才把武器掛上去
+        root = src.clone(true);
+        const slot2 = root.getObjectByName('hand_r');
+        const w = wpn.clone(true);
+        w.position.set(0, 0, 0); w.rotation.set(0, 0, 0); w.scale.set(1, 1, 1);
+        slot2.add(w);
+      }
+    }
+    const s = slot.refMeters ? slot.fit / slot.refMeters : fitScale(root, slot.fit, slot.axis);
     const mx = new THREE.Matrix4().makeRotationY(slot.rotY).multiply(new THREE.Matrix4().makeScale(s, s, s));
-    return bakeToVertexColors(src, { matrix: mx });
+    return bakeToVertexColors(root, { matrix: mx });
   })().catch((e) => {
     console.warn('[carentan] 單位模型載入失敗，保留程序化版本：', slot.id, e?.message ?? e);
     return null;

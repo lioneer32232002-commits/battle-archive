@@ -1454,6 +1454,9 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
     ]);
     const add = (src, placements, target, axis, { cast = true, receive = true, leavesOnly = false } = {}) => {
       if (!src || !placements.length) return false;
+      // 超過 40 株就不投影：Poly Haven 的樹每株近 1 萬三角形，陰影 pass 等於再畫一次，
+      // 是本場 fps 的第一號開銷；樹影對「市鎮街戰＋圩田」的可讀性也不是必要條件。
+      if (placements.length > 40) cast = false;
       const s = fitScale(src, target, axis);
       const mx = new THREE.Matrix4().makeScale(s, s, s);
       const groups = collectByMaterial(src, { matrix: mx });

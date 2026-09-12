@@ -48,10 +48,14 @@ export const BLENDER_MODELS = {
   barn: true, barn_damaged: true, church: true, church_damaged: true,
   // 道具
   sandbag_wall: true, hedgehog: true, fence_wood: true, signpost: true, ammo_crate: true,
-  // 士兵（建模中：public/models/ 目前沒有 soldier_*.glb）
-  soldier_us_stand_rifle: false, soldier_us_advance_rifle: false, soldier_us_kneel_fire: false,
-  soldier_us_crouch_run: false, soldier_de_stand_rifle: false, soldier_de_advance_rifle: false,
-  soldier_de_kneel_fire: false, soldier_de_prone_mg: false,
+  // 士兵（2026-09-12 第二批到位）：本場用 soldier_de_*（野戰服），
+  //   不用 soldier_de_coat_*（國民擲彈兵長大衣）—— 血腥溝反撲的是第 17 SS 裝甲擲彈兵。
+  soldier_us_stand_rifle: true, soldier_us_advance_rifle: true, soldier_us_kneel_fire: true,
+  soldier_us_crouch_run: true, soldier_us_prone_mg: true,
+  soldier_de_stand_rifle: true, soldier_de_advance_rifle: true, soldier_de_kneel_fire: true,
+  soldier_de_crouch_run: true, soldier_de_prone_mg: true,
+  // 武器（原點在握把，掛到士兵的 hand_r 底下、local transform 歸零）
+  garand: true, thompson: true, bar: true, kar98k: true, mp40: true, mg42: true,
 };
 
 export function hasBlenderModel(id) {
@@ -83,6 +87,11 @@ export function createAssetHub({ mobile = false, renderer = null } = {}) {
 
   function note(path, bytes) {
     if (path && !requested.has(path)) requested.set(path, bytes || 0);
+  }
+  // Blender 自有模型沒登記在 manifest（沒有 bytes 欄），用 XHR 的 progress 回報實際大小，
+  // 否則 stats() 會少算 ~350 KB，首屏載入量的驗收數字就不準。
+  function noteBytes(path, bytes) {
+    if (path && bytes) requested.set(path, bytes);
   }
 
   function tierFor(id) {
@@ -167,7 +176,9 @@ export function createAssetHub({ mobile = false, renderer = null } = {}) {
       }
       note(path, e?.files?.[profile]?.glb?.bytes ?? e?.files?.desktop?.glb?.bytes ?? 0);
       try {
-        const gltf = await loader().loadAsync(path);
+        let seen = 0;
+        const gltf = await loader().loadAsync(path, (ev) => { if (ev?.total) seen = ev.total; });
+        noteBytes(path, seen);
         prepareModel(gltf.scene);
         return gltf.scene;
       } catch (err) {

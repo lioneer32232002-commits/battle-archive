@@ -126,16 +126,22 @@ describe('Blender 模型註冊表', () => {
     }
   });
 
-  it('還在建模的士兵回 false（不發請求，保持 console 乾淨）', () => {
-    expect(hasBlenderModel('soldier_us_stand_rifle')).toBe(false);
-    expect(hasBlenderModel('does_not_exist')).toBe(false);
+  it('士兵與武器已到位（2026-09-12 第二批）', () => {
+    for (const id of ['soldier_us_stand_rifle', 'soldier_de_kneel_fire', 'garand', 'kar98k']) {
+      expect(hasBlenderModel(id)).toBe(true);
+    }
   });
 
-  it('註冊表涵蓋 soldier.py 的五種姿態命名', () => {
-    const poses = Object.keys(BLENDER_MODELS).filter((k) => k.startsWith('soldier_'));
-    expect(poses.length).toBeGreaterThanOrEqual(6);
-    expect(poses).toContain('soldier_us_advance_rifle');
-    expect(poses).toContain('soldier_de_kneel_fire');
+  it('沒登記的一律回 false（不發請求，保持 console 乾淨）', () => {
+    expect(hasBlenderModel('does_not_exist')).toBe(false);
+    expect(hasBlenderModel('soldier_xx_stand_rifle')).toBe(false);
+  });
+
+  it('本場用野戰服 soldier_de_*，不登記長大衣 soldier_de_coat_*（血腥溝是第 17 SS）', () => {
+    const ids = Object.keys(BLENDER_MODELS);
+    expect(ids.filter((k) => k.startsWith('soldier_de_coat'))).toHaveLength(0);
+    expect(ids).toContain('soldier_de_advance_rifle');
+    expect(ids).toContain('soldier_us_advance_rifle');
   });
 });
 
