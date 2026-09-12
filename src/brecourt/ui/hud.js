@@ -324,8 +324,13 @@ export function createHUD(callbacks) {
   }
 
   const card = document.getElementById('event-card');
+  const COMPACT_MS = window.matchMedia('(max-width: 640px)').matches ? 4000 : 6000;
+  let cardCompactTimer = null;
+  card.addEventListener('click', () => card.classList.toggle('compact'));
   let cardTimer = null;
   const intelCard = document.getElementById('intel-card');
+  let intelCompactTimer = null;
+  intelCard.addEventListener('click', () => intelCard.classList.toggle('compact'));
 
   function setBar(side, kind, p) {
     p = Math.max(0, Math.min(100, Math.round(p)));
@@ -453,9 +458,12 @@ export function createHUD(callbacks) {
       card.classList.remove('hidden', 'animate');
       void card.offsetWidth; card.classList.add('animate');
       clearTimeout(cardTimer);
-      cardTimer = setTimeout(() => card.classList.add('hidden'), 11000);
+      card.classList.remove('compact');
+      clearTimeout(cardCompactTimer);
+      cardCompactTimer = setTimeout(() => card.classList.add('compact'), COMPACT_MS);
+      cardTimer = setTimeout(() => card.classList.add('hidden'), 16000);
     },
-    hideEvent() { clearTimeout(cardTimer); card.classList.add('hidden'); },
+    hideEvent() { clearTimeout(cardTimer); clearTimeout(cardCompactTimer); card.classList.add('hidden'); },
     showIntel(intel) {
       document.getElementById('intel-believed').textContent = intel.believed || '';
       const actualEl = document.getElementById('intel-actual');
@@ -463,8 +471,11 @@ export function createHUD(callbacks) {
       actualEl.style.display = intel.actual ? 'block' : 'none';
       intelCard.classList.remove('hidden', 'animate');
       void intelCard.offsetWidth; intelCard.classList.add('animate');
+      intelCard.classList.remove('compact');
+      clearTimeout(intelCompactTimer);
+      intelCompactTimer = setTimeout(() => intelCard.classList.add('compact'), 8000);
     },
-    hideIntel() { intelCard.classList.add('hidden'); },
+    hideIntel() { clearTimeout(intelCompactTimer); intelCard.classList.add('hidden'); },
     showSummary() {
       summary.classList.remove('hidden', 'animate');
       void summary.offsetWidth; summary.classList.add('animate');

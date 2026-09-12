@@ -206,10 +206,10 @@ body {
 /* ── 事件字卡 ── */
 #event-card {
   position: absolute;
-  left: 50%;
-  bottom: 132px;
-  transform: translateX(-50%);
-  width: min(640px, calc(100vw - 40px));
+  left: 24px;
+  bottom: 164px;
+  transform: none;
+  width: min(430px, calc(100vw - 48px));
   background: rgba(8, 12, 20, 0.62);
   border: 1px solid #31405e;
   border-left: 4px solid #c9a227;
@@ -218,7 +218,11 @@ body {
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
-#event-card.animate { animation: card-in 0.45s ease; }
+#event-card.animate { animation: card-in-left 0.45s ease; }
+@keyframes card-in-left {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 @keyframes card-in {
   from { opacity: 0; transform: translateX(-50%) translateY(18px); }
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -799,7 +803,7 @@ body {
 }
 
 @media (max-width: 640px) {
-  #intel-card { top: 84px; padding: 10px 14px; }
+  #intel-card { top: 150px; padding: 10px 14px; }
   .intel-believed { font-size: 0.82rem; }
   .intel-actual { font-size: 0.86rem; }
 }
@@ -826,3 +830,15 @@ body {
   margin-right: 8px;
   font-size: 0.78rem;
 }
+
+/* ── 事件卡／情報卡自動收合：不擋戰場（2026-09-12） ── */
+#event-card, #intel-card { cursor: pointer; transition: padding 0.3s ease, opacity 0.3s ease; }
+#event-card.compact { padding: 8px 14px; opacity: 0.86; }
+#event-card.compact .ec-desc { display: none; }
+#event-card.compact .ec-title { font-size: 0.95rem; margin: 2px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#intel-card { width: min(440px, calc(100vw - 32px)); }
+#intel-card.compact { padding: 6px 12px; opacity: 0.86; }
+#intel-card.compact .intel-believed { display: none; }
+#intel-card.compact .intel-head { margin-bottom: 2px; }
+#intel-card.compact .intel-actual { margin-top: 0; border-top: 0; padding-top: 0; font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 640px) { #event-card { left: 10px; } }

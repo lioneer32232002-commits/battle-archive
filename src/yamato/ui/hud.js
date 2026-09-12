@@ -364,6 +364,9 @@ export function createHUD(callbacks) {
 
   // 字卡
   const card = document.getElementById('event-card');
+  const COMPACT_MS = window.matchMedia('(max-width: 640px)').matches ? 4000 : 6000;
+  let cardCompactTimer = null;
+  card.addEventListener('click', () => card.classList.toggle('compact'));
   let cardTimer = null;
 
   // 戰力血條:更新單一血條(同步面板 hp- 與手機迷你 mini-hp-)
@@ -514,10 +517,13 @@ export function createHUD(callbacks) {
       void card.offsetWidth; // 重新觸發動畫
       card.classList.add('animate');
       clearTimeout(cardTimer);
-      cardTimer = setTimeout(() => card.classList.add('hidden'), 11000);
+      card.classList.remove('compact');
+      clearTimeout(cardCompactTimer);
+      cardCompactTimer = setTimeout(() => card.classList.add('compact'), COMPACT_MS);
+      cardTimer = setTimeout(() => card.classList.add('hidden'), 16000);
     },
     hideEvent() {
-      clearTimeout(cardTimer);
+      clearTimeout(cardTimer); clearTimeout(cardCompactTimer);
       card.classList.add('hidden');
     },
     showSummary() {
