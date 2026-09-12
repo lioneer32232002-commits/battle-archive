@@ -202,13 +202,13 @@ body {
   bottom: 164px;
   transform: none;
   width: min(430px, calc(100vw - 48px));
-  background: rgba(8, 12, 20, 0.62);
-  border: 1px solid #31405e;
+  background: rgba(8, 12, 20, 0.38);
+  border: 1px solid rgba(49, 64, 94, 0.6);
   border-left: 4px solid #c9a227;
   border-radius: 10px;
   padding: 16px 20px;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
 }
 #event-card.animate { animation: card-in-left 0.45s ease; }
 @keyframes card-in-left {
@@ -755,12 +755,13 @@ body {
 
 /* ── 事件卡／情報卡自動收合：不擋戰場（2026-09-12） ── */
 #event-card, #intel-card { cursor: pointer; transition: padding 0.3s ease, opacity 0.3s ease; }
-#event-card.compact { padding: 8px 14px; opacity: 0.86; }
+#event-card.compact { padding: 6px 12px; opacity: 0.72; }
 #event-card.compact .ec-desc { display: none; }
 #event-card.compact .ec-title { font-size: 0.95rem; margin: 2px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #intel-card { width: min(440px, calc(100vw - 32px)); }
-#intel-card.compact { padding: 6px 12px; opacity: 0.86; }
+#intel-card.compact { padding: 5px 10px; opacity: 0.72; }
 #intel-card.compact .intel-believed { display: none; }
 #intel-card.compact .intel-head { margin-bottom: 2px; }
 #intel-card.compact .intel-actual { margin-top: 0; border-top: 0; padding-top: 0; font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 640px) { #event-card { left: 10px; } }
+.ec-title, .ec-desc, .ec-time, .intel-actual, .intel-believed, .intel-head { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85); }
