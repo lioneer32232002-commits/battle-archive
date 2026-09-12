@@ -4,8 +4,19 @@
 // 美術升級(2026-06-19):分姿態(衝鋒/跪射/臥射/站哨)、M1 盔 vs 鋼盔、傘兵背具、
 //   武器種類(Thompson/BAR/Garand/Kar98)、leFH 18 風格 105mm、雙層沙包 MG42 巢含射手。
 // 重要:材質「每單位一份」(makeMats),班內共用 → 整單位一起淡出;不同單位互不影響(避免炸一門砲四門全淡)。
+//
+// 真實資產接入(docs/asset-pipeline-spec.md §3,2026-09-12):
+//   A-8 每個小兵改 Blender glb 姿態實例(soldier_us/de_<pose>.glb ＋ hand_r 掛武器 glb),
+//       **同姿態同武器共用一份幾何**;`userData.troopers` 仍是每兵一個 Object3D,
+//       行進微動作與淡出完全照舊。火砲換 howitzer_105.glb、MG 巢換 mg_nest.glb。
+//   作法:glb 的材質全是純色平塗(沒有貼圖),所以把每個 primitive 的 baseColor 烘進頂點色、
+//       合併成單一幾何 → 一個小兵／一門砲仍然只有一個 draw call,而且沿用「每單位一份」的
+//       vertexColors 材質,主迴圈的 applyDestroyedLook 一行都不用改。
+//   程序化模型整套保留:先用它把場面建起來(首屏不等下載),glb 到了才換幾何;
+//       任何一件載不到就維持程序化。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { loadModel, bakeModel, alignMatrix, modelBox, afterFirstFrame } from './assets.js';
 
 const SIDE_COLOR = { red: 0xd9442e, blue: 0x2e7bd9 };
 const UNIFORM = { blue: 0x6f7049, red: 0x565a4e };   // 美軍橄欖綠 / 德軍灰綠
@@ -68,7 +79,9 @@ function makeMats(side) {
   const isUS = side === 'blue';
   const L = (c) => new THREE.MeshLambertMaterial({ color: c });
   return {
-    body: new THREE.MeshLambertMaterial({ vertexColors: true }),   // 烘好的單位幾何共用
+    // 烘好的單位幾何共用。改 Standard 是為了吃得到 scene.environment(HDRI)——
+    // three 只把 scene.environment 餵給 Standard/Physical,Lambert 拿不到。
+    body: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0.04 }),
     uni: L(UNIFORM[side]),
     pack: L(isUS ? 0x59593a : 0x4a4d42),
     helm: L(HELMET[side]),
@@ -182,7 +195,119 @@ function makeSoldier(side, pose, weapon, mat, phase = 0) {
   s.scale.setScalar(1.15);
   const baked = bake(s, mat.body);
   baked.userData.phase = phase;        // M-3：行進微動作相位
+  baked.userData.glb = { side, pose, weapon };   // A-8：之後換成對應姿態的 glb 幾何
   return baked;
+}
+
+// ── A-8 glb 姿態／武器對照 ────────────────────────────
+const SIDE_GLB = { blue: 'us', red: 'de' };
+const POSE_GLB = { advance: 'advance_rifle', kneel: 'kneel_fire', stand: 'stand_rifle', prone: 'prone_mg', run: 'crouch_run' };
+const WEAPON_GLB = { garand: 'garand', thompson: 'thompson', bar: 'bar', kar98: 'kar98k', mg42: 'mg42' };
+
+// 對位:glb 是公尺、面朝 −Z;場景裡的程序化小兵面朝 +z 且尺度刻意放大。
+// 縮放係數用「站姿的程序化幾何高度 ÷ 站姿 glb 高度」算一次,所有姿態共用
+// → 姿態之間的高矮比例維持 Blender 那邊的設定,不會跪姿被拉長。
+let _procStandH = null;
+function procStandHeight() {
+  if (_procStandH != null) return _procStandH;
+  const probe = makeSoldier('blue', 'stand', 'garand', makeMats('blue'));
+  probe.geometry.computeBoundingBox();
+  const bb = probe.geometry.boundingBox;
+  _procStandH = bb.max.y - bb.min.y;
+  probe.geometry.dispose();
+  return _procStandH;
+}
+
+let soldierScalePromise = null;
+function soldierScale() {
+  if (!soldierScalePromise) {
+    soldierScalePromise = loadModel('soldier_us_stand_rifle').then((ref) => {
+      if (!ref) return null;
+      const h = modelBox(ref).getSize(new THREE.Vector3()).y;
+      return h > 1e-6 ? procStandHeight() / h : null;
+    });
+  }
+  return soldierScalePromise;
+}
+
+// 同姿態同武器共用一份幾何
+const soldierGeoCache = new Map();
+function soldierGeometry(side, pose, weapon) {
+  const key = `${side}|${pose}|${weapon}`;
+  let p = soldierGeoCache.get(key);
+  if (p) return p;
+  p = (async () => {
+    const sc = await soldierScale();
+    if (!sc) return null;
+    const bodyId = `soldier_${SIDE_GLB[side] ?? 'us'}_${POSE_GLB[pose] ?? 'stand_rifle'}`;
+    const [body, wpn] = await Promise.all([loadModel(bodyId), loadModel(WEAPON_GLB[weapon] ?? 'garand')]);
+    if (!body) return null;
+    // 武器掛在 hand_r 空物件上,烘完立刻拆掉(範本是共用的,不能留下殘留)
+    const hand = body.getObjectByName('hand_r');
+    let held = null;
+    if (wpn && hand) { held = wpn.clone(true); hand.add(held); }
+    const geo = bakeModel(body, { matrix: alignMatrix({ scale: sc, rotY: Math.PI }) });
+    if (held) hand.remove(held);
+    return geo;
+  })();
+  soldierGeoCache.set(key, p);
+  return p;
+}
+
+// 火砲／MG 巢:同樣烘成單一幾何,縮放依「現有程序化量體的水平最長邊」對齊
+const bakedGeoCache = new Map();
+function bakedGeometry(modelId, rotY, refGeometry) {
+  const key = `${modelId}|${rotY.toFixed(3)}`;
+  let p = bakedGeoCache.get(key);
+  if (p) return p;
+  refGeometry.computeBoundingBox();
+  const ref = refGeometry.boundingBox.getSize(new THREE.Vector3());
+  p = loadModel(modelId).then((tmpl) => {
+    if (!tmpl) return null;
+    const t = modelBox(tmpl).getSize(new THREE.Vector3());
+    const span = Math.max(t.x, t.z);
+    const sc = span > 1e-6 ? Math.max(ref.x, ref.z) / span : 1;
+    return bakeModel(tmpl, { matrix: alignMatrix({ scale: sc, rotY }) });
+  });
+  bakedGeoCache.set(key, p);
+  return p;
+}
+
+// ── 升級排程:首屏畫完之後一次處理所有單位 ─────────────
+const pendingUnits = [];
+let upgradeScheduled = false;
+function scheduleUpgrade() {
+  if (upgradeScheduled) return;
+  upgradeScheduled = true;
+  afterFirstFrame(() => {
+    Promise.all(pendingUnits.map(upgradeUnit))
+      .catch((e) => console.warn('[brecourt/soldiers] 模型升級失敗', e))
+      .finally(() => { pendingUnits.length = 0; });
+  });
+}
+
+function swapGeometry(mesh, geo, group) {
+  if (!geo || !mesh) return false;
+  mesh.geometry.dispose();
+  mesh.geometry = geo;            // 共用:同姿態的小兵指向同一份
+  group.userData.matsDirty = true;
+  return true;
+}
+
+async function upgradeUnit(u) {
+  const jobs = [];
+  for (const tr of u.troopers) {
+    const info = tr.userData.glb;
+    if (!info) continue;
+    jobs.push(soldierGeometry(info.side, info.pose, info.weapon)
+      .then((geo) => swapGeometry(tr, geo, u.group)));
+  }
+  for (const s of u.swaps) {
+    jobs.push(bakedGeometry(s.model, s.rotY, s.mesh.geometry)
+      .then((geo) => swapGeometry(s.mesh, geo, u.group)));
+  }
+  const done = await Promise.all(jobs);
+  return done.some(Boolean);
 }
 
 // ── 班/組:一叢小人(依設定分姿態/武器/朝向) ────────────
@@ -265,7 +390,9 @@ function makeMGNest(mat, troopers) {
 
   // 巢體烘成單一 mesh;射手另外掛(要做行進微動作,不能併進去)
   const out = new THREE.Group();
-  out.add(bake(g, mat.body));
+  const nest = bake(g, mat.body);
+  out.userData.baked = nest;     // A-8：之後整塊換成 mg_nest.glb
+  out.add(nest);
 
   // 射手(跪姿,面朝 -x 西)
   const gunner = makeSoldier('red', 'kneel', 'kar98', mat, 1.7);
@@ -331,14 +458,21 @@ export function createUnit(spec, { shadows = false } = {}) {
   const g = new THREE.Group();
   const mat = makeMats(spec.side);
   const troopers = [];
+  const swaps = [];        // A-8：要換成 glb 的「整塊」模型(火砲、MG 巢)
   let blobR = 0;
 
   if (spec.kind === 'gun') {
-    g.add(makeHowitzer(mat));
+    const how = makeHowitzer(mat);
+    g.add(how);
+    // glb 面朝 −Z、程序化砲口朝 +x → 轉 −90°
+    swaps.push({ mesh: how, model: 'howitzer_105', rotY: -Math.PI / 2 });
     g.add(makeRing(7, SIDE_COLOR[spec.side]));
     blobR = 6;
   } else if (spec.kind === 'mg') {
-    g.add(makeMGNest(mat, troopers));
+    const nest = makeMGNest(mat, troopers);
+    g.add(nest);
+    // glb 面朝 −Z、程序化射界朝 −x → 轉 +90°
+    if (nest.userData.baked) swaps.push({ mesh: nest.userData.baked, model: 'mg_nest', rotY: Math.PI / 2 });
     g.add(makeRing(6, SIDE_COLOR[spec.side]));
     blobR = 5;
   } else {
@@ -360,5 +494,7 @@ export function createUnit(spec, { shadows = false } = {}) {
   }
 
   g.userData.troopers = troopers;   // M-3：主迴圈直接走訪做行進微動作
+  pendingUnits.push({ group: g, troopers, swaps });
+  scheduleUpgrade();
   return g;
 }

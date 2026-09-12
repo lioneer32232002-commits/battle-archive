@@ -8,7 +8,15 @@
 //   P-5 太陽本體 Sprite ＋ 光暈:沿真實太陽方位放置,拂曉低垂橘紅、清晨升高轉白。
 //   P-6 地平線霧帶:天空 shader 在 h < 0.09 混入霧色,地平線不再是一條硬線。
 //   D 日清晨:太陽自東北東升起(低斜暖光 → 長影),薄晨霧貼地,天亮後漸散。
+//
+// 真實資產(docs/asset-pipeline-spec.md §3,2026-09-12):
+//   A-7 HDRI 環境光:桌機用 PMREM 把 1k .hdr 做成 scene.environment(金屬、水面的反射與間接光),
+//       手機用 tonemapped JPG 走同一條 PMREM。依日相在兩張之間切換(清晨 kiara_1_dawn →
+//       上午 noon_grass),切換時把 environmentIntensity 壓到 0 再拉回來(crossfade,不每幀混)。
+//       天幕維持現有程序化 sky dome ＋ 雲(時間變化較細),HDRI 只當光源不當背景。
+//       環境光進來之後 hemisphere 補光相應降低,總亮度維持在原調色盤校準過的水準。
 import * as THREE from 'three';
+import { loadEnvMap, afterFirstFrame } from './assets.js';
 
 // 註(調色的兩個關鍵,第二輪實測後重寫):
 //  ① three 自 r155 起用物理光照(輻照度不乘 π、Lambert BRDF 除以 π),諾曼第牧草地反照率只有
@@ -16,11 +24,18 @@ import * as THREE from 'three';
 //  ② 桌機管線補上 OutputPass 之後(見 postfx.js 檔頭),ACES＋sRGB 才真的生效,整體亮度大幅提高,
 //     第一輪那組 5.2/3.2 會過曝 → 全面下修,並改以「六月上午十點的亮綠草地」為目標校準。
 const PALETTES = {
-  night:   { top: 0x060a14, horizon: 0x17203a, sun: 0x8296bf, sunInt: 0.72, amb: 0.82, ground: 0x2b3524, fog: 0x101725, fogNear: 320, fogFar: 9000 },
-  dawn:    { top: 0x2e4a78, horizon: 0xefa268, sun: 0xffc189, sunInt: 2.55, amb: 1.42, ground: 0x53652f, fog: 0xb59a7c, fogNear: 240, fogFar: 7200 },
-  morning: { top: 0x59a0dc, horizon: 0xdeeaec, sun: 0xfff1d8, sunInt: 3.30, amb: 1.95, ground: 0x7c9041, fog: 0xc7d5c7, fogNear: 700, fogFar: 15000 },
-  midday:  { top: 0x6fb2e6, horizon: 0xe9f2f1, sun: 0xfff6e4, sunInt: 4.15, amb: 2.50, ground: 0x8a9c4c, fog: 0xd3ded1, fogNear: 900, fogFar: 17000 },
+  night:   { top: 0x060a14, horizon: 0x17203a, sun: 0x8296bf, sunInt: 0.72, amb: 0.82, envInt: 0.15, ground: 0x2b3524, fog: 0x101725, fogNear: 320, fogFar: 9000 },
+  dawn:    { top: 0x2e4a78, horizon: 0xefa268, sun: 0xffc189, sunInt: 2.55, amb: 1.42, envInt: 0.40, ground: 0x53652f, fog: 0xb59a7c, fogNear: 240, fogFar: 7200 },
+  morning: { top: 0x59a0dc, horizon: 0xdeeaec, sun: 0xfff1d8, sunInt: 3.30, amb: 1.95, envInt: 0.45, ground: 0x7c9041, fog: 0xc7d5c7, fogNear: 700, fogFar: 15000 },
+  midday:  { top: 0x6fb2e6, horizon: 0xe9f2f1, sun: 0xfff6e4, sunInt: 4.15, amb: 2.50, envInt: 0.48, ground: 0x8a9c4c, fog: 0xd3ded1, fogNear: 900, fogFar: 17000 },
 };
+
+// HDRI 依日相切換:清晨(含夜與拂曉)→ 上午。t 是戰役時刻(當日分鐘)。
+const ENV_DAWN = 'kiara_1_dawn';
+const ENV_MORNING = 'noon_grass';
+const ENV_SWITCH_T = 430;
+// 環境光進來之後,hemisphere 補光要讓出這個比例(避免加總過曝)
+const HEMI_GIVEBACK = 0.62;
 
 // 戰役時刻 → 日相與混合比
 // D 日 01:10 夜跳 → 05:30 天光 → 06:00 日出 → 08:00 清晨 → 08:30 拔砲後日頭升高 → 10:00 明亮上午
@@ -63,7 +78,7 @@ function lerpNum(a, b, f) { return a + (b - a) * f; }
 // toneMapSky:天空是自寫 ShaderMaterial,不吃 three 的 tonemapping/colorspace chunk。
 //   桌機走 composer,最後有 OutputPass 統一處理,天空不必自己來;手機直接 renderer.render,
 //   受光材質會自己 ACES＋sRGB,天空就得在片元裡補同一條曲線,否則天地兩套響應曲線對不齊。
-export function createEnvironment(scene, { shadows = false, mobile = false, toneMapSky = false } = {}) {
+export function createEnvironment(scene, { shadows = false, mobile = false, toneMapSky = false, renderer = null } = {}) {
   // ── 天空圓頂(P-6:地平線霧帶) ─────────────────────────
   const skyUniforms = {
     uTop: { value: new THREE.Color(PALETTES.night.top) },
@@ -130,7 +145,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false, tone
   // ── 遠景地面(諾曼第田野基底;戰場地表由 terrain.js 疊上) ──
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(40000, 40000, 1, 1),
-    new THREE.MeshLambertMaterial({ color: PALETTES.night.ground })
+    new THREE.MeshStandardMaterial({ color: PALETTES.night.ground, roughness: 1, metalness: 0 })
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.6;
@@ -201,6 +216,40 @@ export function createEnvironment(scene, { shadows = false, mobile = false, tone
   }
   scene.add(mist);
 
+  // ── A-7 HDRI 環境光 ──────────────────────────────────
+  // 首屏不等 HDRI:先照原本的 hemisphere ＋ 方向光跑,.hdr 到了再淡入。
+  // 上午那張(1.5 MB)更晚才抓 —— 時間軸推進到天亮前 100 分鐘、或閒置 8 秒後,
+  // 兩者先到先算 → 首屏下載量只含清晨那張。
+  const envTex = { dawn: null, morning: null };
+  let envFade = 0;          // 0..1:淡入／切換時的 crossfade
+  let morningRequested = false;
+  if (renderer) {
+    afterFirstFrame(() => {
+      loadEnvMap(ENV_DAWN).then((t) => { envTex.dawn = t; });
+      setTimeout(requestMorning, 8000);
+    });
+  }
+  function requestMorning() {
+    // 手機整場沿用清晨那張:tonemapped JPG 也要 280 KB,而手機首屏預算只有 2.5 MB,
+    // 換來的環境光差異在小螢幕上看不出來。
+    if (morningRequested || !renderer || mobile) return;
+    morningRequested = true;
+    loadEnvMap(ENV_MORNING).then((t) => { envTex.morning = t; });
+  }
+
+  function updateEnvironment(dt, battleT) {
+    if (battleT > ENV_SWITCH_T - 100) requestMorning();
+    const want = battleT >= ENV_SWITCH_T ? (envTex.morning ?? envTex.dawn) : (envTex.dawn ?? envTex.morning);
+    if (!want) return;
+    if (scene.environment !== want) {
+      // 切換:先把環境光壓到 0 再換,避免上午那張直接砸在拂曉的畫面上
+      envFade = Math.max(0, envFade - dt * 2.2);
+      if (envFade <= 0.02 || !scene.environment) scene.environment = want;
+    } else {
+      envFade = Math.min(1, envFade + dt * 1.4);
+    }
+  }
+
   function update(dt, battleT) {
     for (const c of clouds.children) {
       c.position.x += c.userData.drift * dt;
@@ -218,7 +267,11 @@ export function createEnvironment(scene, { shadows = false, mobile = false, tone
     ground.material.color = lerpColor(pa.ground, pb.ground, f);
     sun.color = lerpColor(pa.sun, pb.sun, f);
     sun.intensity = lerpNum(pa.sunInt, pb.sunInt, f);
-    hemi.intensity = lerpNum(pa.amb, pb.amb, f);
+
+    // A-7:HDRI 淡入多少,hemisphere 就讓出多少(總量維持在原調色盤校準過的水準)
+    updateEnvironment(dt, battleT);
+    scene.environmentIntensity = lerpNum(pa.envInt, pb.envInt, f) * envFade;
+    hemi.intensity = lerpNum(pa.amb, pb.amb, f) * (1 - HEMI_GIVEBACK * envFade);
     scene.fog.color = lerpColor(pa.fog, pb.fog, f);
     scene.fog.near = lerpNum(pa.fogNear, pb.fogNear, f);
     scene.fog.far = lerpNum(pa.fogFar, pb.fogFar, f);
@@ -261,7 +314,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false, tone
     sunDisc.visible = sunHalo.visible = dayness > 0.02;
   }
 
-  return { update, sun };
+  return { update, sun, envTex };
 }
 
 // 柔邊圓盤(太陽本體/光暈)。core = 實心比例;邊緣一定收到全透明,否則 sprite 會露出方形。

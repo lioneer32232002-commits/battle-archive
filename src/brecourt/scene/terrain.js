@@ -10,8 +10,75 @@
 //       全部 InstancedMesh(每變體一個);桌機另撒草叢交叉 quad(vertex shader 隨風輕搖)。
 //   L-3 建築:莊園牆面石砌貼圖、屋頂瓦片貼圖、煙囪。
 //   全檔佈局改用檔內 mulberry(seed),重新整理不會變(原本部分用 Math.random)。
+//
+// 真實資產接入(docs/asset-pipeline-spec.md §3,2026-09-12):
+//   A-1 地表:MeshStandardMaterial ＋ Poly Haven `aerial_grass_rock`(細節 repeat 44)＋ `leafy_grass`
+//       第二層細節(不同尺度、低頻遮罩交錯 → 消平鋪),normal／roughness／AO 用同組 arm。
+//       上面這一整套程序化貼圖**保留**,降級成 macro 層:田塊色差、樹籬暗帶、犁溝、彈坑貼花
+//       在 onBeforeCompile 的 map_fragment 之後相乘 → 近看有草葉土粒、遠看仍是諾曼第拼布田。
+//   A-2 土路:`gravelly_sand` PBR ＋ 原車轍／路肩貼圖當 macro。
+//   A-3 樹籬土堤:`brown_mud_leaves_01` PBR(沿線 UV 已依長度拉伸)。
+//   A-4 植被:核心區的樹改 Poly Haven `island_tree_01`／`tree_small_02` glb 幾何餵 InstancedMesh
+//       (葉片 alphaTest、桌機 castShadow);遠景樹與全部灌木維持程序化(見檔尾 upgrade 註記)。
+//   A-5 莊園:`house_normandy_s/l`、`barn` glb,依材質名套 `rustic_stone_wall_02`／`roof_09` PBR,
+//       並把三棟建物「同材質合併成一個 mesh」→ draw call 比原本的盒子＋圓錐還少。
+//   A-6 道具:`foxhole`(取代程序化砲坑)、`sandbag_wall`、`ammo_crate`、`wooden_crate_01`、
+//       `barrel_01`、`fence_wood`,每種一個 InstancedMesh。
+//   全部走「先建程序化、資產到了再換」,任何一件缺就留著程序化那份,不擋首屏。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import {
+  loadPBR, loadTexture, applyPBR, ensureUV1, loadModel, afterFirstFrame,
+  collectPrimitives, alignMatrix, modelBox, disposeObject, textureMeanLuminance,
+} from './assets.js';
+
+// 沿線拉伸 UV(樹籬土堤是一段一段不同長度的圓柱,UV 要按長度重複才不會被拉成糊)
+function scaleUV(geo, su, sv) {
+  const uv = geo.attributes.uv;
+  if (!uv) return geo;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv);
+  uv.needsUpdate = true;
+  return geo;
+}
+
+// 合併前把屬性統一(glb 可能帶 tangent／第二組 UV,mergeGeometries 對不齊會回 null)
+function plainGeo(geo) {
+  const g = geo.index ? geo.toNonIndexed() : geo;
+  for (const k of Object.keys(g.attributes)) {
+    if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+  }
+  if (!g.attributes.uv) {
+    g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+  }
+  return g;
+}
+
+// 把一張矩形 plane 的四邊淡出(Standard 材質沒有 map 時沒有 vUv,自己補一個 varying)
+function softEdge(mesh, feather = 0.2) {
+  const mat = mesh.material;
+  mat.transparent = true;
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = 'varying vec2 vEdgeUv;\n' + sh.vertexShader.replace(
+      '#include <uv_vertex>', '#include <uv_vertex>\n  vEdgeUv = uv;'
+    );
+    sh.fragmentShader = 'varying vec2 vEdgeUv;\n' + sh.fragmentShader.replace(
+      '#include <alphatest_fragment>',
+      `#include <alphatest_fragment>
+       vec2 eDist = min(vEdgeUv, 1.0 - vEdgeUv);
+       diffuseColor.a *= smoothstep(0.0, ${feather.toFixed(3)}, min(eDist.x, eDist.y));`
+    );
+  };
+  mat.needsUpdate = true;
+  return mesh;
+}
+
+// glb 的 baseColorFactor 是暗色平塗;要疊 PBR 貼圖時先把它正規化成「等亮度的色相」,
+// 否則貼圖再乘一次暗色會整棟黑掉。
+function normalizeTint(color, target = 1) {
+  const lum = Math.max(1e-4, 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b);
+  color.multiplyScalar(target / lum);
+  return color;
+}
 
 // ── 可重現偽隨機(佈局固定) ───────────────────────────────
 function mulberry(seed) {
@@ -394,17 +461,20 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
   const g = new THREE.Group();
   const R = mulberry(20240612);
 
-  const earthMat = new THREE.MeshLambertMaterial({ color: 0x6b5a3e });
-  const earthLip = new THREE.MeshLambertMaterial({ color: 0x7c6a48 });
-  const pitMat = new THREE.MeshLambertMaterial({ color: 0x40331f });
-  const trenchMat = new THREE.MeshLambertMaterial({ color: 0x2c2519 });
-  const sandMat = new THREE.MeshLambertMaterial({ color: 0xc9b487 });
+  // 全面改 MeshStandardMaterial:只有 Standard／Physical 吃得到 scene.environment(HDRI)
+  const S = (color, roughness = 0.95) => new THREE.MeshStandardMaterial({ color, roughness, metalness: 0 });
+  const earthMat = S(0x6b5a3e);
+  const earthLip = S(0x7c6a48);
+  const pitMat = S(0x40331f);
+  const trenchMat = S(0x2c2519);
+  const sandMat = S(0xc9b487, 0.9);
 
-  // ── L-1 主地表:程序化牧草地／樹籬田塊貼圖 ────────────────
+  // ── L-1 主地表:程序化牧草地／樹籬田塊貼圖(A-1 之後降級成 macro 層) ────
   const groundTex = makeGroundTexture(mobile ? 1024 : 2048);
   const GROUND_REPEAT = groundTex.repeat.x;   // vMapUv 已含 repeat,除回去就是整張地圖的 0..1
   const macroTex = makeMacroTexture(mobile ? 256 : 512);
-  const pastureMat = new THREE.MeshLambertMaterial({ color: 0xffffff, map: groundTex });
+  // 起手式:資產還沒到之前,程序化貼圖照舊直接當 map(畫面與升級前一致,首屏不等下載)
+  const pastureMat = new THREE.MeshStandardMaterial({ color: 0xffffff, map: groundTex, roughness: 1, metalness: 0 });
   pastureMat.onBeforeCompile = (sh) => {
     sh.uniforms.uMacro = { value: macroTex };
     sh.fragmentShader = 'uniform sampler2D uMacro;\n' + sh.fragmentShader.replace(
@@ -414,16 +484,72 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
        diffuseColor.rgb *= (0.45 + 1.10 * macroM);`
     );
   };
-  const pasture = new THREE.Mesh(new THREE.PlaneGeometry(5000, 5000), pastureMat);
+  const pasture = new THREE.Mesh(ensureUV1(new THREE.PlaneGeometry(5000, 5000)), pastureMat);
   pasture.rotation.x = -Math.PI / 2;
   pasture.position.set(0, 0.02, 0);
   if (shadows) pasture.receiveShadow = true;
   g.add(pasture);
 
+  // A-1:真實 PBR 草皮進來之後重建材質 —— 兩層不同尺度的細節貼圖(低頻遮罩交錯,消平鋪)
+  //      ＋ 程序化田塊貼圖轉成「色相 ＋ 明暗」乘數 ＋ 原有 macro 低頻層。
+  // tier: 'mobile' = 512² 版本。桌機只有「主地表」值得 1k;第二層細節、路面、土堤、
+  // 牆面、屋頂在畫面上都不大,用 512 省下約 1.9 MB,首屏預算才守得住(§0-2)。
+  const DETAIL_A = mobile ? 30 : 44;   // aerial_grass_rock:一格約 114 單位(≒60 公尺)
+  const DETAIL_B = mobile ? 11 : 15;   // leafy_grass:刻意用非整數倍的尺度,兩層的週期對不上
+  async function upgradeGround() {
+    const [pbr, detailB] = await Promise.all([
+      loadPBR('aerial_grass_rock', { repeat: [DETAIL_A, DETAIL_A] }),
+      mobile ? null : loadTexture('leafy_grass', 'diff', { repeat: [DETAIL_B, DETAIL_B], tier: 'mobile' }),
+    ]);
+    if (!pbr.map) return false;
+    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 });
+    applyPBR(mat, pbr, { aoIntensity: 0.45, normalScale: mobile ? 0.6 : 0.9 });
+    const kField = (GROUND_REPEAT / DETAIL_A).toFixed(6);
+    const kMacro = (1 / DETAIL_A).toFixed(6);
+    const kB = (DETAIL_B / DETAIL_A).toFixed(6);
+    // 分工:顏色(田塊拼布、道路、彈坑、樹籬暗帶)一律由程序化貼圖決定 → 兩輪校準過的
+    //       諾曼第調色盤原封不動;真實貼圖只出「小尺度的明暗與粗糙起伏」＋少量色偏。
+    //       所以要先把細節層除掉自己的平均亮度,不然整片草地會被平移成貼圖的灰褐色。
+    const detMean = Math.max(0.02, textureMeanLuminance(pbr.map)).toFixed(5);
+    const bMean = detailB ? Math.max(0.02, textureMeanLuminance(detailB)).toFixed(5) : '1.0';
+    mat.onBeforeCompile = (sh) => {
+      sh.uniforms.uField = { value: groundTex };
+      sh.uniforms.uMacro = { value: macroTex };
+      if (detailB) sh.uniforms.uDetailB = { value: detailB };
+      sh.fragmentShader = `uniform sampler2D uField; uniform sampler2D uMacro;
+        ${detailB ? 'uniform sampler2D uDetailB;' : ''}
+        const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);\n` + sh.fragmentShader.replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+         vec3 macroM = texture2D( uMacro, vMapUv * ${kMacro} ).rgb;
+         vec3 detA = diffuseColor.rgb;                                  // aerial_grass_rock
+         float detL = max( dot( detA, LUMA ), 1e-4 ) / ${detMean};      // 正規化成 1.0 附近
+         ${detailB ? `
+         // 第二層細節:不同貼圖、不同尺度,用超低頻遮罩交錯 → 兩層的平鋪週期對不上,遠看不露餡
+         vec3 detBc = texture2D( uDetailB, vMapUv * ${kB} ).rgb;
+         float detBL = max( dot( detBc, LUMA ), 1e-4 ) / ${bMean};
+         float wB = smoothstep(0.30, 0.72, macroM.r);
+         detL = mix( detL, detBL, wB * 0.55 );
+         detA = mix( detA, detBc, wB * 0.55 );` : ''}
+         vec3 detTone = detA / max( dot( detA, LUMA ), 1e-4 );          // 細節層的色相(石礫、枯草)
+         vec3 fieldC = texture2D( uField, vMapUv * ${kField} ).rgb;     // 田塊拼布:顏色的真源
+         diffuseColor.rgb = fieldC * mix( vec3(1.0), detTone, 0.32 );
+         diffuseColor.rgb *= clamp( detL, 0.45, 1.85 );                 // 近看的草葉與土粒明暗
+         diffuseColor.rgb *= (0.45 + 1.10 * macroM);                    // 原有超低頻層`
+      );
+    };
+    pasture.material = mat;
+    pastureMat.dispose();
+    return true;
+  }
+
   // 戰區貼花(彈坑暈染／踩踏痕),疊在砲線田上
   const scar = new THREE.Mesh(
     new THREE.PlaneGeometry(170, 150),
-    new THREE.MeshLambertMaterial({ map: makeScarTexture(mobile ? 512 : 1024), transparent: true, depthWrite: false })
+    new THREE.MeshStandardMaterial({
+      map: makeScarTexture(mobile ? 512 : 1024), transparent: true, depthWrite: false,
+      roughness: 1, metalness: 0,
+    })
   );
   scar.rotation.x = -Math.PI / 2;
   scar.position.set(15, 0.16, 14);
@@ -435,13 +561,15 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
   const bushM = [], treeM = [[], []];
   const dummy = new THREE.Object3D();
 
+  // 記下 x/z:A-4 要把「核心區」與「遠景」分開(核心區才換成 glb 樹)
   function pushInstance(list, x, y, z, s, ry, rz = 0) {
     dummy.position.set(x, y, z);
     dummy.rotation.set(0, ry, rz);
     dummy.scale.setScalar(s);
     dummy.updateMatrix();
-    list.push(dummy.matrix.clone());
+    list.push({ m: dummy.matrix.clone(), x, z });
   }
+  const inCore = (it) => Math.abs(it.x) < 430 && Math.abs(it.z) < 430;
 
   // 土堤:六角柱壓扁後沿線鋪設(比方塊有機、無塑膠硬邊)
   function hedgerow(x1, z1, x2, z2, lush = false) {
@@ -451,6 +579,7 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
     const cx = (x1 + x2) / 2, cz = (z1 + z2) / 2;
 
     const bank = new THREE.CylinderGeometry(2.1, 2.1, len, 6, 1);
+    scaleUV(bank, 2, len / 9);   // A-3:沿線重複,土堤貼圖不會被拉成一條糊
     bank.rotateX(Math.PI / 2);
     bank.scale(1, 0.62, 1);
     const m = new THREE.Matrix4().makeRotationY(ang).setPosition(cx, 1.0, cz);
@@ -479,6 +608,7 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
   function trench(x1, z1, x2, z2) {
     const dx = x2 - x1, dz = z2 - z1;
     const len = Math.hypot(dx, dz);
+    trenchSpots.push({ x1, z1, x2, z2, len, ang: Math.atan2(dx, dz) });
     const t = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, len), trenchMat);
     t.position.set((x1 + x2) / 2, 0.28, (z1 + z2) / 2);
     t.rotation.y = Math.atan2(dx, dz);
@@ -486,16 +616,21 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
     g.add(t);
   }
 
-  // 砲坑:暗色坑底 + 環形土唇
+  // 砲坑:暗色坑底 + 環形土唇(A-6 之後由 foxhole.glb 取代,取代不成就留著)
+  const pitGroup = new THREE.Group();
+  g.add(pitGroup);
+  const pitSpots = [];
+  const trenchSpots = [];
   function gunPit(x, z) {
+    pitSpots.push([x, z]);
     const pit = new THREE.Mesh(new THREE.CircleGeometry(3.2, 18), pitMat);
     pit.rotation.x = -Math.PI / 2; pit.position.set(x, 0.2, z);
     if (shadows) pit.receiveShadow = true;
-    g.add(pit);
+    pitGroup.add(pit);
     const lip = new THREE.Mesh(new THREE.TorusGeometry(3.3, 0.7, 6, 18), earthLip);
     lip.rotation.x = -Math.PI / 2; lip.position.set(x, 0.45, z);
     if (shadows) { lip.castShadow = true; lip.receiveShadow = true; }
-    g.add(lip);
+    pitGroup.add(lip);
   }
 
   // ── 主戰場:布雷庫爾砲線田 ───────────────────────────
@@ -535,15 +670,18 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
   const wallTexB = makeWallTexture(57, '#9c937a', '#7d765f');
   const roofTexA = makeRoofTexture(73, '#6e4a39');
   const roofTexB = makeRoofTexture(91, '#5d4232');
-  const chimneyMat = new THREE.MeshLambertMaterial({ map: wallTexB, color: 0xd8d0bb });
+  const chimneyMat = new THREE.MeshStandardMaterial({ map: wallTexB, color: 0xd8d0bb, roughness: 0.95, metalness: 0 });
   const manorMats = [
-    new THREE.MeshLambertMaterial({ map: wallTexA, color: 0xffffff }),
-    new THREE.MeshLambertMaterial({ map: wallTexB, color: 0xffffff }),
+    new THREE.MeshStandardMaterial({ map: wallTexA, color: 0xffffff, roughness: 0.95, metalness: 0 }),
+    new THREE.MeshStandardMaterial({ map: wallTexB, color: 0xffffff, roughness: 0.95, metalness: 0 }),
   ];
   const roofMats = [
-    new THREE.MeshLambertMaterial({ map: roofTexA, color: 0xffffff }),
-    new THREE.MeshLambertMaterial({ map: roofTexB, color: 0xffffff }),
+    new THREE.MeshStandardMaterial({ map: roofTexA, color: 0xffffff, roughness: 0.9, metalness: 0 }),
+    new THREE.MeshStandardMaterial({ map: roofTexB, color: 0xffffff, roughness: 0.9, metalness: 0 }),
   ];
+
+  const manorProc = new THREE.Group();   // 程序化 fallback,glb 到了就整組換掉
+  g.add(manorProc);
 
   function building(x, z, w, d, h, rot = 0, matIdx = 0, chimney = true) {
     const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), manorMats[matIdx]);
@@ -551,15 +689,21 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
     const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.hypot(w, d) * 0.52, h * 0.75, 4), roofMats[matIdx]);
     roof.position.set(x, h + h * 0.36, z); roof.rotation.y = rot + Math.PI / 4;
     if (shadows) { wall.castShadow = wall.receiveShadow = true; roof.castShadow = true; }
-    g.add(wall); g.add(roof);
+    manorProc.add(wall); manorProc.add(roof);
     if (chimney) {
       const ch = new THREE.Mesh(new THREE.BoxGeometry(1.5, h * 0.9, 1.5), chimneyMat);
       ch.position.set(x + Math.cos(rot) * w * 0.3, h + h * 0.4, z - Math.sin(rot) * w * 0.3);
       if (shadows) ch.castShadow = true;
-      g.add(ch);
+      manorProc.add(ch);
     }
   }
 
+  // A-5:同一組佈局,程序化盒子與 glb 建物共用(span = 現有程序化量體的水平最長邊)
+  const MANOR = [
+    { id: 'house_normandy_l', x: -60, z: -42, rot: 0.3, span: 19 },
+    { id: 'house_normandy_s', x: -44, z: -54, rot: -0.2, span: 13 },
+    { id: 'barn', x: -78, z: -34, rot: 0.5, span: 23 },
+  ];
   building(-60, -42, 16, 11, 8, 0.3, 0);
   building(-44, -54, 11, 8, 6, -0.2, 0);
   building(-78, -34, 22, 7, 5.5, 0.5, 1, false); // 長穀倉
@@ -567,28 +711,113 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
   stoneWall.position.set(-58, 0.8, -26); stoneWall.rotation.y = 0.3;
   if (shadows) { stoneWall.castShadow = stoneWall.receiveShadow = true; }
   g.add(stoneWall);
+
+  async function upgradeManor() {
+    const models = await Promise.all(MANOR.map((s) => loadModel(s.id)));
+    if (!models.every(Boolean)) return false;
+    // 牆面與屋頂省掉 arm(AO/rough/metal 那張):512 也要 100–130 KB,而建物在畫面上不大,
+    // 固定 roughness 看不出差別 —— 這 230 KB 換整場下載量壓在 6 MB 以內。
+    const [wallSet, roofSet] = await Promise.all([
+      loadPBR('rustic_stone_wall_02', { repeat: [1.4, 1.4], tier: 'mobile', maps: ['diff', 'nor'] }),
+      loadPBR('roof_09', { repeat: [2.0, 2.0], tier: 'mobile', maps: ['diff', 'nor'] }),
+    ]);
+    const byMat = new Map();
+    const size = new THREE.Vector3();
+    models.forEach((mdl, i) => {
+      const s = MANOR[i];
+      modelBox(mdl).getSize(size);
+      const sc = s.span / Math.max(size.x, size.z);
+      const mtx = new THREE.Matrix4().makeTranslation(s.x, 0, s.z)
+        .multiply(new THREE.Matrix4().makeRotationY(s.rot))
+        .multiply(new THREE.Matrix4().makeScale(sc, sc, sc));
+      for (const p of collectPrimitives(mdl, { matrix: mtx })) {
+        const key = p.material.name || 'default';
+        if (!byMat.has(key)) byMat.set(key, { mat: p.material, geos: [] });
+        byMat.get(key).geos.push(plainGeo(p.geometry));
+      }
+    });
+    // 三棟建物「同材質合併成一個 mesh」→ 7 個 draw call 蓋住整個莊園
+    const out = new THREE.Group();
+    for (const [name, rec] of byMat) {
+      const geo = mergeGeometries(rec.geos, false);
+      if (!geo) continue;
+      ensureUV1(geo);
+      const mat = rec.mat.clone();
+      if (name === 'stone') { applyPBR(mat, wallSet, { aoIntensity: 0.7 }); normalizeTint(mat.color, 1.0); }
+      else if (name === 'stone_dark') { applyPBR(mat, wallSet, { aoIntensity: 0.7 }); normalizeTint(mat.color, 0.62); }
+      else if (name === 'roof_tile') { applyPBR(mat, roofSet, { aoIntensity: 0.7 }); normalizeTint(mat.color, 0.85); }
+      mat.envMapIntensity = 1;
+      const mesh = new THREE.Mesh(geo, mat);
+      if (shadows) { mesh.castShadow = true; mesh.receiveShadow = true; }
+      out.add(mesh);
+    }
+    if (!out.children.length) return false;
+    g.add(out);
+    disposeObject(manorProc);
+    // 矮石牆沿用同一張石砌貼圖
+    if (wallSet.map) {
+      const sw = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 });
+      applyPBR(sw, await loadPBR('rustic_stone_wall_02', { repeat: [8, 0.6], tier: 'mobile', maps: ['diff', 'nor'] }), { aoIntensity: 0.7 });
+      ensureUV1(stoneWall.geometry);
+      stoneWall.material = sw;
+    }
+    return true;
+  }
   // 莊園旁的果樹叢
   for (let i = 0; i < 10; i++) {
     pushInstance(treeM[i % 2], -96 + R() * 60, 1.2, -70 + R() * 40, 0.85 + R() * 0.5, R() * Math.PI * 2);
   }
 
-  // ── 勒格朗謝曼土路(專屬土路貼圖) ─────────────────────
+  // ── 勒格朗謝曼土路(專屬土路貼圖;A-2 之後降級成車轍／路肩 macro 層) ─────
+  const roadTex = makeRoadTexture();
   const road = new THREE.Mesh(
-    new THREE.PlaneGeometry(190, 6.4),
-    new THREE.MeshLambertMaterial({ map: makeRoadTexture(), color: 0xffffff })
+    ensureUV1(new THREE.PlaneGeometry(190, 6.4)),
+    new THREE.MeshStandardMaterial({ map: roadTex, color: 0xffffff, roughness: 0.96, metalness: 0 })
   );
   road.rotation.x = -Math.PI / 2;
   road.position.set(-10, 0.14, 96);
   if (shadows) road.receiveShadow = true;
   g.add(road);
 
+  const ROAD_U = mobile ? 32 : 46, ROAD_V = 2;
+  async function upgradeRoad() {
+    const pbr = await loadPBR('gravelly_sand', { repeat: [ROAD_U, ROAD_V], tier: 'mobile' });
+    if (!pbr.map) return false;
+    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 });
+    applyPBR(mat, pbr, { aoIntensity: 0.6, normalScale: 0.8 });
+    const kU = (roadTex.repeat.x / ROAD_U).toFixed(6);
+    const kV = (roadTex.repeat.y / ROAD_V).toFixed(6);
+    const detMean = Math.max(0.02, textureMeanLuminance(pbr.map)).toFixed(5);
+    mat.onBeforeCompile = (sh) => {
+      sh.uniforms.uRoad = { value: roadTex };
+      sh.fragmentShader = `uniform sampler2D uRoad;
+        const vec3 LUMA_R = vec3(0.2126, 0.7152, 0.0722);\n` + sh.fragmentShader.replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+         // 同地表:顏色(路肩草色、車轍土色)來自程序化土路貼圖,砂石的粒感來自 gravelly_sand
+         vec3 detR = diffuseColor.rgb;
+         float detRL = clamp( max( dot( detR, LUMA_R ), 1e-4 ) / ${detMean}, 0.42, 1.7 );
+         vec3 roadC = texture2D( uRoad, vMapUv * vec2(${kU}, ${kV}) ).rgb;
+         diffuseColor.rgb = roadC * mix( vec3(1.0), detR / max( dot( detR, LUMA_R ), 1e-4 ), 0.35 );
+         diffuseColor.rgb *= detRL;`
+      );
+    };
+    road.material.dispose();
+    road.material = mat;
+    return true;
+  }
+
   // ── 東側:氾濫低地(德軍放水淹的農田)→ 2 號堤道 → 猶他灘 → 海 ──
+  // 水面改 Standard:低 roughness 才吃得到 HDRI 環境反射(氾濫低地與外海的天光)
   function water(x, z, w, d, color, y = 0.2, opacity = 0.85) {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshLambertMaterial({ color, transparent: opacity < 1, opacity }));
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshStandardMaterial({
+      color, transparent: opacity < 1, opacity, roughness: 0.24, metalness: 0.06,
+    }));
     m.rotation.x = -Math.PI / 2; m.position.set(x, y, z); g.add(m);
     return m;
   }
-  water(235, 0, 230, 320, 0x3c5f6d, 0.28, 0.72);
+  // 氾濫低地:邊緣柔化(德軍放水淹出來的是一片漫過田埂的淺水,不是一塊長方形游泳池)
+  softEdge(water(235, 0, 230, 320, 0x3c5f6d, 0.28, 0.72), 0.22);
   // 半沒入的田埂格線(合併成單一網格)
   const floodParts = [];
   for (let gx = 140; gx <= 340; gx += 50) {
@@ -597,12 +826,12 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
   for (let gz = -130; gz <= 130; gz += 52) {
     const b = new THREE.BoxGeometry(220, 0.7, 1.6); b.translate(235, 0.34, gz); floodParts.push(b);
   }
-  const floodBanks = new THREE.Mesh(mergeGeometries(floodParts, false), new THREE.MeshLambertMaterial({ color: 0x4a5535 }));
+  const floodBanks = new THREE.Mesh(mergeGeometries(floodParts, false), new THREE.MeshStandardMaterial({ color: 0x4a5535, roughness: 0.95, metalness: 0 }));
   g.add(floodBanks);
   // 露出水面的蘆葦叢(InstancedMesh)
   const reedGeo = paint(new THREE.IcosahedronGeometry(1.6, 0), 0x62753f);
   reedGeo.scale(1, 0.34, 1);
-  const reeds = new THREE.InstancedMesh(reedGeo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), 44);
+  const reeds = new THREE.InstancedMesh(reedGeo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.92, metalness: 0 }), 44);
   for (let i = 0; i < 44; i++) {
     dummy.position.set(130 + R() * 210, 0.4, -150 + R() * 300);
     dummy.rotation.set(0, R() * Math.PI, 0);
@@ -613,7 +842,7 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
   reeds.instanceMatrix.needsUpdate = true;
   g.add(reeds);
 
-  const causeway = new THREE.Mesh(new THREE.BoxGeometry(240, 0.8, 5.5), new THREE.MeshLambertMaterial({ color: 0x8a7c5c }));
+  const causeway = new THREE.Mesh(new THREE.BoxGeometry(240, 0.8, 5.5), new THREE.MeshStandardMaterial({ color: 0x8a7c5c, roughness: 0.95, metalness: 0 }));
   causeway.position.set(245, 0.5, -4);
   if (shadows) causeway.receiveShadow = true;
   g.add(causeway);
@@ -622,31 +851,151 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
   water(900, 20, 900, 600, 0x24516e, 0.15, 1);
 
   // ── 樹籬土堤合併 ＋ 灌木／樹 InstancedMesh ────────────────
-  const vegMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-  const banks = new THREE.Mesh(mergeGeometries(bankParts, false), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+  const vegMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.92, metalness: 0 });
+  const bankGeo = mergeGeometries(bankParts, false);
+  ensureUV1(bankGeo);
+  const banks = new THREE.Mesh(bankGeo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95, metalness: 0 }));
   if (shadows) { banks.castShadow = true; banks.receiveShadow = true; }
   g.add(banks);
 
+  // A-3:樹籬土堤換真實泥葉 PBR(UV 已依長度拉伸,repeat 用 1)
+  async function upgradeBanks() {
+    const pbr = await loadPBR('brown_mud_leaves_01', { repeat: [1, 1], tier: 'mobile' });
+    if (!pbr.map) return false;
+    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0, flatShading: false });
+    applyPBR(mat, pbr, { aoIntensity: 0.7, normalScale: 0.9 });
+    banks.material.dispose();
+    banks.material = mat;   // 貼圖自帶顏色,不再乘頂點色
+    return true;
+  }
+
+  // 灌木:Poly Haven 的 shrub_01／shrub_04 在資產管線裡被壓成了扁片(見檔尾回報),
+  //       維持程序化灌木叢。
   const bushGeos = [makeBushGeometry(5), makeBushGeometry(19)];
   const bushHalf = Math.ceil(bushM.length / 2);
   for (let v = 0; v < 2; v++) {
     const list = v === 0 ? bushM.slice(0, bushHalf) : bushM.slice(bushHalf);
     if (!list.length) continue;
     const im = new THREE.InstancedMesh(bushGeos[v], vegMat, list.length);
-    for (let i = 0; i < list.length; i++) im.setMatrixAt(i, list[i]);
+    for (let i = 0; i < list.length; i++) im.setMatrixAt(i, list[i].m);
     im.instanceMatrix.needsUpdate = true;
     if (shadows) { im.castShadow = true; im.receiveShadow = true; }
     g.add(im);
   }
 
   const treeGeos = [makeTreeGeometry(101, true), makeTreeGeometry(202, false)];
-  for (let v = 0; v < 2; v++) {
-    if (!treeM[v].length) continue;
-    const im = new THREE.InstancedMesh(treeGeos[v], vegMat, treeM[v].length);
-    for (let i = 0; i < treeM[v].length; i++) im.setMatrixAt(i, treeM[v][i]);
+  const treeIM = [null, null];
+  function buildProcTrees(v, list) {
+    if (!list.length) { treeIM[v] = null; return; }
+    const im = new THREE.InstancedMesh(treeGeos[v], vegMat, list.length);
+    for (let i = 0; i < list.length; i++) im.setMatrixAt(i, list[i].m);
     im.instanceMatrix.needsUpdate = true;
     if (shadows) { im.castShadow = true; im.receiveShadow = true; }
     g.add(im);
+    treeIM[v] = im;
+  }
+  for (let v = 0; v < 2; v++) buildProcTrees(v, treeM[v]);
+
+  // A-4:核心區(±430)的樹換 Poly Haven glb;遠景樹維持程序化(一棵 17k 三角形,
+  //      全圖 120 棵會是 200 萬面,遠景吃不到細節卻要付全額 → 只在看得到的地方付)。
+  const TREE_GLB = ['island_tree_01', 'tree_small_02'];   // [高, 矮],對應 treeGeos
+  async function upgradeTrees() {
+    if (mobile) return false;   // 手機維持程序化
+    const models = await Promise.all(TREE_GLB.map(loadModel));
+    if (!models.every(Boolean)) return false;
+    const size = new THREE.Vector3();
+    let replaced = 0;
+    for (let v = 0; v < 2; v++) {
+      const near = treeM[v].filter(inCore);
+      const far = treeM[v].filter((t) => !inCore(t));
+      if (!near.length) continue;
+      // 程序化樹的高度 = 對位目標(樹籬尺度刻意放大,照著現有量體走才不會破壞可讀性)
+      treeGeos[v].computeBoundingBox();
+      const targetH = treeGeos[v].boundingBox.max.y;
+      modelBox(models[v]).getSize(size);
+      const sc = size.y > 1e-6 ? targetH / size.y : 1;
+      const prims = collectPrimitives(models[v], { matrix: alignMatrix({ scale: sc }) });
+      if (!prims.length) continue;
+      // 先換掉:遠景那份重建,核心那份改 glb
+      if (treeIM[v]) { g.remove(treeIM[v]); treeIM[v].dispose(); }
+      buildProcTrees(v, far);
+      for (const p of prims) {
+        const im = new THREE.InstancedMesh(p.geometry, p.material, near.length);
+        for (let i = 0; i < near.length; i++) im.setMatrixAt(i, near[i].m);
+        im.instanceMatrix.needsUpdate = true;
+        im.frustumCulled = true;
+        if (shadows) { im.castShadow = true; im.receiveShadow = true; }
+        g.add(im);
+      }
+      replaced += near.length;
+    }
+    return replaced > 0;
+  }
+
+  // A-6:陣地道具(散兵坑取代程序化砲坑、沙包牆、彈藥箱、路邊木柵),每種一個 InstancedMesh
+  async function upgradeProps() {
+    const layout = [];
+    // 散兵坑:四個砲位
+    layout.push({
+      id: 'foxhole', span: 7.6, y: 0.06, shadow: false,
+      spots: pitSpots.map(([x, z], i) => ({ x, z, ry: i * 1.3, s: 1 })),
+    });
+    // 沙包牆:沿 L 形塹壕兩側
+    const bags = [];
+    for (const t of trenchSpots) {
+      const n = Math.max(2, Math.round(t.len / 13));
+      for (let i = 0; i < n; i++) {
+        const f = (i + 0.5) / n;
+        bags.push({
+          x: t.x1 + (t.x2 - t.x1) * f + Math.cos(t.ang) * 1.9,
+          z: t.z1 + (t.z2 - t.z1) * f - Math.sin(t.ang) * 1.9,
+          ry: t.ang, s: 0.85 + R() * 0.3,
+        });
+      }
+    }
+    layout.push({ id: 'sandbag_wall', span: 6.0, y: 0, shadow: true, spots: bags });
+    // 彈藥箱:每個砲位旁散幾只
+    const crates = [];
+    for (const [x, z] of pitSpots) {
+      for (let i = 0; i < 3; i++) {
+        crates.push({ x: x + (R() - 0.5) * 9, z: z + 4 + R() * 4, ry: R() * Math.PI * 2, s: 0.9 + R() * 0.4 });
+      }
+    }
+    layout.push({ id: 'ammo_crate', span: 1.9, y: 0, shadow: true, spots: crates });
+    // 木柵:土路南側
+    const fences = [];
+    for (let i = 0; i < 14; i++) {
+      fences.push({ x: -100 + i * 15, z: 100.5 + (R() - 0.5) * 0.8, ry: Math.PI / 2 + (R() - 0.5) * 0.1, s: 1 });
+    }
+    layout.push({ id: 'fence_wood', span: 8.6, y: 0, shadow: true, spots: fences });
+
+    const size = new THREE.Vector3();
+    const d = new THREE.Object3D();
+    let ok = 0;
+    for (const L of layout) {
+      const mdl = await loadModel(L.id);
+      if (!mdl || !L.spots.length) continue;
+      modelBox(mdl).getSize(size);
+      const base = L.span / Math.max(size.x, size.z);
+      const prims = collectPrimitives(mdl, { matrix: alignMatrix({ scale: base }) });
+      for (const p of prims) {
+        const im = new THREE.InstancedMesh(p.geometry, p.material, L.spots.length);
+        for (let i = 0; i < L.spots.length; i++) {
+          const s = L.spots[i];
+          d.position.set(s.x, L.y, s.z);
+          d.rotation.set(0, s.ry, 0);
+          d.scale.setScalar(s.s);
+          d.updateMatrix();
+          im.setMatrixAt(i, d.matrix);
+        }
+        im.instanceMatrix.needsUpdate = true;
+        if (shadows) { im.castShadow = L.shadow; im.receiveShadow = true; }
+        g.add(im);
+      }
+      if (L.id === 'foxhole' && prims.length) disposeObject(pitGroup);
+      ok++;
+    }
+    return ok > 0;
   }
 
   // ── 草叢(桌機限定,核心區 ±160):交叉雙面 quad,vertex shader 隨風輕搖 ──
@@ -660,8 +1009,9 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
     const gn = grassGeo.attributes.normal;
     for (let i = 0; i < gn.count; i++) gn.setXYZ(i, 0, 1, 0);
     gn.needsUpdate = true;
-    const grassMat = new THREE.MeshLambertMaterial({
+    const grassMat = new THREE.MeshStandardMaterial({
       map: makeGrassTexture(), alphaTest: 0.42, side: THREE.DoubleSide, color: 0xffffff,
+      roughness: 0.95, metalness: 0,
     });
     grassMat.onBeforeCompile = (sh) => {
       sh.uniforms.uWind = wind;
@@ -693,6 +1043,22 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
 
   scene.add(g);
 
+  // ── 真實資產升級:首屏畫完之後才開始抓,任何一項失敗都只是留著程序化那份 ──
+  const applied = {};
+  const ready = new Promise((resolve) => {
+    afterFirstFrame(async () => {
+      const jobs = [
+        ['ground', upgradeGround], ['road', upgradeRoad], ['banks', upgradeBanks],
+        ['trees', upgradeTrees], ['manor', upgradeManor], ['props', upgradeProps],
+      ];
+      await Promise.all(jobs.map(async ([name, fn]) => {
+        try { applied[name] = await fn(); }
+        catch (e) { applied[name] = false; console.warn(`[brecourt/terrain] ${name} 升級失敗`, e); }
+      }));
+      resolve(applied);
+    });
+  });
+
   const places = [
     { name: '布雷庫爾莊園 Brécourt', side: 'neutral', pos: { x: -58, y: 16, z: -42 } },
     { name: '勒格朗謝曼 Le Grand-Chemin', side: 'neutral', pos: { x: -72, y: 8, z: 96 } },
@@ -704,6 +1070,8 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
   return {
     group: g,
     places,
+    ready,        // 測試／除錯用:全部升級嘗試完成後 resolve,值是每項成功與否
+    applied,
     update(dt) { wind.value += dt; },
   };
 }

@@ -17,8 +17,12 @@ import { Director } from './camera/director.js';
 import { createHUD } from './ui/hud.js';
 import { AudioEngine } from './scene/audio.js';
 import { createComposer } from './scene/postfx.js';
+import { configureAssets, missingAssets } from './scene/assets.js';
 
-const isMobile = window.matchMedia('(max-width: 640px)').matches;
+// 開發時可用 ?mobile 強制走手機路徑(512 貼圖、tonemapped HDRI、程序化植被)做驗收;
+// 正式 build 會把 import.meta.env.DEV 那段整個移除。
+const isMobile = window.matchMedia('(max-width: 640px)').matches
+  || !!(import.meta.env && import.meta.env.DEV && location.search.includes('mobile'));
 const LABEL_SCALE = isMobile ? 0.6 : 1;
 const SHADOWS = !isMobile;   // P-2：陰影桌機限定
 const POSTFX = !isMobile;    // P-3：後製桌機限定
@@ -35,7 +39,7 @@ renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 if (SHADOWS) {
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;   // 0.184 已棄用 PCFSoft(會退回 PCF 並洗警告)
 }
 container.appendChild(renderer.domElement);
 
@@ -50,7 +54,11 @@ controls.minDistance = 22;
 controls.maxDistance = 3500;
 controls.enableDamping = true;
 
-const environment = createEnvironment(scene, { shadows: SHADOWS, mobile: isMobile, toneMapSky: !POSTFX });
+// 真實資產(docs/asset-pipeline-spec.md §3):貼圖／HDRI／模型的桌機與手機路徑在這裡決定,
+// 之後 environment／terrain／soldiers／aircraft 各自非同步升級,一律不阻塞首屏。
+configureAssets({ mobile: isMobile, renderer, envMapIntensity: 1 });
+
+const environment = createEnvironment(scene, { shadows: SHADOWS, mobile: isMobile, toneMapSky: !POSTFX, renderer });
 const terrain = createBrecourtTerrain(scene, { shadows: SHADOWS, mobile: isMobile });
 const effects = new Effects(scene, { mobile: isMobile });
 const director = new Director(camera, controls);
@@ -311,6 +319,8 @@ let panelAcc = 0;
 
 const FADE_PALE = new THREE.Color(0xd8d8d8);
 function prepMats(o) {
+  // 資產升級會換掉單位的幾何/材質 → 快取作廢重收(matsDirty 由 soldiers.js 設)
+  if (o.group.userData.matsDirty) { o.mats = null; o.group.userData.matsDirty = false; }
   if (o.mats) return;
   o.mats = [];
   o.group.traverse((m) => {
@@ -518,6 +528,8 @@ tick();
 // 預覽分頁為 hidden 時 rAF 會暫停;此掛勾可手動定格到指定戰役時刻、擺放鏡頭並強制渲染,供截圖檢視美術。
 if (import.meta.env && import.meta.env.DEV) {
   const dbgSeek = (t) => {
+    battleT = t; prevT = t;          // 主迴圈若還在跑,下一幀才不會把時間拉回去
+    hud.setTime(t);
     for (const [, o] of unitObjs) {
       const st = unitStateAt(o.spec, t);
       o.group.position.set(st.pos.x, 0, st.pos.z);
@@ -538,7 +550,7 @@ if (import.meta.env && import.meta.env.DEV) {
       paratroopers.visible = true;
       updateParatroopers(paratroopers, (t - 88) / 70, t);
     } else paratroopers.visible = false;
-    environment.update(0, t);
+    environment.update(1, t);   // dt 給 1 秒:HDRI 的 crossfade 一次到位,定格畫面才代表實際觀感
     renderFrame(0.016);
     return t;
   };
@@ -551,6 +563,8 @@ if (import.meta.env && import.meta.env.DEV) {
   };
   window.__dbg = {
     THREE, scene, camera, controls, renderer, director, dbgSeek, dbgLook,
+    terrain, environment, missingAssets,
+    setPlaying: (v) => { playing = v; hud.setPlaying(v); },
     render: () => renderFrame(0.016),
   };
 }

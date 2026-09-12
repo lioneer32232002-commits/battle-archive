@@ -1,6 +1,14 @@
 // C-47 運輸機群(D 日夜跳)與傘兵 — 取代 midway 的艦載機。
 // C-47 帶 D 日識別「入侵條紋」(黑白相間);傘兵為下降的傘花。
+//
+// 真實資產(docs/asset-pipeline-spec.md §3,2026-09-12):
+//   A-9 C-47 換 c47.glb(Blender 產出,純色材質)。機身烘成單一帶頂點色的幾何、
+//       螺旋槳 prop_l／prop_r 各自獨立(要轉),夜航編隊燈合併成一個 MeshBasic
+//       → 每架 4 個 draw call(原本程序化版是 14 個),16 架就省下 160 個。
+//       幾何與材質全機群共用;載不到就維持程序化。
 import * as THREE from 'three';
+import { loadModel, bakeModel, bakeNode, alignMatrix, modelBox, afterFirstFrame } from './assets.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const BODY = 0x6b6f63;
 const STRIPE_L = 0xe7e2d4;
@@ -50,6 +58,84 @@ function makeC47() {
   return g;
 }
 
+// ── A-9:c47.glb 零件(全機群共用一份幾何與材質) ─────────
+const PROC_SPAN = 25;            // 程序化 C-47 的翼展(機體群組尺度 1.25 之前)
+const LIGHTS = [
+  [0xff3b30, -12.4, 0, -0.6],    // 左翼紅
+  [0x34c759, 12.4, 0, -0.6],     // 右翼綠
+  [0x66b3ff, 0, 1.5, 6.2],       // 尾部藍
+];
+let c47Parts = null;
+
+function makeLightsGeometry() {
+  const parts = [];
+  for (const [hex, x, y, z] of LIGHTS) {
+    const s = new THREE.SphereGeometry(0.38, 6, 6).toNonIndexed();
+    s.translate(x, y, z);
+    const c = new THREE.Color(hex);
+    const n = s.attributes.position.count;
+    const arr = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b; }
+    s.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+    parts.push(s);
+  }
+  return mergeGeometries(parts, false);
+}
+
+async function buildC47Parts() {
+  if (c47Parts !== null) return c47Parts;
+  const tmpl = await loadModel('c47');
+  if (!tmpl) { c47Parts = false; return false; }
+  const span = modelBox(tmpl).getSize(new THREE.Vector3()).x;
+  const sc = span > 1e-6 ? PROC_SPAN / span : 1;
+  const mtx = alignMatrix({ scale: sc });   // glb 機首朝 −Z,與程序化版本同向,不必轉
+  const body = bakeModel(tmpl, { exclude: ['prop_l', 'prop_r'], matrix: mtx });
+  if (!body) { c47Parts = false; return false; }
+  const props = [];
+  for (const name of ['prop_l', 'prop_r']) {
+    const geo = bakeNode(tmpl, name, { matrix: mtx });
+    if (geo) props.push({ geo, pos: geo.userData.nodeOrigin.clone().multiplyScalar(sc) });
+  }
+  c47Parts = {
+    body,
+    props,
+    mat: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0.22 }),
+    lightsGeo: makeLightsGeometry(),
+    lightsMat: new THREE.MeshBasicMaterial({ vertexColors: true }),
+  };
+  return c47Parts;
+}
+
+function applyC47(plane, parts) {
+  for (const child of [...plane.children]) {
+    child.geometry?.dispose?.();
+    plane.remove(child);
+  }
+  plane.add(new THREE.Mesh(parts.body, parts.mat));
+  const props = [];
+  for (const p of parts.props) {
+    const m = new THREE.Mesh(p.geo, parts.mat);
+    m.position.copy(p.pos);
+    plane.add(m);
+    props.push(m);
+  }
+  plane.userData.props = props;
+  if (parts.lightsGeo) plane.add(new THREE.Mesh(parts.lightsGeo, parts.lightsMat));
+}
+
+const pendingPlanes = [];
+let airUpgradeScheduled = false;
+function scheduleAirUpgrade() {
+  if (airUpgradeScheduled) return;
+  airUpgradeScheduled = true;
+  afterFirstFrame(async () => {
+    const parts = await buildC47Parts();
+    if (!parts) return;
+    for (const p of pendingPlanes) applyC47(p, parts);
+    pendingPlanes.length = 0;
+  });
+}
+
 export function createAirGroup(spec) {
   const g = new THREE.Group();
   for (let i = 0; i < spec.count; i++) {
@@ -59,9 +145,11 @@ export function createAirGroup(spec) {
     p.position.set(sideSign * row * 16, (i % 3) * 2, row * 13);
     p.userData.phase = i * 1.7;
     g.add(p);
+    pendingPlanes.push(p);
   }
   g.userData.spec = spec;
   g.visible = false;
+  scheduleAirUpgrade();
   return g;
 }
 
@@ -70,6 +158,8 @@ export function updateAirGroup(group, pos, time, altitude = 95) {
   group.rotation.y = -pos.heading;
   for (const p of group.children) {
     p.position.y = (p.userData.phase % 3) * 2 + Math.sin(time * 1.5 + p.userData.phase) * 1.2;
+    const props = p.userData.props;
+    if (props) for (const pr of props) pr.rotation.z = time * 22 + p.userData.phase;
   }
 }
 
@@ -84,23 +174,38 @@ function rng(seed) {
   };
 }
 
-function makeChute() {
-  const g = new THREE.Group();
-  const dome = new THREE.Mesh(
-    new THREE.SphereGeometry(2.4, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
-    new THREE.MeshLambertMaterial({ color: CHUTE })
-  );
-  dome.position.y = 6; g.add(dome);
-  const trooper = new THREE.Mesh(
-    new THREE.BoxGeometry(0.7, 1.6, 0.5),
-    new THREE.MeshLambertMaterial({ color: 0x55583c })
-  );
-  g.add(trooper);
-  for (const sx of [-1.6, 1.6]) {
-    const line = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 6, 4), new THREE.MeshLambertMaterial({ color: 0xcfc8b4 }));
-    line.position.set(sx, 3.2, 0); line.rotation.z = sx * 0.05; g.add(line);
+// 傘花:傘蓋＋人＋兩條傘繩烘成單一帶頂點色的幾何(全部傘兵共用一份),
+// 28 朵傘從 112 個 draw call 降到 28 個。
+let _chuteGeo = null, _chuteMat = null;
+function chutePart(geo, hex) {
+  const g = geo.toNonIndexed();
+  const c = new THREE.Color(hex);
+  const n = g.attributes.position.count;
+  const arr = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b; }
+  g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+  for (const k of Object.keys(g.attributes)) {
+    if (!['position', 'normal', 'color'].includes(k)) g.deleteAttribute(k);
   }
   return g;
+}
+function makeChute() {
+  if (!_chuteGeo) {
+    const parts = [];
+    const dome = new THREE.SphereGeometry(2.4, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+    dome.translate(0, 6, 0);
+    parts.push(chutePart(dome, CHUTE));
+    parts.push(chutePart(new THREE.BoxGeometry(0.7, 1.6, 0.5), 0x55583c));
+    for (const sx of [-1.6, 1.6]) {
+      const line = new THREE.CylinderGeometry(0.05, 0.05, 6, 4);
+      line.rotateZ(sx * 0.05);
+      line.translate(sx, 3.2, 0);
+      parts.push(chutePart(line, 0xcfc8b4));
+    }
+    _chuteGeo = mergeGeometries(parts, false);
+    _chuteMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 });
+  }
+  return new THREE.Mesh(_chuteGeo, _chuteMat);
 }
 
 // 傘兵場:散佈於空降區,於跳傘時間窗自高空下降至地面
