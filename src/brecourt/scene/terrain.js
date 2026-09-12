@@ -594,6 +594,7 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
       const px = x1 + dx * f + (R() - 0.5) * 1.6;
       const pz = z1 + dz * f + (R() - 0.5) * 1.6;
       pushInstance(bushM, px, 1.5 + R() * 0.5, pz, (lush ? 0.95 : 0.8) * (0.8 + R() * 0.6), R() * Math.PI * 2, (R() - 0.5) * 0.14);
+      bushM[bushM.length - 1].lush = lush;   // A-4b：只有砲線田那四道樹籬換 glb 灌木
     }
     // 樹籬頂端零星高樹
     const tn = Math.max(1, Math.round(len / (lush ? 17 : 26)));
@@ -869,18 +870,56 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
     return true;
   }
 
-  // 灌木:Poly Haven 的 shrub_01／shrub_04 在資產管線裡被壓成了扁片(見檔尾回報),
-  //       維持程序化灌木叢。
+  // 灌木(A-4b):Poly Haven 的 shrub_01／shrub_04 是「低矮匍匐地被」(本尊就是 2.6×0.4×0.2 m),
+  //   當樹籬灌木會變成一片立起來的薄扇 —— 不是資產壞掉,是用途不對。
+  //   照卡倫坦的做法:樹籬灌木改用**縮小版的 island_tree_02**(縮到 2–3 公尺高、沿用原本的
+  //   隨機 y 旋轉與 0.8–1.3 縮放),葉片 alphaTest;為了省 shadow pass 不投影(它腳下的土堤
+  //   已經投影了,少這一份看不出來)。
+//   shrub_01 當田埂地被試過但拿掉了:一株 6 萬面、多 0.27 MB 下載,而它只有 0.4 公尺高,
+//   在這場的觀看距離下完全看不出來 —— 付得起的預算該花在看得到的地方。
   const bushGeos = [makeBushGeometry(5), makeBushGeometry(19)];
-  const bushHalf = Math.ceil(bushM.length / 2);
-  for (let v = 0; v < 2; v++) {
-    const list = v === 0 ? bushM.slice(0, bushHalf) : bushM.slice(bushHalf);
-    if (!list.length) continue;
-    const im = new THREE.InstancedMesh(bushGeos[v], vegMat, list.length);
-    for (let i = 0; i < list.length; i++) im.setMatrixAt(i, list[i].m);
-    im.instanceMatrix.needsUpdate = true;
-    if (shadows) { im.castShadow = true; im.receiveShadow = true; }
-    g.add(im);
+  const bushIM = [null, null];
+  function buildProcBushes(list) {
+    for (let v = 0; v < 2; v++) {
+      if (bushIM[v]) { g.remove(bushIM[v]); bushIM[v].dispose(); bushIM[v] = null; }
+    }
+    const half = Math.ceil(list.length / 2);
+    for (let v = 0; v < 2; v++) {
+      const sub = v === 0 ? list.slice(0, half) : list.slice(half);
+      if (!sub.length) continue;
+      const im = new THREE.InstancedMesh(bushGeos[v], vegMat, sub.length);
+      for (let i = 0; i < sub.length; i++) im.setMatrixAt(i, sub[i].m);
+      im.instanceMatrix.needsUpdate = true;
+      if (shadows) { im.castShadow = true; im.receiveShadow = true; }
+      g.add(im);
+      bushIM[v] = im;
+    }
+  }
+  buildProcBushes(bushM);
+
+  // 縮小版 island_tree_02 的基準高度(單位scale=1 時)。1 場景單位 ≈ 0.5 m,
+  // 5.0 搭配實例的 0.76–1.33 縮放 → 實際 1.9–3.3 m,正好是樹籬灌木叢的尺寸。
+  const BUSH_BASE_H = 5.0;
+  async function upgradeBushes() {
+    if (mobile) return false;   // 手機維持程序化
+    const mdl = await loadModel('island_tree_02');
+    if (!mdl) return false;
+    const core = bushM.filter((b) => b.lush);
+    const rest = bushM.filter((b) => !b.lush);
+    if (!core.length) return false;
+    const size = modelBox(mdl).getSize(new THREE.Vector3());
+    if (size.y < 1e-6) return false;
+    const prims = collectPrimitives(mdl, { matrix: alignMatrix({ scale: BUSH_BASE_H / size.y }) });
+    if (!prims.length) return false;
+    buildProcBushes(rest);           // 核心區外仍是程序化灌木叢
+    for (const p of prims) {
+      const im = new THREE.InstancedMesh(p.geometry, p.material, core.length);
+      for (let i = 0; i < core.length; i++) im.setMatrixAt(i, core[i].m);
+      im.instanceMatrix.needsUpdate = true;
+      if (shadows) { im.castShadow = false; im.receiveShadow = true; }
+      g.add(im);
+    }
+    return true;
   }
 
   const treeGeos = [makeTreeGeometry(101, true), makeTreeGeometry(202, false)];
@@ -898,7 +937,10 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
 
   // A-4:核心區(±430)的樹換 Poly Haven glb;遠景樹維持程序化(一棵 17k 三角形,
   //      全圖 120 棵會是 200 萬面,遠景吃不到細節卻要付全額 → 只在看得到的地方付)。
-  const TREE_GLB = ['island_tree_01', 'tree_small_02'];   // [高, 矮],對應 treeGeos
+  // [高, 矮],對應 treeGeos。矮的那棵用 island_tree_02 而不是 tree_small_02:
+  // 樹籬灌木已經在載它了(同一份幾何與材質),省下 0.3 MB 下載,而且它 9.8k 面
+  // 比 tree_small_02 的 17k 面便宜一半 —— 同樣的畫面,少一個檔、少一半三角形。
+  const TREE_GLB = ['island_tree_01', 'island_tree_02'];
   async function upgradeTrees() {
     if (mobile) return false;   // 手機維持程序化
     const models = await Promise.all(TREE_GLB.map(loadModel));
@@ -1049,7 +1091,8 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
     afterFirstFrame(async () => {
       const jobs = [
         ['ground', upgradeGround], ['road', upgradeRoad], ['banks', upgradeBanks],
-        ['trees', upgradeTrees], ['manor', upgradeManor], ['props', upgradeProps],
+        ['trees', upgradeTrees], ['bushes', upgradeBushes],
+        ['manor', upgradeManor], ['props', upgradeProps],
       ];
       await Promise.all(jobs.map(async ([name, fn]) => {
         try { applied[name] = await fn(); }
