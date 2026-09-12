@@ -9,7 +9,8 @@ import {
 import { unitStateAt, newEvents } from './engine/timeline.js';
 import { createEnvironment } from './scene/environment.js';
 import { createBastogneTerrain } from './scene/terrain.js';
-import { createUnit } from './scene/soldiers.js';
+import { createUnit, upgradeUnit } from './scene/soldiers.js';
+import { createAssets } from './scene/assets.js';
 import { Effects } from './scene/effects.js';
 import { makeLabel } from './scene/labels.js';
 import { Director } from './camera/director.js';
@@ -35,7 +36,7 @@ renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 if (SHADOWS) {
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;   // §9-4:three 0.184 已棄用 PCFSoftShadowMap
 }
 container.appendChild(renderer.domElement);
 
@@ -100,6 +101,23 @@ for (const u of units) {
   });
   group.rotation.y = u.facing != null ? u.facing : 0;
 }
+
+// ── 真實資產(docs/asset-pipeline-spec.md §3) ────────────────
+// 場景已經在上面用程序化版本建好、也已經開始跑;資產是「之後補上去」的,
+// 任何一項失敗都只是留著程序化版本,首屏與 HUD 不等它。
+const assets = createAssets({ mobile: isMobile, renderer });
+const assetsApplied = assets.ready.then(async () => {
+  environment.applyAssets(assets);
+  const terrainDone = await terrain.applyAssets(assets);
+  const unitDone = [];
+  for (const [, o] of unitObjs) {
+    const ok = await upgradeUnit(o.group, o.spec, assets, { shadows: SHADOWS });
+    if (ok) { o.mats = null; o.faded = false; unitDone.push(o.spec.id); }
+  }
+  const report = { terrain: terrainDone, units: unitDone, missing: assets.missingModels() };
+  if (import.meta.env && import.meta.env.DEV) console.info('[bastogne] 資產替換', report);
+  return report;
+}).catch((e) => { console.warn('[bastogne] 資產替換失敗,保留程序化場景', e); return null; });
 
 // 部隊大標籤(跟隨)
 const formationLabels = [
@@ -478,6 +496,7 @@ tick();
 // ── 開發用美術除錯掛勾(正式 build 由 import.meta.env.DEV 移除) ──
 if (import.meta.env && import.meta.env.DEV) {
   const dbgSeek = (t) => {
+    battleT = t; prevT = t; snapRot = true;   // 主迴圈的日相也跟著跳,否則每幀又被拉回開場
     for (const [, o] of unitObjs) {
       const st = unitStateAt(o.spec, t);
       o.group.position.set(st.pos.x, 0, st.pos.z);
@@ -497,8 +516,34 @@ if (import.meta.env && import.meta.env.DEV) {
     camera.updateMatrixWorld();
     renderFrame(0.016);
   };
+  // 美術驗收:凍結運鏡與 HUD,讓截圖只反映場景本身
+  const dbgFreeze = () => {
+    playing = false;
+    director.flyTo = () => {}; director.follow = () => {}; director.update = () => {};
+    const st = document.createElement('style');
+    st.textContent = 'aside,.side-panel,.event-card,.intel-card,.summary,.figure-card{display:none!important}';
+    document.head.appendChild(st);
+  };
   window.__dbg = {
+    dbgFreeze,
     THREE, scene, camera, controls, renderer, director, effects, terrain, environment, dbgSeek, dbgLook,
+    assets, assetsApplied,
     render: () => renderFrame(0.016),
   };
+
+  // 美術驗收用的一鍵佈景:#qa=t,tx,ty,tz,px,py,pz
+  // (dev server 常因其他戰役的檔案變動而整頁重載,靠 hash 才能「重載後自己回到同一格」)
+  const qaApply = () => {
+    if (!location.hash.startsWith('#qa=')) return;
+    const n = location.hash.slice(4).split(',').map(Number);
+    dbgFreeze();
+    dbgSeek(n[0] ?? 70);
+    dbgLook(n[1] ?? 0, n[2] ?? 8, n[3] ?? 0, n[4] ?? 60, n[5] ?? 30, n[6] ?? 120);
+  };
+  window.addEventListener('hashchange', qaApply);
+  if (location.hash.startsWith('#qa=')) {
+    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('進入戰場'));
+    btn?.click();
+    assetsApplied.then(() => { for (const ms of [400, 1200, 2500, 4000]) setTimeout(qaApply, ms); });
+  }
 }

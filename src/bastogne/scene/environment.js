@@ -55,6 +55,18 @@ function lerpColor(a, b, f) {
 }
 function lerpNum(a, b, f) { return a + (b - a) * f; }
 
+// ── HDRI 環境(docs/asset-pipeline-spec.md §3) ────────────────
+// 天幕維持程序化 sky dome(時間變化細),HDRI 只拿來當 scene.environment:
+// 讓 PBR 材質(雪地、房舍、戰車、針葉)有真正的間接光與反射。
+// 依日相在三張之間切換,且**用到才載**(夜相 1.6 MB 的 .hdr 不能三張一起抓,首屏預算會爆)。
+const ENV_PHASE = {
+  nightArrival: 'night', nightCold: 'night',
+  overcast: 'overcast', clear: 'clear', relief: 'clear',
+};
+// ⚠ 強度要壓低:五相調色盤(sunInt／amb)是在「沒有 IBL」的前提下校過的,
+//   HDRI 直接按 1.0 疊上去會整個過曝,放晴相位變成一片白。這裡只當補光與反射用。
+const ENV_INTENSITY = { night: 0.16, overcast: 0.34, clear: 0.42 };
+
 export function createEnvironment(scene, { shadows = false } = {}) {
   // ── 天空圓頂 ──────────────────────────────────────────
   const skyUniforms = {
@@ -235,9 +247,44 @@ export function createEnvironment(scene, { shadows = false } = {}) {
     sunHalo.material.color = sunDisc.material.color;
 
     api.night = night;   // 供 terrain.js 的夜相窗光(B-3)使用
+
+    // HDRI:依日相切換 scene.environment,強度隨相位連續內插
+    if (envAssets) {
+      const pa = ENV_PHASE[a] ?? 'overcast';
+      const pb = ENV_PHASE[b] ?? 'overcast';
+      scene.environmentIntensity = lerpNum(ENV_INTENSITY[pa], ENV_INTENSITY[pb], f);
+      const want = f < 0.5 ? pa : pb;
+      if (want !== envWant) { envWant = want; ensureEnv(want); }
+      // ⚠ 不預抓下一張:一張 1k .hdr 是 1.6 MB,兩張就把 6 MB 的首屏預算吃掉一半。
+      //   等真的切過去再載(在那之前沿用前一張,強度已經在內插,看不出破綻)。
+    }
   }
 
-  const api = { update, sun, night: 1 };
+  // ── HDRI 接口:資產到齊後由 main.js 呼叫,首屏不等它 ──────────
+  let envAssets = null;
+  let envWant = null;
+  const envTex = new Map();
+  function ensureEnv(phase) {
+    if (!envAssets) return;
+    if (envTex.has(phase)) {
+      if (envWant === phase && envTex.get(phase)) scene.environment = envTex.get(phase);
+      return;
+    }
+    envTex.set(phase, null);
+    envAssets.env(phase).then((tex) => {
+      if (!tex) return;
+      envTex.set(phase, tex);
+      if (envWant === phase) scene.environment = tex;
+    });
+  }
+  function applyAssets(assets) {
+    envAssets = assets;
+    scene.environmentIntensity = ENV_INTENSITY.night;
+    envWant = 'night';
+    ensureEnv('night');
+  }
+
+  const api = { update, applyAssets, sun, night: 1 };
   return api;
 }
 

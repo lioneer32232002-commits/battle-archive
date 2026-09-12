@@ -12,8 +12,15 @@
 //   B-2 雪地細節疊層(車轍、散兵坑線、風吹雪紋、彈坑)畫進一張「細節貼花」大平面,只多 1 個 draw call
 //   B-3 房舍:石牆貼圖＋夜相窗戶橘光(emissiveMap)、屋頂積雪白蓋
 //   B-4 遠景地平線森林剪影帶(一圈鋸齒 ring,靠霧色淡出)
+//
+// 真實資產(docs/asset-pipeline-spec.md §3):本檔維持「開場就能跑」的程序化版本,
+//   資產到齊後由 terrain-upgrade.js 的 applyTerrainAssets() 就地換成 PBR 雪地、
+//   Poly Haven 針葉樹 InstancedMesh、Blender 房舍 glb。程序化版本一律保留為 fallback,
+//   只是被 visible=false 收起來(手機或載入失敗時就是它在撐)。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { applyTerrainAssets } from './terrain-upgrade.js';
+import { tactics } from '../data/battle.js';
 
 // ── 可重現偽隨機(佈局固定) ───────────────────────────────
 function mulberry(seed) {
@@ -88,8 +95,8 @@ function makeSnowTexture(S) {
 // 一張與雪原平面 1:1 對位的透明貼圖(不平鋪),把「位置對得上」的細節畫進去:
 //   樹下暗斑與踩踏小徑、車轍、E 連散兵坑線的翻土帶、風吹雪紋、戰線彈坑。
 // 這些細節無法靠平鋪貼圖表現(會到處重複),故獨立一層;成本 = 1 個 draw call。
-const FIELD_W = 1400;          // 雪原平面邊長
-const FIELD_CZ = 40;           // 平面中心 z
+export const FIELD_W = 1400;   // 雪原平面邊長
+export const FIELD_CZ = 40;    // 平面中心 z
 // ── 松樹幾何(合併成單一帶頂點色的 geometry,供 InstancedMesh) ──
 // B-1:三層錯位圓錐(下大上小、由深到略淺的松綠)＋每層底緣一圈白色積雪裙＋樹梢雪帽＋樹幹。
 // 「錯位」= 每層各自繞 y 轉一個角、並側偏一點點,避免三個同軸圓錐看起來像一根塑膠聖誕樹。
@@ -288,15 +295,16 @@ export function createBastogneTerrain(scene, { shadows = false, mobile = false }
   for (const a of [-1.15, -0.5, 0.5, 1.15]) {
     roads.push({ cx: hub.x + Math.sin(a) * 120, cz: hub.z - Math.cos(a) * 120, len: 300, wid: 9, rot: a });
   }
+  const roadMeshes = [], rutMeshes = [];
   for (const rd of roads) {
     const road = new THREE.Mesh(new THREE.PlaneGeometry(rd.wid, rd.len), roadMat);
     road.rotation.x = -Math.PI / 2; road.rotation.z = rd.rot; road.position.set(rd.cx, 0.06, rd.cz);
-    if (shadows) road.receiveShadow = true; g.add(road);
+    if (shadows) road.receiveShadow = true; g.add(road); roadMeshes.push(road);
     for (const off of [-rd.wid * 0.22, rd.wid * 0.22]) {   // 兩道車轍
       const rt = new THREE.Mesh(new THREE.PlaneGeometry(rd.wid * 0.14, rd.len), rutMat);
       rt.rotation.x = -Math.PI / 2; rt.rotation.z = rd.rot;
       rt.position.set(rd.cx + Math.cos(rd.rot) * off, 0.08, rd.cz - Math.sin(rd.rot) * off);
-      g.add(rt);
+      g.add(rt); rutMeshes.push(rt);
     }
   }
 
@@ -320,24 +328,27 @@ export function createBastogneTerrain(scene, { shadows = false, mobile = false }
     const q = rng();
     const v = q > 0.55 ? 0 : q > 0.22 ? 1 : 2;
     const s = 0.85 + rng() * 0.7;
+    const ry = rng() * Math.PI * 2;
     dummy.position.set(x, 0, z);
-    dummy.rotation.y = rng() * Math.PI * 2;
+    dummy.rotation.y = ry;
     dummy.scale.setScalar(s);
     dummy.updateMatrix();
     placements[v].push(dummy.matrix.clone());
-    treeSpots.push({ x, z, s });
+    treeSpots.push({ x, z, s, ry, v });   // glb 版沿用同一批座標,樹下暗斑才對得上
   }
   // MLR 樹線:散兵坑線正後方(z≈6)一道較密的松樹,空爆就炸在這排樹冠上
   for (let i = 0; i < 60; i++) {
     const x = -280 + (i / 59) * 560 + (rng() - 0.5) * 6;
     const z = 6 + (rng() - 0.5) * 8;
     const s = 1.0 + rng() * 0.5;
+    const ry = rng() * Math.PI * 2;
     dummy.position.set(x, 0, z);
-    dummy.rotation.y = rng() * Math.PI * 2;
+    dummy.rotation.y = ry;
     dummy.scale.setScalar(s);
     dummy.updateMatrix();
-    placements[rng() > 0.3 ? 0 : 2].push(dummy.matrix.clone());
-    treeSpots.push({ x, z, s });
+    const v = rng() > 0.3 ? 0 : 2;
+    placements[v].push(dummy.matrix.clone());
+    treeSpots.push({ x, z, s, ry, v, mlr: true });   // MLR 樹線:空爆就炸在這排樹冠上
   }
   const forestMeshes = [];
   for (let v = 0; v < variants.length; v++) {
@@ -399,7 +410,11 @@ export function createBastogneTerrain(scene, { shadows = false, mobile = false }
   const roofTex = makeRoofTexture(mobile ? 128 : 256);
   const wallParts = [], roofParts = [], snowParts = [];
   const townR = mulberry(88);
+  // glb 版(§3 模型替換)沿用同一批房舍座標與尺寸,村落格局不變
+  const houseSpecs = [];
+  let curVillage = 'town';
   function houseAt(parts, roofs, snows, x, z, w, d, h, rot, wallHex, roofHex, snowHex) {
+    houseSpecs.push({ x, z, w, d, h, rot, wallHex, village: curVillage });
     const wall = new THREE.BoxGeometry(w, h, d); wall.translate(0, h / 2, 0);
     scaleUV(wall, Math.max(w, d) / 15, h / 11);
     const rad = Math.hypot(w, d) * 0.56, rh = h * 0.7;
@@ -420,7 +435,9 @@ export function createBastogneTerrain(scene, { shadows = false, mobile = false }
       0xb4b0a6, 0x767c85, 0xe8eff5);
   }
   // 教堂(鎮地標:石塔＋尖頂)
+  curVillage = 'church';
   houseAt(wallParts, roofParts, snowParts, hub.x, hub.z + 40, 12, 20, 9, 0, 0xb4b0a6, 0x767c85, 0xe8eff5);
+  curVillage = 'town';
   const tower = new THREE.BoxGeometry(6, 20, 6); tower.translate(hub.x - 10, 10, hub.z + 40);
   scaleUV(tower, 0.45, 1.8); wallParts.push(paint(tower, 0xa9a59b));
   const spire = new THREE.ConeGeometry(4.6, 10, 4); spire.rotateY(Math.PI / 4); spire.translate(hub.x - 10, 25, hub.z + 40);
@@ -442,6 +459,7 @@ export function createBastogneTerrain(scene, { shadows = false, mobile = false }
   // ── 佛伊村(北 -z,德軍佔領):散兵坑線越過雪原望見的小村 ────
   const foyParts = [], foyRoofs = [], foySnows = [];
   const foyR = mulberry(51);
+  curVillage = 'foy';
   for (let i = 0; i < 8; i++) {
     const x = -70 + foyR() * 150, z = -190 - foyR() * 40;
     houseAt(foyParts, foyRoofs, foySnows, x, z, 8 + foyR() * 6, 7 + foyR() * 5, 5 + foyR() * 3, foyR() * Math.PI,
@@ -491,14 +509,30 @@ export function createBastogneTerrain(scene, { shadows = false, mobile = false }
   // 夜相窗戶橘光(B-3):由 main.js 每幀傳入 environment 的夜間權重 0–1
   const TREELINE_DAY = new THREE.Color(0x33404c);
   const TREELINE_NIGHT = new THREE.Color(0x10161f);
+  const nightHooks = [];        // 資產版房舍的夜窗由 terrain-upgrade.js 掛進來
   function update(dt, night = 0) {
     const k = Math.max(0, Math.min(1, night));
     wallMat.emissiveIntensity = k * 0.30;
     foyWallMat.emissiveIntensity = k * 0.22;
     treeline.material.color.copy(TREELINE_DAY).lerp(TREELINE_NIGHT, k);
+    for (const h of nightHooks) h(k);
   }
 
-  return { group: g, places, forestMeshes, update };
+  // ── 真實資產接口(§3):把「換得掉的東西」交出去,程序化版本留著當 fallback ──
+  const art = {
+    group: g, shadows, mobile, fieldW: FIELD_W, fieldCZ: FIELD_CZ,
+    field, snowMat, detail, detailTex,
+    roadMeshes, rutMeshes, roadMat, rutMat, roads,
+    forest, forestMeshes, treeSpots, holeXs,
+    townWalls, townRoofs, townSnow, foyWalls, foyRoofM, foySnowM,
+    houseSpecs, hub, nightHooks, baseOfFire: tactics.baseOfFire,
+  };
+
+  const api = {
+    group: g, places, forestMeshes, update, art,
+    applyAssets: (assets) => applyTerrainAssets(art, assets),
+  };
+  return api;
 }
 
 // 細節貼花層的實際繪製(拆成函式,讓 createBastogneTerrain 讀起來仍是「地形清單」)

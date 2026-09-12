@@ -6,7 +6,14 @@
 // A-3 升級:每個小兵記 userData.phase(用檔內 rng 保持可重現);單位工廠把所有小兵 mesh
 //   收進 group.userData.troopers 陣列,主迴圈直接走訪做「行進微動作」(起伏＋輕搖),
 //   不必每幀 traverse 整個 group。靜止單位由主迴圈以 1/4 幅度或不動處理。
+//
+// 真實資產(docs/asset-pipeline-spec.md §3):createUnit() 的對外 API 不變(仍回傳同樣結構的 Group、
+//   userData.troopers 照舊),資產到齊後由 upgradeUnit() 就地把程序化模型換成 Blender glb:
+//   雪曼(德索布里支隊)、StuG(德軍戰車)、leFH 18(樹爆砲兵)、MG 巢、單兵姿態。
+//   ⚠ 士兵 glb 可能還在建模中 → 找不到就原地保留程序化,不是錯誤。
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { collectByGroup, geoMetrics } from './assets.js';
 
 const SIDE_COLOR = { red: 0xd9442e, blue: 0x2e7bd9 };
 const UNIFORM = { blue: 0x51573a, red: 0xdfe3e4 };   // 美軍橄欖綠 / 德軍白色偽裝罩衫
@@ -174,6 +181,7 @@ function makeSquad(side, count, spread, seed, cfg, mat, troopers) {
     sd.rotation.y = cfg.face + (r() - 0.5) * 0.6;
     sd.scale.multiplyScalar(0.92 + r() * 0.16);
     sd.userData.baseY = 0;
+    sd.userData.pose = pose;       // §3:資產版依姿態換成對應的 soldier_*.glb
     troopers.push(sd);
     g.add(sd);
   }
@@ -290,15 +298,16 @@ export function createUnit(spec) {
   const g = new THREE.Group();
   const mat = makeMats(spec.side);
   const troopers = [];
+  let proc = null;                   // 程序化主體(資產到了就換掉它,但不刪 → fallback)
 
   if (spec.kind === 'gun') {
-    g.add(makeHowitzer(mat));
+    proc = makeHowitzer(mat); g.add(proc);
     g.add(makeRing(7, SIDE_COLOR[spec.side]));
   } else if (spec.kind === 'mg') {
-    g.add(makeMGNest(mat, troopers));
+    proc = makeMGNest(mat, troopers); g.add(proc);
     g.add(makeRing(6, SIDE_COLOR[spec.side]));
   } else if (spec.kind === 'armor') {
-    g.add(makeArmor(spec.side, spec.variant, mat));
+    proc = makeArmor(spec.side, spec.variant, mat); g.add(proc);
     g.add(makeRing(10, SIDE_COLOR[spec.side]));
   } else {
     const men = spec.strength?.men ?? 6;
@@ -310,5 +319,152 @@ export function createUnit(spec) {
   }
 
   g.userData.troopers = troopers;   // A-3：主迴圈直接走訪做行進微動作
+  g.userData.proc = proc;           // §3：程序化主體(fallback)
+  g.userData.spec = spec;
   return g;
+}
+
+// ── 真實資產:把程序化主體換成 Blender glb(§3) ─────────────────
+// 同一種載具／建物在多個單位間共用幾何(只複製材質,才不會一輛被擊毀時全部一起變色),
+// 而且整台合併成 1 個網格 → 程序化版本每輛約 20 個 draw call,換完只剩 1。
+const MODEL_KIND = {
+  sherman: { id: 'sherman', length: 10.0, yaw: Math.PI, whitewash: false },
+  panzer: { id: 'stug', length: 9.6, yaw: Math.PI, whitewash: true },
+  gun: { id: 'howitzer_105', length: 9.2, yaw: 0, whitewash: true },
+  mg: { id: 'mg_nest', length: 6.0, yaw: 0, whitewash: false },
+};
+const _cache = new Map();
+
+function buildVehicle(gltf, cfg, assets) {
+  const list = collectByGroup(gltf.scene, () => 'all').get('all');
+  if (!list || !list.length) return null;
+  const geo = list.length === 1 ? list[0] : mergeGeometries(list, false);
+  if (!geo) return null;
+  // 冬季白漆:只把「有漆的面」刷白,履帶／槍管那種近黑的金屬留著(史實上也是刷不到的)
+  if (cfg.whitewash) {
+    const col = geo.attributes.color;
+    for (let i = 0; i < col.count; i++) {
+      const l = col.getX(i) * 0.3 + col.getY(i) * 0.6 + col.getZ(i) * 0.1;
+      if (l < 0.05) continue;
+      col.setXYZ(i,
+        col.getX(i) + (0.52 - col.getX(i)) * 0.82,
+        col.getY(i) + (0.55 - col.getY(i)) * 0.82,
+        col.getZ(i) + (0.58 - col.getZ(i)) * 0.82);
+    }
+    col.needsUpdate = true;
+  }
+  const met = geoMetrics(geo);
+  const scale = cfg.length / Math.max(1e-3, met.length);
+  const pbr = assets.pbr('metal_plate', { repeat: 0.45, maps: ['diff'] });
+  const base = new THREE.MeshStandardMaterial({
+    vertexColors: true, roughness: 0.62, metalness: 0.25, envMapIntensity: 0.8, ...pbr,
+  });
+  base.color.setScalar(2.4);       // glb 的 baseColorFactor 偏暗,乘上鋼板貼圖要補回來
+  if (base.normalMap) base.normalScale.set(0.6, 0.6);
+  return { geo, base, scale, yaw: cfg.yaw };
+}
+
+function vehicleAsset(key, assets) {
+  if (_cache.has(key)) return _cache.get(key);
+  const cfg = MODEL_KIND[key];
+  const p = assets.model(cfg.id).then((gltf) => (gltf ? buildVehicle(gltf, cfg, assets) : null));
+  _cache.set(key, p);
+  return p;
+}
+
+// 單兵 glb:同姿態共用幾何,每個小兵仍是自己的 Object3D(微動作照舊)。
+// 武器在 glb 裡是獨立檔,掛點是空節點 hand_r;這裡把武器幾何乘上 hand_r 的世界矩陣後
+// 直接併進單兵幾何 → 整個小兵(含槍)仍然只有 1 個 draw call。
+const POSE_FILE = { advance: 'advance_rifle', kneel: 'kneel_fire', dig: 'kneel_fire', stand: 'stand_rifle' };
+const WEAPON_FILE = {
+  blue: { advance_rifle: 'garand', kneel_fire: 'garand', stand_rifle: 'garand', prone_mg: 'bar', crouch_run: 'thompson' },
+  red: { advance_rifle: 'kar98k', kneel_fire: 'kar98k', stand_rifle: 'kar98k', prone_mg: 'mg42', crouch_run: 'mp40' },
+};
+// 德軍國民擲彈兵在雪原上穿白色偽裝罩衫/盔套 —— 只刷制服與鋼盔,裝具、靴子、臉不動。
+const WHITE_CAMO = /uniform|helmet|coat/i;
+
+function soldierAsset(side, pose, assets) {
+  const file = POSE_FILE[pose] ?? 'stand_rifle';
+  const id = side === 'blue' ? `soldier_us_${file}` : `soldier_de_coat_${file}`;
+  if (_cache.has(id)) return _cache.get(id);
+  const weaponId = (WEAPON_FILE[side === 'blue' ? 'blue' : 'red'])[file] ?? 'garand';
+  const p = Promise.all([assets.model(id), assets.model(weaponId)]).then(([gltf, wpn]) => {
+    if (!gltf) return null;
+    const groups = collectByGroup(gltf.scene, (name) => (WHITE_CAMO.test(name) ? 'camo' : 'body'));
+    const parts = [];
+    for (const [key, list] of groups) {
+      for (const g of list) {
+        if (side === 'red' && key === 'camo') {
+          const col = g.attributes.color;
+          for (let i = 0; i < col.count; i++) col.setXYZ(i, 0.60, 0.62, 0.65);
+          col.needsUpdate = true;
+        }
+        parts.push(g);
+      }
+    }
+    if (!parts.length) return null;
+    const hand = gltf.scene.getObjectByName('hand_r');
+    if (wpn && hand) {
+      hand.updateWorldMatrix(true, false);
+      for (const g of collectByGroup(wpn.scene, () => 'w').get('w') ?? []) {
+        g.applyMatrix4(hand.matrixWorld);
+        parts.push(g);
+      }
+    }
+    const geo = parts.length === 1 ? parts[0] : mergeGeometries(parts, false);
+    if (!geo) return null;
+    const met = geoMetrics(geo);
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.86, metalness: 0.05, envMapIntensity: 0.8 });
+    mat.color.setScalar(1.9);   // glb 的 baseColorFactor 偏暗(制服 0.10 linear),提亮到看得出布料
+    // 陸戰單兵約 2 單位高(§0-4);模型 −Z 朝前,程序化小兵 +Z 朝前 → 轉 180°
+    return { geo, mat, scale: 2.25 / Math.max(1e-3, met.height), yaw: Math.PI };
+  });
+  _cache.set(id, p);
+  return p;
+}
+
+export async function upgradeUnit(group, spec, assets, { shadows = false } = {}) {
+  const proc = group.userData.proc;
+  if (spec.kind === 'armor' || spec.kind === 'gun' || spec.kind === 'mg') {
+    const key = spec.kind === 'armor' ? (spec.variant === 'panzer' ? 'panzer' : 'sherman') : spec.kind;
+    const a = await vehicleAsset(key, assets);
+    if (!a) return false;
+    const mat = a.base.clone();            // 每個單位一份材質:被擊毀時只有自己淡出
+    const mesh = new THREE.Mesh(a.geo, mat);
+    mesh.scale.setScalar(a.scale);
+    mesh.rotation.y = a.yaw;
+    if (shadows) { mesh.castShadow = true; mesh.receiveShadow = true; }
+    group.add(mesh);
+    if (proc) proc.visible = false;
+    group.userData.assetModel = mesh;
+    // MG 巢的射手是程序化小兵,沙包換成 glb 之後把他留在原位
+    if (spec.kind === 'mg' && proc) {
+      for (const t of group.userData.troopers ?? []) {
+        if (t.parent === proc) { proc.remove(t); group.add(t); t.visible = true; }
+      }
+      proc.visible = false;
+    }
+    return true;
+  }
+
+  // 步兵班:每個小兵換成對應姿態的 glb(找不到就整班保留程序化)
+  const troopers = group.userData.troopers ?? [];
+  if (!troopers.length) return false;
+  const wanted = new Set(troopers.map((t) => t.userData.pose ?? 'stand'));
+  const packs = new Map();
+  for (const pose of wanted) packs.set(pose, await soldierAsset(spec.side, pose, assets));
+  if (![...packs.values()].some(Boolean)) return false;
+  const unitMat = new Map();     // 每個單位一份材質(整單位一起淡出,不影響別的單位)
+  for (const [pose, pack] of packs) if (pack) unitMat.set(pose, pack.mat.clone());
+  for (const t of troopers) {
+    const pack = packs.get(t.userData.pose ?? 'stand');
+    if (!pack) continue;
+    for (const c of [...t.children]) c.visible = false;
+    const mesh = new THREE.Mesh(pack.geo, unitMat.get(t.userData.pose ?? 'stand'));
+    mesh.scale.setScalar(pack.scale);
+    mesh.rotation.y = pack.yaw ?? 0;
+    if (shadows) mesh.castShadow = true;
+    t.add(mesh);
+  }
+  return true;
 }
