@@ -45,6 +45,11 @@ const VignetteGrainShader = {
 export function createComposer(renderer, scene, camera) {
   const size = renderer.getSize(new THREE.Vector2());
   const composer = new EffectComposer(renderer);
+  // MSAA:開了 composer 之後 renderer 的 antialias 就沒作用了(畫的是 render target)。
+  // 針葉樹的葉片是一根針一個三角形,遠一點就是次像素寬度 —— 沒有 MSAA ＋ alphaToCoverage
+  // 的話,alphaTest 會把整片樹冠判掉,森林在 50 公尺外就變成一排電線桿。
+  composer.renderTarget1.samples = 4;
+  composer.renderTarget2.samples = 4;
   composer.addPass(new RenderPass(scene, camera));
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.25, 0.6, 0.85); // strength/radius/threshold
   composer.addPass(bloom);
@@ -53,7 +58,10 @@ export function createComposer(renderer, scene, camera) {
   composer.addPass(vg);
   return {
     composer,
-    setSize: (w, h) => { composer.setSize(w, h); bloom.setSize(w, h); },
+    setSize: (w, h) => {
+      composer.setSize(w, h); bloom.setSize(w, h);
+      composer.renderTarget1.samples = 4; composer.renderTarget2.samples = 4;
+    },
     setPixelRatio: (r) => composer.setPixelRatio(r),
     render: (dt) => { vg.uniforms.uTime.value += dt; composer.render(); },
   };

@@ -15,12 +15,12 @@
 // 所有替換都是「加上新的、把舊的 visible=false」,載入失敗時場景仍是完整的程序化版本。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { collectByGroup, geoMetrics, normalizeAttributes } from './assets.js';
+import { collectByGroup, geoMetrics } from './assets.js';
 
-// 針葉樹目標高度(單位;與 terrain.js 的程序化三層圓錐同尺度 10.8),再乘每棵的 scale。
-// 稍微矮一點:讓 glb 的真樹幹露在圓錐樹冠下方,枝葉只在樹冠邊緣露出一圈輪廓。
-const TREE_H = 10.4;
-const GLB_NEAR = 240;        // 只有核心區的樹換 glb(見 upgradeForest 註)
+// 針葉樹目標高度(單位):對齊 terrain.js 程序化三層圓錐的 10.8,樹的分佈與尺度感才不會跳。
+// 再乘每棵原有的 scale(0.85–1.55) → 實際 9–17 單位。
+const TREE_H = 10.8;
+const GLB_NEAR = 190;        // 核心區半徑:這圈以內才換 glb(見 upgradeForest 註)
 const ENV_I = 0.85;          // glb 材質的 envMapIntensity(§3:各場次自訂)
 const ROUGH_MIN = 0.35;      // §3:粗糙度下限,避免塑膠感
 
@@ -38,7 +38,7 @@ export async function applyTerrainAssets(art, assets) {
 function upgradeGround(art, assets) {
   const { field, snowMat, detail, mobile, treeSpots, fieldW, fieldCZ } = art;
   const rep = mobile ? 56 : 120;                       // 1 tile ≈ 12／25 單位
-  const snow = assets.pbr('snow_02', { repeat: rep });
+  const snow = assets.pbr('snow_02', { repeat: rep, norSize: 'mobile' });
   if (!snow.map) return false;
 
   const macro = snowMat.map;                           // 程序化雪地(髒雪、露土、彈坑暈染)
@@ -131,49 +131,54 @@ function forestMaskTexture(treeSpots, fieldW, fieldCZ, S) {
 }
 
 // ── ② 森林(Poly Haven 針葉樹 → InstancedMesh) ───────────────
-// glb 裡三棵樹共用一份 twig／bark 幾何(座標分散在 x=0/6/12),所以要先依三角形重心切成變體。
+// 2026-09-12 第二輪:資產已重出成「單棵、原點在底部中心、位移歸零」,並多了桌機高規版
+//   fir_tree_01_hi / pine_tree_01_hi(512² 貼圖、約 4.6–4.8 萬面)。第一輪那套「依三角形重心
+//   把三棵切開」的分割器因此退場。
+//
+// 分層(桌機):
+//   hero = MLR 樹線那一排 ＋ 散兵坑線 90 單位內 → _hi 版,**完整取代**程序化圓錐(三個驗收鏡頭的主角森林)
+//   mid  = 核心區其餘的樹(≤ GLB_NEAR) → 同一份 _hi 幾何再抽稀一次(不必多載一個檔)
+//   far  = 核心區以外 → 維持程序化圓錐(那個距離只看得到輪廓,換成真樹只是白燒三角形)
+// 程序化圓錐不是整組關掉,而是把 InstancedMesh 的矩陣重建成「只剩 far 的那些」再縮 count,
+// 所以 fallback 仍然完整(手機、載入失敗時照樣是 520 棵)。
+const HERO_NEAR = 110;       // hero 圈半徑(MLR 樹線不論遠近一律 hero)
 async function upgradeForest(art, assets) {
   if (art.mobile) return false;                        // 手機保留程序化(§3 效能)
-  const [fir, pine, sap] = await Promise.all([
-    assets.model('fir_tree_01'), assets.model('pine_tree_01'), assets.model('pine_sapling_medium'),
+  const [fir, pine] = await Promise.all([
+    assets.model('fir_tree_01', { hi: true }),
+    assets.model('pine_tree_01', { hi: true }),
   ]);
-  if (!fir && !pine && !sap) return false;
+  if (!fir && !pine) return false;
 
-  // ⚠ 這三個 glb 各裝了三棵樹,而且葉片幾何是三棵合在同一個 primitive 裡(x = 0/6/12 或 -6/1/8),
-  //   所以要先依三角形重心切開;第一叢是活樹,另外兩叢是半枯的(枝葉稀、下半截光禿)。
-  // ⚠⚠ 更關鍵的是:資產管線把樹壓到「整個 glb 三棵共 16.9k 面、貼圖 128²」,葉片卡被抽掉九成。
-  //   單用 glb 的森林實測就是一地電線桿(截圖存證於本次施工報告)。所以這裡的作法是:
-  //   程序化三層積雪圓錐**留著**當樹冠量體,glb 只在核心區疊上去補真樹幹與樹冠邊緣的枝葉輪廓;
-  //   遠處的樹不換 glb(那個距離只看得到圓錐輪廓,換了只是白燒一百萬個三角形)。
-  //   要真正換掉圓錐,得等樹的面數與貼圖預算放寬(≥ 512² 貼圖、每棵 ≥ 3 萬面)。
-  const firV = fir ? splitTree(fir, [0, 6, 12]) : null;
-  const pineV = pine ? splitTree(pine, [-6, 1, 8]) : null;
-  const sapV = sap ? splitTree(sap, [0, 6, 12]) : null;
-  const SLOTS = {
-    fir: prep(firV?.[0] ?? pineV?.[0], 0.4),
-    pine: prep(pineV?.[0] ?? firV?.[0], 0.36),
-    sapling: prep(sapV?.[0] ?? firV?.[0], 0.42),
-  };
-  if (!SLOTS.fir) return false;
-  SLOTS.pine ||= SLOTS.fir;
-  SLOTS.sapling ||= SLOTS.fir;
+  // keep = 針葉保留比例。_hi 一棵 4.5 萬面,220 棵原封不動就是一千萬面。
+  // 有了螢幕空間保底寬度(見 withNeedleCenters)之後,抽稀的分寸不再由「遠處看不看得見」決定,
+  // 而是純粹的面數預算:hero 0.34 ≈ 1.5 萬面／棵,mid 0.12 ≈ 5.4 千面／棵,全場樹約 190 萬面。
+  const firHero = prepTree(fir ?? pine, 0.34);
+  const pineHero = prepTree(pine ?? fir, 0.34);
+  const firMid = prepTree(fir ?? pine, 0.12);
+  const pineMid = prepTree(pine ?? fir, 0.12);
+  if (!firHero || !firMid) return false;
 
-  const NAME = ['fir', 'pine', 'sapling'];
-  const bySlot = new Map();
+  // 樹種:沿用 terrain.js 原本的三變體索引(v),佈局座標與旋轉完全不動 → 樹下暗斑貼花仍對位
+  const heroOf = [firHero, pineHero ?? firHero, pineHero ?? firHero];
+  const midOf = [firMid, pineMid ?? firMid, pineMid ?? firMid];
+  const sizeOf = [1.0, 1.0, 0.68];                     // v2 原本是幼松 → 用同一份幾何縮小當林下層
+
+  const hero = [[], [], []];
+  const mid = [[], [], []];
+  const far = [[], [], []];
   for (const t of art.treeSpots) {
-    if (Math.hypot(t.x, t.z - 4) > GLB_NEAR) continue;      // 遠景維持程序化圓錐
-    const k = NAME[t.v] ?? 'fir';
-    if (!bySlot.has(k)) bySlot.set(k, []);
-    bySlot.get(k).push(t);
+    const d = Math.hypot(t.x, t.z - 4);
+    const bucket = (t.mlr || d < HERO_NEAR) ? hero : d <= GLB_NEAR ? mid : far;
+    bucket[t.v].push(t);
   }
 
   const dummy = new THREE.Object3D();
   const meshes = [];
-  for (const [key, spots] of bySlot) {
-    const variant = SLOTS[key];
-    if (!variant || !spots.length) continue;
-    const norm = TREE_H / Math.max(1e-3, variant.height);
-    for (const p of [{ geo: variant.twig, mat: variant.twigM }, { geo: variant.bark, mat: variant.barkM }]) {
+  const build = (variant, spots, sizeK) => {
+    if (!variant || !spots.length) return;
+    const norm = (TREE_H / Math.max(1e-3, variant.height)) * sizeK;
+    for (const p of [{ geo: variant.twig, mat: variant.twigM, twig: true }, { geo: variant.bark, mat: variant.barkM }]) {
       if (!p.geo || !p.geo.attributes.position.count) continue;
       const im = new THREE.InstancedMesh(p.geo, p.mat, spots.length);
       spots.forEach((t, i) => {
@@ -185,124 +190,119 @@ async function upgradeForest(art, assets) {
       });
       im.instanceMatrix.needsUpdate = true;
       im.frustumCulled = false;                 // 實例散佈全圖,單一包圍球沒有意義
-      // 針葉不投影:alphaTest 的陰影 pass 等於整片森林再畫一次,而程序化圓錐已經在投影了
-      if (art.shadows) { im.castShadow = p.mat !== variant.twigM; im.receiveShadow = true; }
+      // 針葉不投影:alphaTest 的陰影 pass 等於整片森林再畫一次,代價遠大於收穫
+      if (art.shadows) { im.castShadow = !p.twig; im.receiveShadow = true; }
       art.forest.add(im);
       meshes.push(im);
     }
+  };
+  for (let v = 0; v < 3; v++) {
+    build(heroOf[v], hero[v], sizeOf[v]);
+    build(midOf[v], mid[v], sizeOf[v]);
   }
   if (!meshes.length) return false;
-  for (const m of art.forestMeshes) m.visible = true;   // 疊加,不是取代(見上面的註)
+
+  // 程序化圓錐:只留下核心區以外的那些(重建矩陣＋縮 count,幾何與材質原封不動)
+  art.forestMeshes.forEach((im, v) => {
+    const spots = far[v] ?? [];
+    spots.forEach((t, i) => {
+      dummy.position.set(t.x, 0, t.z);
+      dummy.rotation.set(0, t.ry, 0);
+      dummy.scale.setScalar(t.s);
+      dummy.updateMatrix();
+      im.setMatrixAt(i, dummy.matrix);
+    });
+    im.count = spots.length;
+    im.instanceMatrix.needsUpdate = true;
+    im.visible = spots.length > 0;
+  });
+
   art.assetForest = meshes;
+  art.forestTiers = { hero: hero.flat().length, mid: mid.flat().length, far: far.flat().length };
   return true;
 }
 
-// 一個變體 → 可直接餵 InstancedMesh 的「葉＋幹」兩份幾何與材質
-// keep:葉片卡的保留比例(高面數的活樹要抽,不然 520 棵會爆到四百萬面)
-function prep(variant, keep) {
-  if (!variant || !variant.twig) return null;
-  const twig = decimate(variant.twig, keep);
-  paintSnow(twig);
+// 一棵 glb 樹 → 可直接餵 InstancedMesh 的「葉＋幹」兩份幾何與材質。
+// 葉(alphaTest)與幹(不透明)一定要分開:混在一起就得整棵吃 alphaTest,樹幹會被啃出破洞。
+function prepTree(gltf, keep) {
+  if (!gltf) return null;
+  const groups = collectByGroup(gltf.scene, (name) => (/twig|leaf|leaves/i.test(name) ? 'twig' : 'bark'));
+  const mats = {};
+  gltf.scene.traverse((o) => {
+    if (!o.isMesh) return;
+    const m = Array.isArray(o.material) ? o.material[0] : o.material;
+    const k = /twig|leaf|leaves/i.test(m?.name ?? '') ? 'twig' : 'bark';
+    if (!mats[k]) mats[k] = m;
+  });
+  const join = (list) => {
+    if (!list || !list.length) return null;
+    return list.length === 1 ? list[0] : mergeGeometries(list, false);
+  };
+  let twig = join(groups.get('twig'));
+  const bark = join(groups.get('bark'));
+  if (!twig && !bark) return null;
+  if (twig) { twig = withNeedleCenters(decimate(twig, keep), 1.5); paintSnow(twig); }
+  twig?.computeBoundingBox(); bark?.computeBoundingBox();
+  const top = (g) => (g ? g.boundingBox.max.y : 0);
   return {
-    twig, bark: variant.bark, height: variant.height,
-    twigM: snowyNeedleMaterial(variant.twigMat),
-    barkM: barkMaterial(variant.barkMat),
+    twig, bark, height: Math.max(top(twig), top(bark)),
+    twigM: twig ? snowyNeedleMaterial(mats.twig) : null,
+    barkM: bark ? barkMaterial(mats.bark ?? mats.twig) : null,
   };
 }
 
-// 把一份 glb 樹(三棵共用幾何)依重心 x 切成三個變體,並各自歸零到原點、貼地
-function splitTree(gltf, centers) {
-  const buckets = centers.map(() => ({ twig: [], bark: [], twigMat: null, barkMat: null }));
-  gltf.scene.updateWorldMatrix(true, true);
-  gltf.scene.traverse((o) => {
-    if (!o.isMesh) return;
-    const mats = Array.isArray(o.material) ? o.material : [o.material];
-    const isTwig = /twig|leaf|leaves/i.test(mats[0]?.name ?? '');
-    const geo = normalizeAttributes(o.geometry.clone());
-    geo.applyMatrix4(o.matrixWorld);
-    const parts = splitByCentroidX(geo, centers);
-    parts.forEach((p, i) => {
-      if (!p) return;
-      buckets[i][isTwig ? 'twig' : 'bark'].push(p);
-      const slot = isTwig ? 'twigMat' : 'barkMat';
-      if (!buckets[i][slot]) buckets[i][slot] = mats[0];
-    });
-    geo.dispose();
-  });
-  return buckets.map((b, i) => {
-    const shift = new THREE.Matrix4().makeTranslation(-centers[i], 0, 0);
-    const join = (list) => {
-      const ok = list.filter((x) => x && x.attributes.position.count);
-      if (!ok.length) return null;
-      const m = ok.length === 1 ? ok[0] : mergeGeometries(ok, false);
-      if (!m) return null;
-      m.applyMatrix4(shift);
-      return m;
-    };
-    const twig = join(b.twig);
-    const bark = join(b.bark);
-    if (!twig && !bark) return null;
-    // 貼地:以樹幹底為 y=0
-    const minY = Math.min(twig ? geoMetrics(twig).minY : 0, bark ? geoMetrics(bark).minY : 0);
-    const down = new THREE.Matrix4().makeTranslation(0, -minY, 0);
-    twig?.applyMatrix4(down); bark?.applyMatrix4(down);
-    const top = (g) => (g ? g.boundingBox.max.y : 0);
-    twig?.computeBoundingBox(); bark?.computeBoundingBox();
-    const height = Math.max(top(twig), top(bark));
-    return { twig, bark, height, twigMat: b.twigMat, barkMat: b.barkMat ?? b.twigMat };
-  });
-}
-
-// 依三角形重心的 x 分到最近的 center,並重建緊湊的頂點緩衝
-function splitByCentroidX(geo, centers) {
-  const pos = geo.attributes.position;
-  const idx = geo.index;
-  const count = idx ? idx.count : pos.count;
-  const attrNames = ['position', 'normal', 'uv', 'color'].filter((n) => geo.attributes[n]);
-  const out = centers.map(() => ({ remap: new Map(), verts: [], tris: [] }));
-  for (let i = 0; i < count; i += 3) {
-    const a = idx ? idx.getX(i) : i, b = idx ? idx.getX(i + 1) : i + 1, c = idx ? idx.getX(i + 2) : i + 2;
-    const cx = (pos.getX(a) + pos.getX(b) + pos.getX(c)) / 3;
-    let best = 0, bd = Infinity;
-    for (let k = 0; k < centers.length; k++) {
-      const d = Math.abs(cx - centers[k]);
-      if (d < bd) { bd = d; best = k; }
-    }
-    const bucket = out[best];
-    for (const v of [a, b, c]) {
-      let ni = bucket.remap.get(v);
-      if (ni === undefined) { ni = bucket.verts.length; bucket.remap.set(v, ni); bucket.verts.push(v); }
-      bucket.tris.push(ni);
-    }
-  }
-  return out.map((bucket) => {
-    if (!bucket.tris.length) return null;
-    const g = new THREE.BufferGeometry();
-    for (const name of attrNames) {
-      const src = geo.attributes[name];
-      const it = src.itemSize;
-      const arr = new Float32Array(bucket.verts.length * it);
-      bucket.verts.forEach((v, i) => { for (let k = 0; k < it; k++) arr[i * it + k] = src.getComponent(v, k); });
-      g.setAttribute(name, new THREE.BufferAttribute(arr, it));
-    }
-    g.setIndex(bucket.tris);
-    return g;
-  });
-}
-
-// 抽掉一部分葉片卡(以「成對三角形＝一張卡」為單位,避免切出半張卡)
+// 抽稀針葉。⚠ 實測過的事實:Poly Haven 這兩棵樹的葉片**一根針一個三角形**
+// (union-find 算過:fir_hi 44.7k 面 = 32.3k 個連通元件、中位數 1 面),
+// 不是「一張卡兩個三角形」。所以按三角形抽就等於按針葉抽,不會切出半張卡;
+// 第一輪那版假設成對三角形,反而讓分佈變得不均勻。
 function decimate(geo, keep) {
   if (!geo || keep >= 0.999) return geo;
   const idx = geo.index;
-  const quads = Math.floor(idx.count / 6);
+  const tris = Math.floor(idx.count / 3);
   const out = [];
-  for (let q = 0; q < quads; q++) {
-    if ((q * keep) % 1 >= keep) continue;
-    for (let k = 0; k < 6; k++) out.push(idx.getX(q * 6 + k));
+  let acc = 0;
+  for (let t = 0; t < tris; t++) {
+    acc += keep;
+    if (acc < 1) continue;          // 均勻取樣:累加到 1 就留一根
+    acc -= 1;
+    out.push(idx.getX(t * 3), idx.getX(t * 3 + 1), idx.getX(t * 3 + 2));
   }
-  for (let i = quads * 6; i < idx.count; i++) out.push(idx.getX(i));
   const g = geo.clone();
   g.setIndex(out);
+  return g;
+}
+
+// 針葉的螢幕空間保底寬度(本輪最關鍵的一件事)。
+// ⚠ 實測過程:Poly Haven 的葉片是「一根針一個三角形」—— union-find 算過,fir_hi 的 44.7k 面
+//   分成 32.3k 個連通元件、中位數 1 面。一根針在 15 單位外就只剩次像素寬,而次像素三角形
+//   常常連光柵化都整個被丟掉:把材質換成**純紅色不透明** MeshBasicMaterial 實測同樣看不見,
+//   所以跟 alphaTest、mipmap、貼圖解析度全都無關,是純粹的取樣問題。
+//   症狀就是「近看是漂亮的冷杉,退到 50 單位外整片森林變成一排電線桿」。
+// 解法:把每個三角形的重心烘成 aNeedleCenter 屬性,在 vertex shader 裡依到鏡頭的距離
+//   沿重心放大三角形,讓每根針在畫面上維持大致固定的寬度(近處不動,遠處補回透視縮小的量)。
+//   代價是零:一個三角形都沒有多,只是把已經有的三角形畫到夠大、能被取樣到。
+// 先轉成非索引:每個三角形要能獨立變形,不能被共用頂點綁住。
+function withNeedleCenters(geo, baseFatten) {
+  if (!geo) return geo;
+  const g = geo.toNonIndexed();
+  const pos = g.attributes.position;
+  const a = pos.array;
+  const centers = new Float32Array(a.length);
+  for (let i = 0; i < a.length; i += 9) {
+    const cx = (a[i] + a[i + 3] + a[i + 6]) / 3;
+    const cy = (a[i + 1] + a[i + 4] + a[i + 7]) / 3;
+    const cz = (a[i + 2] + a[i + 5] + a[i + 8]) / 3;
+    for (let v = 0; v < 3; v++) {
+      const o = i + v * 3;
+      a[o] = cx + (a[o] - cx) * baseFatten;
+      a[o + 1] = cy + (a[o + 1] - cy) * baseFatten;
+      a[o + 2] = cz + (a[o + 2] - cz) * baseFatten;
+      centers[o] = cx; centers[o + 1] = cy; centers[o + 2] = cz;
+    }
+  }
+  pos.needsUpdate = true;
+  g.setAttribute('aNeedleCenter', new THREE.BufferAttribute(centers, 3));
+  geo.dispose();
   return g;
 }
 
@@ -319,10 +319,10 @@ function paintSnow(geo) {
   for (let i = 0; i < n; i++) {
     const f = (pos.getY(i) - b.min.y) / h;
     const up = nor ? Math.max(0, nor.getY(i)) : 0.5;
-    // 積雪要壓得夠重:葉片圖被壓到 128² 之後,深色針葉在雪原背景上只會變成一團黑點(像蒼蠅),
-    // 壓成雪色才會跟程序化圓錐的積雪白裙連成一體,讀起來是「掛著雪的針葉」。
-    let s = 0.30 + 0.34 * smooth(0.15, 1.0, f) + 0.30 * up * up;
-    s = Math.min(0.88, s);
+    // 雪壓在朝上的枝面與樹冠上半。⚠ 分寸很重要:第一輪為了讓稀疏的葉片在雪原上看得見,把雪量
+    // 拉到 0.3–0.88,結果換成高規樹、樹冠有量體之後,整棵變成白的、在霧與雪原背景裡直接消失。
+    let s = 0.08 + 0.24 * smooth(0.2, 1.0, f) + 0.26 * up * up;
+    s = Math.min(0.52, s);
     col[i * 3] = s; col[i * 3 + 1] = s; col[i * 3 + 2] = s;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
@@ -338,12 +338,33 @@ function snowyNeedleMaterial(src) {
   m.vertexColors = true;
   m.side = THREE.DoubleSide;
   m.transparent = false;
-  m.alphaTest = 0.12;
+  m.alphaTest = 0.2;
+  m.alphaToCoverage = true;   // 配合 postfx 的 MSAA:次像素寬的針葉靠覆蓋率活下來,不是被 alphaTest 判死
   m.roughness = Math.max(ROUGH_MIN, m.roughness ?? 0.9);
   m.envMapIntensity = ENV_I;
   m.color.setScalar(1.7);            // 針葉貼圖偏黑,提亮成看得出來的深松綠
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uSnow = { value: SNOW_COL };
+    sh.uniforms.uNeedleRef = { value: 9.0 };   // 這個距離以內維持原本的針葉粗細
+    sh.uniforms.uNeedleMax = { value: 14.0 };    // 放大上限(再遠交給霧與遠景樹線剪影)
+    sh.vertexShader = `
+      attribute vec3 aNeedleCenter;
+      uniform float uNeedleRef;
+      uniform float uNeedleMax;
+    ` + sh.vertexShader.replace('#include <begin_vertex>', `
+      #include <begin_vertex>
+      {
+        #ifdef USE_INSTANCING
+          mat4 needleWorld = modelMatrix * instanceMatrix;
+        #else
+          mat4 needleWorld = modelMatrix;
+        #endif
+        vec3 nc = ( needleWorld * vec4( aNeedleCenter, 1.0 ) ).xyz;
+        float instScale = max( length( needleWorld[ 0 ].xyz ), 1e-4 );
+        float grow = clamp( distance( cameraPosition, nc ) / ( uNeedleRef * instScale ), 1.0, uNeedleMax );
+        transformed = aNeedleCenter + ( transformed - aNeedleCenter ) * grow;
+      }
+    `);
     sh.fragmentShader = 'uniform vec3 uSnow;\n' + sh.fragmentShader
       .replace('#include <color_fragment>', 'diffuseColor.rgb = mix( diffuseColor.rgb, uSnow, vColor.r );')
       .replace('#include <alphatest_fragment>', `
@@ -473,8 +494,9 @@ function instanceBuilding(gltf, specs, mats, art) {
 
 // ── ④ 樹爆斷木與陣地雜物 ────────────────────────────────────
 async function addDebris(art, assets) {
-  const [trunk, crate, barrel] = await Promise.all([
-    assets.model('dead_tree_trunk'), assets.model('ammo_crate'), assets.model('wooden_crate_01'),
+  // wooden_crate_01 曾經也放,但它 101 KB／4k 面只換來幾個木箱,首屏預算拿去給高規樹更划算
+  const [trunk, crate] = await Promise.all([
+    assets.model('dead_tree_trunk'), assets.model('ammo_crate'),
   ]);
   const dummy = new THREE.Object3D();
   const rng = mulberry(9021);
@@ -543,7 +565,7 @@ async function addDebris(art, assets) {
   }
 
   // 散兵坑線後方的補給堆:彈藥箱與木箱
-  for (const [gltf, count, scale] of [[crate, 14, 1.6], [barrel, 8, 1.6]]) {
+  for (const [gltf, count, scale] of [[crate, 18, 1.6]]) {
     if (!gltf) continue;
     const list = collectByGroup(gltf.scene, () => 'all').get('all');
     if (!list) continue;

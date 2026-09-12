@@ -96,8 +96,10 @@ export function createAssets({ mobile = false, renderer = null } = {}) {
   }
 
   // 單張貼圖(立即回傳 Texture,內容稍後填入 → 不阻塞首屏)
-  function texture(id, map, { repeat = 1, repeatY = null, srgb = null } = {}) {
-    const path = filePath(id, map);
+  // size:強制取某一階的檔案。法線圖 1k 一張 333 KB、512 只要 159 KB,而地表 repeat 已經到 120,
+  //   512 的法線在畫面上分不出來 —— 省下來的預算拿去換高規的樹。
+  function texture(id, map, { repeat = 1, repeatY = null, srgb = null, size = null } = {}) {
+    const path = size ? (entry(id)?.files?.[size]?.[map]?.path ?? filePath(id, map)) : filePath(id, map);
     if (!path) return null;
     const key = `${path}|${repeat}|${repeatY ?? repeat}`;
     if (texCache.has(key)) return texCache.get(key);
@@ -113,10 +115,10 @@ export function createAssets({ mobile = false, renderer = null } = {}) {
 
   // 一組 PBR 貼圖 → 直接可展開進 MeshStandardMaterial
   // arm = AO(r)／Roughness(g)／Metalness(b),與 three 的取樣通道正好對應。
-  function pbr(id, { repeat = 1, repeatY = null, maps = ['diff', 'nor', 'arm'] } = {}) {
+  function pbr(id, { repeat = 1, repeatY = null, maps = ['diff', 'nor', 'arm'], norSize = null } = {}) {
     const out = {};
     if (maps.includes('diff')) { const m = texture(id, 'diff', { repeat, repeatY }); if (m) out.map = m; }
-    if (maps.includes('nor')) { const n = texture(id, 'nor', { repeat, repeatY }); if (n) out.normalMap = n; }
+    if (maps.includes('nor')) { const n = texture(id, 'nor', { repeat, repeatY, size: norSize }); if (n) out.normalMap = n; }
     if (maps.includes('arm')) {
       const a = texture(id, 'arm', { repeat, repeatY });
       if (a) { out.roughnessMap = a; out.metalnessMap = a; out.aoMap = a; }
@@ -125,13 +127,17 @@ export function createAssets({ mobile = false, renderer = null } = {}) {
   }
 
   // 模型:回傳 Promise<GLTF|null>。找不到／載入失敗一律 null(呼叫端保留程序化)。
-  function model(id) {
-    if (modelCache.has(id)) return modelCache.get(id);
-    const path = filePath(id, 'glb') ?? LOCAL_MODELS[id] ?? null;
+  // hi:桌機高規版(manifest 的 files.desktop.glb_hi,512² 貼圖、面數放寬);手機或沒有高規版時
+  //    自動退回一般版,呼叫端不必分支。
+  function model(id, { hi = false } = {}) {
+    const key = hi && !mobile ? `${id}@hi` : id;
+    if (modelCache.has(key)) return modelCache.get(key);
+    const path = (hi && !mobile ? filePath(id, 'glb_hi') : null)
+      ?? filePath(id, 'glb') ?? LOCAL_MODELS[id] ?? null;
     if (!path) {
       missing.push(id);
       const p = Promise.resolve(null);
-      modelCache.set(id, p);
+      modelCache.set(key, p);
       return p;
     }
     const p = new Promise((resolve) => {
@@ -141,7 +147,7 @@ export function createAssets({ mobile = false, renderer = null } = {}) {
         resolve(null);
       });
     });
-    modelCache.set(id, p);
+    modelCache.set(key, p);
     return p;
   }
 
