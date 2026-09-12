@@ -6,8 +6,17 @@
 //   * 螺旋槳半透明圓盤
 //   * 編隊內微動作(M-3):每架相位不同的上下起伏 ±1.5 單位、±0.05 rad 滾轉
 //   * 凝結尾:高空編隊每架後方拉一條由白沫團串成的 ribbon(自寫 billboard shader,整隊 1 個 draw call)
+//
+// 資產管線(docs/asset-pipeline-spec.md §3):
+//   A-3 機隊的 InstancedMesh 改吃 Blender glb 幾何 — 把 glb 的各 primitive 合併成單一
+//       幾何,並把每個 primitive 的 baseColor 烘進頂點色(單一材質也保留日之丸／
+//       美軍星徽與座艙塗裝),再依 0.46 單位/公尺縮到場景尺度(1 單位 ≈ 2.35 m,
+//       機體略放大以維持既有可辨識度)。螺旋槳仍用半透明圓盤(旋轉葉片在 60fps 會頻閃),
+//       但半徑與位置改由 glb 的 prop 子物件決定。王牌座機用完整 glb。
+//       資產沒到或載入失敗時,畫面維持既有的程序化機體。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { bakeToSingleGeometry, cloneModel } from './assets.js';
 
 const PLANE_COLOR = { red: 0xb9c0a8, blue: 0x6e8aa8 };
 const ACCENT = { red: 0xd9442e, blue: 0x2e7bd9 };
@@ -46,8 +55,85 @@ function planeGeometry(side) {
 
 const planeMatCache = {};
 function planeMaterial(side) {
-  if (!planeMatCache[side]) planeMatCache[side] = new THREE.MeshLambertMaterial({ vertexColors: true });
+  if (!planeMatCache[side]) {
+    planeMatCache[side] = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.52, metalness: 0.25 });
+  }
   return planeMatCache[side];
+}
+
+// ── glb 機體(A-3) ───────────────────────────────────
+const AIR_UNITS_PER_METER = 0.46; // 1 單位 ≈ 2.35 m;機體略放大,與舊版程序化機同尺寸
+const GROUP_MODEL = {
+  tomonaga1: 'b5n',          // 友永隊第一波(九七艦攻為主)
+  pby: 'f4f',                // PBY 無專屬模型,以單機代表
+  'midway-strike': 'sbd',
+  b17: 'sbd',                // B-17 無專屬模型
+  tone4: 'd3a',              // 利根四號機(水偵)
+  vt8: 'tbd',
+  vt6: 'tbd',
+  mcclusky: 'sbd',
+  'yorktown-strike': 'sbd',
+  kobayashi: 'd3a',
+  tomonaga2: 'b5n',
+  'final-strike': 'sbd',
+};
+const SIDE_DEFAULT_MODEL = { red: 'a6m', blue: 'f4f' };
+
+export function planeModelId(spec) {
+  return GROUP_MODEL[spec.id] ?? SIDE_DEFAULT_MODEL[spec.side] ?? 'f4f';
+}
+
+function isUnder(o, ancestor) {
+  for (let p = o; p; p = p.parent) if (p === ancestor) return true;
+  return false;
+}
+
+const bakedCache = new Map(); // modelId -> Promise<{ geo, propR, propZ } | null>
+function bakedPlane(assets, id) {
+  if (bakedCache.has(id)) return bakedCache.get(id);
+  const p = assets.model(id).then((src) => {
+    if (!src) return null;
+    const root = cloneModel(src, { cloneMaterials: false });
+    root.updateWorldMatrix(true, true);
+    const propNode = root.getObjectByName('prop');
+    const geo = bakeToSingleGeometry(root, { skip: (o) => !!propNode && isUnder(o, propNode) });
+    if (!geo) return null;
+    const K = AIR_UNITS_PER_METER;
+    geo.scale(K, K, K);
+    geo.computeBoundingSphere();
+    let propR = 1.4 * K;
+    let propZ = -4.6 * K;
+    if (propNode) {
+      const b = new THREE.Box3().setFromObject(propNode);
+      propR = Math.max(b.max.x - b.min.x, b.max.y - b.min.y) * 0.5 * K;
+      propZ = ((b.max.z + b.min.z) * 0.5 - 0.12) * K;
+    }
+    return { geo, propR, propZ };
+  });
+  bakedCache.set(id, p);
+  return p;
+}
+
+const propDiscCache = new Map();
+function propDisc(r, z) {
+  const key = r.toFixed(3) + '|' + z.toFixed(3);
+  if (propDiscCache.has(key)) return propDiscCache.get(key);
+  const g = new THREE.CircleGeometry(r, 16);
+  g.translate(0, 0, z);
+  propDiscCache.set(key, g);
+  return g;
+}
+
+// 機隊換裝:InstancedMesh 的幾何直接抽換(材質與 instanceMatrix 都沿用)
+function swapAirGeometry(group, assets, spec) {
+  bakedPlane(assets, planeModelId(spec)).then((res) => {
+    if (!res) return;
+    const { body, prop } = group.userData;
+    body.geometry = res.geo;
+    body.computeBoundingSphere?.();
+    prop.geometry = propDisc(res.propR, res.propZ);
+    group.userData.swapped = true;
+  });
 }
 
 // 螺旋槳半透明圓盤(共用幾何/材質)
@@ -200,6 +286,8 @@ export function createAirGroup(spec, opts = {}) {
   g.userData.slots = slots;
   g.visible = false;
 
+  if (opts.assets) swapAirGeometry(g, opts.assets, spec);
+
   if (n >= CONTRAIL_MIN_COUNT && opts.scene) {
     const trail = new Contrail(n, mobile ? 7 : 16);
     opts.scene.add(trail.mesh);
@@ -270,23 +358,56 @@ function getGoldGlow() {
   return goldGlowTex;
 }
 
-export function createAcePlane(side) {
+// 王牌座機用完整 glb(不合併、保留各自材質),金色光暈與尾翼標記沿用
+const ACE_MODEL = { 'blue|dive': 'sbd', 'blue|torpedo': 'tbd', 'red|dive': 'd3a', 'red|torpedo': 'b5n' };
+
+function swapAcePlane(g, assets, modelId, shadows) {
+  assets.model(modelId).then((src) => {
+    if (!src || !g.userData.proc) return;
+    const model = cloneModel(src);
+    const K = AIR_UNITS_PER_METER * 1.5; // 王牌座機放大,易於在混戰中辨識
+    model.scale.setScalar(K);
+    model.traverse((o) => {
+      if (!o.isMesh) return;
+      o.castShadow = !!shadows;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) {
+        if (!m) continue;
+        if (m.roughness !== undefined) m.roughness = Math.max(0.35, m.roughness);
+        // 尾翼金色識別:機身上半材質加一點暖色 emissive,遠看仍是「那架金尾巴的」
+        if (/^skin_up$/.test(m.name || '')) {
+          m.emissive = new THREE.Color(0x6a4a10);
+          m.emissiveIntensity = 0.5;
+        }
+        m.needsUpdate = true;
+      }
+    });
+    g.remove(g.userData.proc);
+    g.userData.proc = null;
+    g.add(model);
+    g.userData.model = model;
+  });
+}
+
+export function createAcePlane(side, opts = {}) {
   const g = new THREE.Group();
   g.rotation.order = 'YXZ'; // 先航向後俯仰
+  const proc = new THREE.Group();
+  g.userData.proc = proc;
   const body = new THREE.Mesh(
     new THREE.ConeGeometry(1.5, 10, 6),
     new THREE.MeshLambertMaterial({ color: PLANE_COLOR[side] })
   );
   body.rotation.x = -Math.PI / 2;
   body.castShadow = true;
-  g.add(body);
+  proc.add(body);
   const wing = new THREE.Mesh(
     new THREE.BoxGeometry(13, 0.5, 2.6),
     new THREE.MeshLambertMaterial({ color: PLANE_COLOR[side] })
   );
   wing.position.z = 0.6;
   wing.castShadow = true;
-  g.add(wing);
+  proc.add(wing);
   const tail = new THREE.Mesh(
     new THREE.BoxGeometry(4.6, 0.5, 1.4),
     new THREE.MeshLambertMaterial({ color: 0xe9c659 })
@@ -294,9 +415,10 @@ export function createAcePlane(side) {
   tail.position.z = 4.2;
   g.add(tail);
   const [pg, pm] = propParts();
-  const propDisc = new THREE.Mesh(pg, pm);
-  propDisc.scale.setScalar(1.6);
-  g.add(propDisc);
+  const disc = new THREE.Mesh(pg, pm);
+  disc.scale.setScalar(1.6);
+  proc.add(disc);
+  g.add(proc);
   const glow = new THREE.Sprite(
     new THREE.SpriteMaterial({
       map: getGoldGlow(),
@@ -309,5 +431,9 @@ export function createAcePlane(side) {
   glow.scale.setScalar(20);
   g.add(glow);
   g.visible = false;
+  if (opts.assets) {
+    const id = ACE_MODEL[`${side}|${opts.kind ?? 'dive'}`] ?? (side === 'red' ? 'a6m' : 'f4f');
+    swapAcePlane(g, opts.assets, id, opts.shadows);
+  }
   return g;
 }

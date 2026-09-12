@@ -8,6 +8,12 @@
 //   N-5 太陽方位／仰角隨相位移動,glitter 沿太陽方向拉出光路
 //   N-6 廢除巨大白圓斑:3 種柔邊團塊貼圖變體、120 朵雲分兩層 ＋ 80 朵地平線低雲帶,
 //       全部合併成「一個 InstancedBufferGeometry ＋ 自寫 billboard shader」= 1 個 draw call
+//
+// 資產管線(docs/asset-pipeline-spec.md §3):
+//   A-1 HDRI 環境光 — 桌機 PMREM(1k .hdr)、手機 tonemapped JPG,依日相在
+//       黎明／白晝／黃昏／夜 4 張之間切換,切換時以 environmentIntensity crossfade。
+//       天幕仍是既有的程序化 sky dome ＋ 雲(HDRI 只當光源與反射,不當背景)。
+//       只在「進入該日相時」才下載對應 HDRI,首屏不扛 4 張 1.4 MB。
 import * as THREE from 'three';
 import { WAVE_GLSL, oceanTime, oceanCell } from './ocean-waves.js';
 
@@ -59,8 +65,18 @@ const SKY_R = 16000;
 const FOG_NEAR = 4500;
 const FOG_FAR = 14000;
 
+// A-1:各日相的 HDRI 強度(moonless_golf 本身極暗,夜間略拉高才看得出金屬反射)
+const ENV_INTENSITY = { dawn: 0.85, day: 1.0, dusk: 0.8, night: 0.55 };
+const ENV_FADE = 2.2; // 每秒的 intensity 變化量(切換時先淡出再淡入)
+
+// 日相主導者:混合比 < 0.5 算前一相,否則算後一相
+function dominantPhase(a, b, f) {
+  return f < 0.5 ? a : b;
+}
+
 export function createEnvironment(scene, opts = {}) {
   const mobile = !!opts.mobile;
+  const assets = opts.assets ?? null;
 
   // ── 天空圓頂(P-6:地平線霧帶) ─────────────────────────
   const skyUniforms = {
@@ -256,11 +272,49 @@ export function createEnvironment(scene, opts = {}) {
     sunTarget.updateMatrixWorld();
   }
 
+  // ── A-1:HDRI 環境光(非阻塞;沒到就維持現況,到了再 crossfade) ──
+  const envTex = new Map();   // phase -> Texture
+  let envPhase = null;        // 目前掛在 scene.environment 上的日相
+  let envWant = null;         // 想切到的日相
+  let envLevel = 0;           // 目前 environmentIntensity(0 = 尚未有任何 HDRI)
+  scene.environmentIntensity = 0;
+
+  function requestEnv(phase) {
+    if (!assets || envTex.has(phase)) return;
+    envTex.set(phase, null); // 佔位,避免重複請求
+    assets.env(phase).then((t) => {
+      if (t) envTex.set(phase, t);
+    });
+  }
+
+  function updateEnv(dt, phase) {
+    if (!assets) return;
+    envWant = phase;
+    requestEnv(phase);
+    const ready = envTex.get(phase);
+    const target = ENV_INTENSITY[phase] ?? 1;
+    if (envPhase === phase) {
+      // 同一相:直接逼近目標強度
+      envLevel += THREE.MathUtils.clamp(target - envLevel, -ENV_FADE * dt, ENV_FADE * dt);
+    } else if (ready) {
+      // 換相:先把現有的淡到 0,再換貼圖淡回去
+      if (envPhase && envLevel > 0.02) {
+        envLevel = Math.max(0, envLevel - ENV_FADE * dt);
+      } else {
+        scene.environment = ready;
+        envPhase = phase;
+        envLevel = Math.max(envLevel, 0.001);
+      }
+    }
+    scene.environmentIntensity = envLevel;
+  }
+
   const _sunPos = new THREE.Vector3();
   function update(dt, battleT) {
     oceanTime.value += dt;
 
     const [a, b, f] = phaseAt(battleT);
+    updateEnv(dt, dominantPhase(a, b, f));
     const pa = PALETTES[a];
     const pb = PALETTES[b];
     const mixNum = (k) => pa[k] + (pb[k] - pa[k]) * f;
@@ -288,7 +342,8 @@ export function createEnvironment(scene, opts = {}) {
     skyUniforms.uSunCol.value = sunCol;
     sun.color = sunCol;
     sun.intensity = Math.max(0.05, mixNum('sunInt'));
-    hemi.intensity = mixNum('amb');
+    // HDRI 進來之後半球光要退讓,否則環境光疊兩份會整體過曝、失去方向感
+    hemi.intensity = mixNum('amb') * (1 - 0.45 * Math.min(1, envLevel));
     hemi.color = lerpColor(pa.horizon, pb.horizon, f);
     hemi.groundColor = lerpColor(pa.water, pb.water, f);
     scene.fog.color = lerpColor(pa.fog, pb.fog, f);
@@ -311,7 +366,14 @@ export function createEnvironment(scene, opts = {}) {
     clouds.update(dt, lerpColor(pa.cloudLit, pb.cloudLit, f), lerpColor(pa.cloudDark, pb.cloudDark, f));
   }
 
-  return { update, setShadowFocus, sunDir, sunLight: sun };
+  return {
+    update,
+    setShadowFocus,
+    sunDir,
+    sunLight: sun,
+    // 驗收用:目前掛上的 HDRI 日相與強度
+    envInfo: () => ({ phase: envPhase, want: envWant, level: envLevel }),
+  };
 }
 
 // ── 太陽貼圖:核心實心 + 柔邊 ─────────────────────────

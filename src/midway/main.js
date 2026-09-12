@@ -1,4 +1,9 @@
 // 中途島戰役 3D 模擬 — 主程式
+// 資產管線升級(docs/asset-pipeline-spec.md §0、§3):
+//   A-0 scene/assets.js 統一載入 manifest／glTF／貼圖／HDRI,首屏不被資產阻塞
+//       (先建程序化 fallback,資產到了再就地換裝;HUD 與時間軸完全不等資產)
+//   A-1 HDRI 環境光(environment.js) A-2 艦艇 glb(ships.js)
+//   A-3 機隊 glb 幾何(aircraft.js)  A-4 沙島／礁盤 PBR(terrain.js)
 // 美術升級(docs/art-upgrade-spec.md):
 //   P-1 ACES 色調映射、P-2 桌機陰影、P-3 後製(bloom ＋ 暗角顆粒)、P-4 動態解析度
 //   M-1 Catmull-Rom 航跡、M-2 船艦朝向重阻尼＋轉向側傾、M-3 隨浪縱橫搖、M-4 鏡頭手持／震動／跟拍
@@ -31,6 +36,7 @@ import { WakeField } from './scene/wake.js';
 import { makeLabel } from './scene/labels.js';
 import { Director } from './camera/director.js';
 import { createComposer } from './scene/postfx.js';
+import { createAssets } from './scene/assets.js';
 import { createHUD } from './ui/hud.js';
 
 // ── 基本場景 ─────────────────────────────────────────
@@ -45,7 +51,8 @@ renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 if (SHADOWS) {
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // three 0.184 已棄用 PCFSoftShadowMap(會退回 PCFShadowMap 並洗 console 警告)
+  renderer.shadowMap.type = THREE.PCFShadowMap;
 }
 container.appendChild(renderer.domElement);
 
@@ -60,8 +67,12 @@ controls.minDistance = 60;
 controls.maxDistance = 9000;
 controls.enableDamping = true;
 
-const environment = createEnvironment(scene, { shadows: SHADOWS, mobile: isMobile });
-createMidwayAtoll(scene, { shadows: SHADOWS, mobile: isMobile });
+// A-0:資產載入器(非阻塞;任何一項失敗都就地退回程序化版本)
+const assets = createAssets({ renderer, mobile: isMobile });
+const assetOpts = { assets, shadows: SHADOWS, mobile: isMobile };
+
+const environment = createEnvironment(scene, { shadows: SHADOWS, mobile: isMobile, assets });
+createMidwayAtoll(scene, { shadows: SHADOWS, mobile: isMobile, assets });
 const effects = new Effects(scene, { mobile: isMobile });
 const director = new Director(camera, controls);
 const wake = new WakeField(scene, { mobile: isMobile, ships: units.length });
@@ -96,7 +107,7 @@ const shipObjs = new Map(); // id -> { group, label, spec, sunkT }
 let shipIdx = 0;
 for (const u of units) {
   if (u.kind === 'base') continue;
-  const group = createShip(u);
+  const group = createShip(u, assetOpts);
   group.rotation.order = 'YXZ'; // 先航向、再縱搖、後橫搖(側傾)
   scene.add(group);
   const isCarrier = u.kind === 'carrier';
@@ -112,6 +123,16 @@ for (const u of units) {
   const sunk = (u.statusChanges ?? []).find((c) => c.status === 'sunk');
   const st0 = unitStateAt(u, TIME_START);
   wake.register(u.id);
+  // A-2:glb 換裝後船寬／材質都換了一批 — 尾流寬度與沉沒材質快取要跟著更新
+  group.userData.onSwap = (g) => {
+    const o = shipObjs.get(u.id);
+    if (!o) return;
+    o.beam = g.userData.beam ?? o.beam;
+    o.len = g.userData.len ?? o.len;
+    o.sinkMats = null;
+    o.sinkLook = false;
+    o.matsVersion = g.userData.swapVersion;
+  };
   shipObjs.set(u.id, {
     group, spec: u, sunkT: sunk ? sunk.t : null,
     curRot: -st0.heading, angVel: 0,
@@ -139,7 +160,7 @@ for (const f of formationLabels) {
 // ── 機隊 ─────────────────────────────────────────────
 const airObjs = [];
 for (const ag of airGroups) {
-  const group = createAirGroup(ag, { mobile: isMobile, scene });
+  const group = createAirGroup(ag, { mobile: isMobile, scene, assets });
   scene.add(group);
   const label = makeLabel(ag.label, { side: ag.side });
   label.position.y = 26;
@@ -150,7 +171,7 @@ for (const ag of airGroups) {
 
 // ── 王牌飛行員座機(個人行動) ─────────────────────────
 const aceObjs = aces.map((ace) => {
-  const group = createAcePlane(ace.side);
+  const group = createAcePlane(ace.side, { assets, kind: ace.kind, shadows: SHADOWS });
   group.userData.figureId = ace.id;
   scene.add(group);
   const label = makeLabel('★ ' + ace.name, { side: ace.side });
@@ -356,8 +377,10 @@ let panelAcc = 0;
 // (各艦材質為獨立實例,改寫不影響其他艦;scrub 回戰役中段時還原)
 const SINK_PALE = new THREE.Color(0x9fb0c0); // 海沫灰白
 function prepSinkMats(o) {
-  if (o.sinkMats) return;
+  // A-2:glb 換裝會整批換掉材質,快取要跟著 swapVersion 失效
+  if (o.sinkMats && o.matsVersion === o.group.userData.swapVersion) return;
   o.sinkMats = [];
+  o.matsVersion = o.group.userData.swapVersion;
   o.group.traverse((m) => {
     if ((m.isMesh || m.isLine) && m.material) {
       const mats = Array.isArray(m.material) ? m.material : [m.material];
@@ -650,5 +673,9 @@ if (import.meta.env && import.meta.env.DEV) {
     setPlaying: (v) => { playing = v; started = true; hud.setPlaying(v); },
     // 分頁在背景時 rAF 會暫停,用固定步長手動推進 n 影格(美術驗收用)
     step: (n = 60, dt = 1 / 60) => { for (let i = 0; i < n; i++) frame(dt); return frameCount; },
+    // 資產驗收:HDRI 日相與艦艇換裝結果
+    env: () => environment.envInfo(),
+    assets,
+    swapped: () => [...shipObjs.entries()].map(([id, o]) => [id, o.group.userData.modelScale ?? null]),
   };
 }

@@ -9,7 +9,13 @@
 //   * castShadow / receiveShadow:艦島影子落在飛行甲板上是最重要的質感來源
 //   * 飛行甲板由 6 材質 BoxGeometry 改為單一材質(每艘航艦省 5 個 draw call)
 //   * 舊的三角形貼圖尾流 plane 已移除,改用 scene/wake.js 的動態尾流(N-2)
+//
+// 資產管線(docs/asset-pipeline-spec.md §3):
+//   A-2 createShip() 先回傳程序化艦(首屏不等資產),Blender glb 到了再就地換裝:
+//       程序化子樹退場、glb 依 u.length 沿 -Z 對齊縮放,識別環／軍旗／標籤／尾流掛點
+//       與沉沒動畫全部沿用。glb 載入失敗時什麼都不做,畫面就是原本的程序化艦。
 import * as THREE from 'three';
+import { cloneModel, normalizeMaterials, fitLength } from './assets.js';
 
 const SIDE_COLOR = { red: 0xd9442e, blue: 0x2e7bd9 };
 const HULL_COLOR = { red: 0x5e6166, blue: 0x6b7280 };
@@ -166,8 +172,8 @@ function makeHull(length, width, height, side) {
   tex.repeat.set(0.22, -1 / total);
   tex.offset.set(0, 1 / total);
 
-  const capMat = new THREE.MeshLambertMaterial({ color: HULL_COLOR[side] });
-  const sideMat = new THREE.MeshLambertMaterial({ map: tex });
+  const capMat = new THREE.MeshStandardMaterial({ color: HULL_COLOR[side], roughness: 0.62, metalness: 0.35 });
+  const sideMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.58, metalness: 0.38 });
   const mesh = new THREE.Mesh(geo, [capMat, sideMat]); // group0 = 端蓋、group1 = 側牆
   mesh.castShadow = true;
   mesh.receiveShadow = true;
@@ -181,6 +187,7 @@ function makeRing(radius, color) {
   );
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 1.2;
+  ring.userData.isRing = true;
   return ring;
 }
 
@@ -198,7 +205,7 @@ function makeRigging(mastTop, forePt, aftPt, extra = []) {
 
 // ── 防空砲座(N-3):沿舷側的小方塊叢集,一艦一個 InstancedMesh ──
 const AA_GEO = new THREE.BoxGeometry(1.5, 1.1, 1.5);
-const AA_MAT = new THREE.MeshLambertMaterial({ color: 0x4c5157 });
+const AA_MAT = new THREE.MeshStandardMaterial({ color: 0x4c5157, roughness: 0.5, metalness: 0.55 });
 const _m4 = new THREE.Matrix4();
 function makeAA(count, halfBeam, halfLen, y, seed) {
   const im = new THREE.InstancedMesh(AA_GEO, AA_MAT, count * 2);
@@ -240,6 +247,21 @@ function makeDeckTexture(spec) {
     g.fillStyle = `rgba(0,0,0,${(0.03 + rnd() * 0.06).toFixed(3)})`;
     g.fillRect(rnd() * 128, rnd() * 512, 4 + rnd() * 22, 3 + rnd() * 14);
   }
+  // 升降機(兩具)與艦艉制動索:glb 甲板改用這張貼圖後,這些細節就是甲板的識別特徵
+  g.strokeStyle = 'rgba(236,232,214,0.55)';
+  g.lineWidth = 2.5;
+  g.strokeRect(38, 120, 52, 34);
+  g.strokeRect(38, 300, 52, 34);
+  g.fillStyle = 'rgba(0,0,0,0.30)';
+  g.fillRect(40, 122, 48, 30);
+  g.fillRect(40, 302, 48, 30);
+  g.strokeStyle = 'rgba(28,26,22,0.55)';
+  g.lineWidth = 2;
+  for (let i = 0; i < 6; i++) {
+    const y = 380 + i * 13;
+    g.beginPath(); g.moveTo(10, y); g.lineTo(118, y); g.stroke();
+  }
+
   // 中線與艦艏線(艦艏在 y=0)
   g.strokeStyle = 'rgba(255,255,255,0.8)';
   g.lineWidth = 3;
@@ -287,7 +309,7 @@ export function createCarrier(spec) {
   const deckY = L * 0.055 + 1;
   const deck = new THREE.Mesh(
     new THREE.BoxGeometry(W * 2.1, 1.6, L * 0.96),
-    new THREE.MeshLambertMaterial({ map: makeDeckTexture(spec) })
+    new THREE.MeshStandardMaterial({ map: makeDeckTexture(spec), roughness: 0.85, metalness: 0.05 })
   );
   deck.position.y = deckY;
   deck.castShadow = true;
@@ -298,7 +320,7 @@ export function createCarrier(spec) {
   const ix = (spec.islandSide === 'left' ? -1 : 1) * (W * 1.05 + 1.2);
   const island = new THREE.Mesh(
     new THREE.BoxGeometry(3.4, 6, L * 0.16),
-    new THREE.MeshLambertMaterial({ color: 0x787d84 })
+    new THREE.MeshStandardMaterial({ color: 0x787d84, roughness: 0.55, metalness: 0.45 })
   );
   island.position.set(ix, deckY + 3.8, -L * 0.08);
   island.castShadow = true;
@@ -306,7 +328,7 @@ export function createCarrier(spec) {
 
   const stack = new THREE.Mesh(
     new THREE.CylinderGeometry(1.1, 1.4, 4.5, 8),
-    new THREE.MeshLambertMaterial({ color: 0x3c3f44 })
+    new THREE.MeshStandardMaterial({ color: 0x3c3f44, roughness: 0.5, metalness: 0.5 })
   );
   stack.position.set(ix, deckY + 3, L * 0.02);
   stack.rotation.z = (spec.islandSide === 'left' ? 1 : -1) * 0.5;
@@ -316,7 +338,7 @@ export function createCarrier(spec) {
   // 桅杆與軍旗
   const mast = new THREE.Mesh(
     new THREE.CylinderGeometry(0.25, 0.25, 10, 5),
-    new THREE.MeshLambertMaterial({ color: 0x2b2e33 })
+    new THREE.MeshStandardMaterial({ color: 0x2b2e33, roughness: 0.45, metalness: 0.6 })
   );
   mast.position.set(ix, deckY + 10, -L * 0.08);
   mast.castShadow = true;
@@ -358,7 +380,7 @@ export function createEscort(spec) {
   // 上層結構
   const sup = new THREE.Mesh(
     new THREE.BoxGeometry(W * 0.9, hullH * 1.6, L * 0.3),
-    new THREE.MeshLambertMaterial({ color: 0x7a7f86 })
+    new THREE.MeshStandardMaterial({ color: 0x7a7f86, roughness: 0.55, metalness: 0.45 })
   );
   sup.position.set(0, hullH + hullH * 0.8, -L * 0.05);
   sup.castShadow = true;
@@ -366,7 +388,7 @@ export function createEscort(spec) {
 
   const bridge = new THREE.Mesh(
     new THREE.BoxGeometry(W * 0.55, hullH * 1.8, L * 0.08),
-    new THREE.MeshLambertMaterial({ color: 0x84898f })
+    new THREE.MeshStandardMaterial({ color: 0x84898f, roughness: 0.55, metalness: 0.45 })
   );
   bridge.position.set(0, hullH * 2.6 + 1, -L * 0.14);
   bridge.castShadow = true;
@@ -374,7 +396,7 @@ export function createEscort(spec) {
 
   const stack = new THREE.Mesh(
     new THREE.CylinderGeometry(W * 0.16, W * 0.2, hullH * 2, 8),
-    new THREE.MeshLambertMaterial({ color: 0x3c3f44 })
+    new THREE.MeshStandardMaterial({ color: 0x3c3f44, roughness: 0.5, metalness: 0.5 })
   );
   stack.position.set(0, hullH * 2.4, L * 0.06);
   stack.castShadow = true;
@@ -386,14 +408,14 @@ export function createEscort(spec) {
     for (let i = 0; i < n; i++) {
       const tur = new THREE.Mesh(
         new THREE.CylinderGeometry(W * 0.3, W * 0.34, 2, 8),
-        new THREE.MeshLambertMaterial({ color: 0x6a6f76 })
+        new THREE.MeshStandardMaterial({ color: 0x6a6f76, roughness: 0.5, metalness: 0.55 })
       );
       tur.position.set(0, hullH + 1.6, -L * (0.28 + i * 0.09));
       tur.castShadow = true;
       g.add(tur);
       const barrel = new THREE.Mesh(
         new THREE.CylinderGeometry(0.22, 0.22, W * 0.9, 5),
-        new THREE.MeshLambertMaterial({ color: 0x55595f })
+        new THREE.MeshStandardMaterial({ color: 0x55595f, roughness: 0.5, metalness: 0.6 })
       );
       barrel.rotation.x = -Math.PI / 2.25;
       barrel.position.set(0, hullH + 2, -L * (0.32 + i * 0.09));
@@ -404,7 +426,7 @@ export function createEscort(spec) {
 
   const mast = new THREE.Mesh(
     new THREE.CylinderGeometry(0.18, 0.18, 7, 5),
-    new THREE.MeshLambertMaterial({ color: 0x2b2e33 })
+    new THREE.MeshStandardMaterial({ color: 0x2b2e33, roughness: 0.45, metalness: 0.6 })
   );
   mast.position.set(0, hullH * 2.6 + 4, -L * 0.14);
   mast.castShadow = true;
@@ -431,9 +453,115 @@ export function createEscort(spec) {
   return g;
 }
 
-export function createShip(spec) {
-  if (spec.kind === 'carrier') return createCarrier(spec);
-  return createEscort(spec);
+// ── Blender glb 換裝(§3 模型替換) ────────────────────
+// 模型為公尺制;場景 1 單位 ≈ 2.35 m,縮放一律由 fitLength(model, spec.length) 決定,
+// 不在 glb 內硬編場景尺度(§0 鐵則 4)。
+export function modelIdFor(spec) {
+  const s = spec.side === 'red' ? 'ijn' : 'usn';
+  if (spec.kind === 'carrier') {
+    if (spec.side === 'red') return spec.islandSide === 'left' ? 'carrier_ijn_L' : 'carrier_ijn_R';
+    return 'carrier_usn';
+  }
+  if (spec.kind === 'destroyer') return `destroyer_${s}`;
+  // battleship(榛名／霧島)沒有專屬模型,沿用重巡艦體並以 length 拉長
+  return `cruiser_${s}`;
+}
+
+// 艦體細節貼圖:glb 的 UV 是每面 0…1,平鋪倍率拉高即成鋼板紋理。
+// metal_plate 的 diff 太暗(sRGB 平均 0.24/0.20/0.11),當 map 會把灰色艦體染成褐色,
+// 故只取 nor + arm(法線與粗糙／金屬度),顏色仍由 glb 材質的 baseColor 決定。
+// metal_plate ARM 的通道平均:AO 0.872 / roughness 0.589 / metalness 0.386。
+// three 的 roughnessMap 是「乘」在 material.roughness 上,直接掛會讓艦體平均粗糙度
+// 掉到 0.6 倍(整艘船變成反射天空的鏡子),故掛圖時把基底粗糙度除以該平均補回來;
+// metalness 維持 glb 設定(不掛 metalnessMap,免得鋼板紋理把金屬度打散)。
+const ARM_ROUGH_MEAN = 0.589;
+function applyHullDetail(root, assets) {
+  assets.textureSet('metal_plate', { maps: ['nor', 'arm'], repeat: [6, 6] }).then((set) => {
+    if (!set.normalMap && !set.roughnessMap) return;
+    root.traverse((o) => {
+      if (!o.isMesh) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) {
+        if (!m || m.userData?.noDetail) continue;
+        if (set.normalMap) {
+          m.normalMap = set.normalMap;
+          m.normalScale = new THREE.Vector2(0.5, 0.5);
+        }
+        if (set.roughnessMap) {
+          m.roughnessMap = set.roughnessMap;
+          m.roughness = Math.min(1, m.roughness / ARM_ROUGH_MEAN);
+        }
+        m.needsUpdate = true;
+      }
+    });
+  });
+}
+
+// 飛行甲板:換上本場自己的甲板貼圖(日之丸／片假名識別字／舷號、升降機、制動索)
+function applyDeckPaint(root, spec) {
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of mats) {
+      if (!m || !/_fd_mat$/.test(m.name || '')) continue;
+      m.map = makeDeckTexture(spec);
+      m.color.setRGB(1, 1, 1);
+      m.roughness = 0.88;
+      m.metalness = 0.02;
+      m.userData.noDetail = true; // 甲板不套鋼板法線
+      m.needsUpdate = true;
+    }
+  });
+}
+
+function swapInModel(g, spec, opts) {
+  const assets = opts.assets;
+  return assets.model(modelIdFor(spec)).then((src) => {
+    if (!src || !g.userData.proc) return null;
+    const model = cloneModel(src);
+    const scale = fitLength(model, spec.length);
+    // envMapIntensity 0.7:HDRI 全量會把 1942 年的灰色軍艦洗成亮面塑膠
+    normalizeMaterials(model, { envMapIntensity: 0.7, roughnessMin: 0.4, shadows: !!opts.shadows });
+    applyDeckPaint(model, spec);
+    applyHullDetail(model, assets);
+
+    const box = new THREE.Box3().setFromObject(model);
+    const halfBeam = Math.max(box.max.x, -box.min.x);
+
+    // 軍旗:掛在艦島／艦橋頂上(不放進 model,免得吃到 model 的縮放)。
+    // 尺寸比程序化版小一半 — glb 的上層結構比積木版精細,大旗會整個蓋住艦島。
+    const flag = makeFlag(spec.side, spec.kind === 'carrier' ? 0.6 : 0.42);
+    const sgn = spec.islandSide === 'left' ? -1 : 1;
+    flag.position.set(sgn * halfBeam * 0.34, box.max.y + 1.6, -spec.length * 0.02);
+    g.add(flag);
+
+    g.remove(g.userData.proc);
+    g.userData.proc = null;
+    g.add(model);
+    g.userData.model = model;
+    g.userData.beam = box.max.x - box.min.x;
+    g.userData.len = spec.length;
+    g.userData.modelScale = scale;
+    g.userData.swapVersion = (g.userData.swapVersion ?? 0) + 1;
+    if (typeof g.userData.onSwap === 'function') g.userData.onSwap(g);
+    return scale;
+  });
+}
+
+// 對外 API 不變:同步回傳 Group(程序化 fallback),glb 到了再換。
+export function createShip(spec, opts = {}) {
+  const proc = spec.kind === 'carrier' ? createCarrier(spec) : createEscort(spec);
+  const g = new THREE.Group();
+  g.userData.beam = proc.userData.beam;
+  g.userData.len = proc.userData.len;
+  g.userData.proc = proc;
+  g.userData.swapVersion = 0;
+  // 識別環與程序化艦體分開掛,換裝時不會被一起移除
+  const ring = proc.children.find((c) => c.userData.isRing);
+  if (ring) { proc.remove(ring); g.add(ring); }
+  g.add(proc);
+  if (opts.assets) swapInModel(g, spec, opts);
+  return g;
 }
 
 // 軍旗飄動

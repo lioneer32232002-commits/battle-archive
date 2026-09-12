@@ -8,7 +8,14 @@
 //
 // 座標換算備忘:島嶼用 Shape 擠出後 rotation.x = -π/2,故 shape 的 (a, b) 落在世界 (a, ·, -b)。
 //   貼圖一律以「世界座標」作圖,島嶼輪廓畫在 (a, -b)。
+//
+// 資產管線(docs/asset-pipeline-spec.md §3):
+//   A-4 沙島與礁盤改 MeshStandardMaterial,套 Poly Haven sand_01／coast_sand_01 的
+//       PBR:程序化俯視貼圖(礁盤漸層、跑道、彈坑、植被斑)留著當 macro 層,
+//       細節層用 onBeforeCompile 在 map_fragment 之後「除以自身平均值再相乘」疊上去
+//       — 只加顆粒與明暗,不改 macro 的顏色計畫。沙岸側壁直接用 sand 的 diff。
 import * as THREE from 'three';
+import { createDetailUv } from './detail-shader.js';
 
 const LIFT = 7;     // 抬升量(高於浪峰)
 const DISC_R = 150; // 礁盤貼圖圓盤半徑(場景單位)
@@ -202,7 +209,7 @@ function makePalms(count, shadows) {
   const rand = mulberry(88);
   const trunkGeo = new THREE.CylinderGeometry(0.16, 0.32, 4.4, 5);
   trunkGeo.translate(0, 2.2, 0);
-  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x6d5a3f });
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6d5a3f, roughness: 0.9, metalness: 0.0 });
 
   const fronds = [];
   for (let i = 0; i < 6; i++) {
@@ -214,7 +221,7 @@ function makePalms(count, shadows) {
     fronds.push(f);
   }
   const crownGeo = mergeSimple(fronds);
-  const crownMat = new THREE.MeshLambertMaterial({ color: 0x3f7a34 });
+  const crownMat = new THREE.MeshStandardMaterial({ color: 0x3f7a34, roughness: 0.85, metalness: 0.0 });
 
   const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, count);
   const crowns = new THREE.InstancedMesh(crownGeo, crownMat, count);
@@ -257,15 +264,16 @@ export function createMidwayAtoll(scene, opts = {}) {
   // 水下基座:不透明,自礁盤往下延伸沒入海中,遮住島與海面之間的縫
   const base = new THREE.Mesh(
     new THREE.CylinderGeometry(138, 162, 34, 56),
-    new THREE.MeshLambertMaterial({ color: 0x0e2c3e })
+    new THREE.MeshStandardMaterial({ color: 0x0e2c3e, roughness: 0.9, metalness: 0.0 })
   );
   base.position.y = -17;
   atoll.add(base);
 
   // 礁盤圓盤:CircleGeometry 的 uv 已是 (x/2R+0.5, y/2R+0.5),旋轉後恰好對上世界座標貼圖
+  const discMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.92, metalness: 0.0 });
   const disc = new THREE.Mesh(
     new THREE.CircleGeometry(DISC_R, 96),
-    new THREE.MeshLambertMaterial({ map: tex })
+    discMat
   );
   disc.rotation.x = -Math.PI / 2;
   disc.position.y = 0.35;
@@ -273,11 +281,16 @@ export function createMidwayAtoll(scene, opts = {}) {
   atoll.add(disc);
 
   // 兩座島的立體量體:頂面共用同一張貼圖(擠出 cap 的 uv = shape 座標,以 repeat/offset 對位)
-  atoll.add(island(SAND_PTS, tex, 0xe4d9b4, shadows));
-  atoll.add(island(EAST_PTS, tex, 0xdccfa6, shadows));
+  const isleA = island(SAND_PTS, tex, 0xe4d9b4, shadows);
+  const isleB = island(EAST_PTS, tex, 0xdccfa6, shadows);
+  atoll.add(isleA);
+  atoll.add(isleB);
 
   // 椰子樹叢
   for (const m of makePalms(opts.mobile ? 30 : 56, shadows)) atoll.add(m);
+
+  // A-4:真實沙地 PBR(非阻塞;沒到就是原本的程序化貼圖)
+  if (opts.assets) applySandPBR(opts.assets, [isleA, isleB], discMat);
 
   scene.add(atoll);
   return atoll;
@@ -296,13 +309,47 @@ function island(points, tex, sideColor, shadows) {
   top.repeat.set(1 / (2 * DISC_R), 1 / (2 * DISC_R));
   top.offset.set(0.5, 0.5);
 
-  const mesh = new THREE.Mesh(geo, [
-    new THREE.MeshLambertMaterial({ map: top }),          // group 0:上下端蓋
-    new THREE.MeshLambertMaterial({ color: sideColor }),  // group 1:側壁(沙岸)
-  ]);
+  // cap 的 uv 單位就是場景單位(shape 座標),故細節層 repeat 用「每 2.6 單位一張」
+  const topMat = new THREE.MeshStandardMaterial({ map: top, roughness: 0.95, metalness: 0.0 });
+  const sideMat = new THREE.MeshStandardMaterial({ color: sideColor, roughness: 0.96, metalness: 0.0 });
+  const mesh = new THREE.Mesh(geo, [topMat, sideMat]);
+  mesh.userData.sandMats = { top: topMat, side: sideMat, detailRep: 1 / 2.6 };
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.y = 0.4;
   mesh.castShadow = shadows;
   mesh.receiveShadow = shadows;
   return mesh;
+}
+
+
+// ── A-4:沙地 PBR ─────────────────────────────────────
+// sand_01 diff 的 sRGB 平均為 (0.647, 0.586, 0.436) → 線性約 (0.387, 0.312, 0.165);
+// 細節層先除以這組平均再乘回 macro,等於「只取明暗與顆粒、不帶自身色偏」。
+const SAND_MEAN = [0.387, 0.312, 0.165];
+const COAST_MEAN = [0.224, 0.169, 0.104]; // coast_sand_01 512 diff:sRGB (0.510, 0.448, 0.358)
+// 註:SAND_MEAN 用的是 sand_01 512 diff 的線性平均(與 1k 版差異可忽略)
+
+function applySandPBR(assets, isles, discMat) {
+  // 島嶼:uv 單位 = 場景單位
+  const isleRep = 1 / 2.6;
+  // 只取 diff:sand_01 的 512 法線圖 170 KB,是整場首屏預算裡 CP 值最低的一項
+  // (島嶼在常用鏡頭下佔比小),細節改由「macro × detail 相乘」提供顆粒。
+  assets.textureSet('sand_01', { maps: ['diff'], repeat: [1, 1] }).then((set) => {
+    if (!set.map) return;
+    for (const isle of isles) {
+      const { top, side } = isle.userData.sandMats;
+      createDetailUv(top, set.map, [isleRep, isleRep], SAND_MEAN, 0.85);
+      top.needsUpdate = true;
+      // 沙岸側壁沒有 macro 層,直接用 sand 的 diff 當 map(uv 單位=場景單位,repeat 1 即每單位一張)
+      side.map = set.map;
+      side.color.setRGB(1.25, 1.2, 1.05); // 補回 diff 偏暗的部分,維持白沙灘調子
+      side.needsUpdate = true;
+    }
+  });
+  // 礁盤圓盤:uv 0…1 對應 300 場景單位 → 每 2.5 單位一張
+  assets.textureSet('coast_sand_01', { maps: ['diff'], repeat: [1, 1] }).then((set) => {
+    if (!set.map || !discMat) return;
+    createDetailUv(discMat, set.map, [120, 120], COAST_MEAN, 0.55);
+    discMat.needsUpdate = true;
+  });
 }
