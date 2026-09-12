@@ -234,7 +234,9 @@ export function createEnvironment(scene, { shadows = false, mobile = false, tone
     // 換來的環境光差異在小螢幕上看不出來。
     if (morningRequested || !renderer || mobile) return;
     morningRequested = true;
-    loadEnvMap(ENV_MORNING).then((t) => { envTex.morning = t; });
+    // 上午那張用 tonemapped JPG(280 KB)而不是 1k .hdr(1.5 MB):它只當 IBL 用,
+    // envIntensity 0.45 下的漫射差異看不出來,省下的 1.2 MB 留給核心區的高規闊葉樹。
+    loadEnvMap(ENV_MORNING, { tonemapped: true }).then((t) => { envTex.morning = t; });
   }
 
   function updateEnvironment(dt, battleT) {

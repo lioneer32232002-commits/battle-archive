@@ -29,7 +29,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   loadPBR, loadTexture, applyPBR, ensureUV1, loadModel, afterFirstFrame,
-  collectPrimitives, alignMatrix, modelBox, disposeObject, textureMeanLuminance,
+  collectPrimitives, alignMatrix, modelBox, disposeObject, textureMeanLuminance, thinGeometry,
 } from './assets.js';
 
 // 沿線拉伸 UV(樹籬土堤是一段一段不同長度的圓柱,UV 要按長度重複才不會被拉成糊)
@@ -497,11 +497,15 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
   const DETAIL_A = mobile ? 30 : 44;   // aerial_grass_rock:一格約 114 單位(≒60 公尺)
   const DETAIL_B = mobile ? 11 : 15;   // leafy_grass:刻意用非整數倍的尺度,兩層的週期對不上
   async function upgradeGround() {
-    const [pbr, detailB] = await Promise.all([
-      loadPBR('aerial_grass_rock', { repeat: [DETAIL_A, DETAIL_A] }),
+    // diff／nor 用 1k(近看的草葉與土粒靠這兩張),arm 用 512 —— AO/rough/metal 在
+    // repeat 44 的地表上看不出解析度差,省下 0.23 MB 給高規樹的葉子。
+    const [pbr, armLo, detailB] = await Promise.all([
+      loadPBR('aerial_grass_rock', { repeat: [DETAIL_A, DETAIL_A], maps: ['diff', 'nor'] }),
+      loadTexture('aerial_grass_rock', 'arm', { repeat: [DETAIL_A, DETAIL_A], tier: 'mobile' }),
       mobile ? null : loadTexture('leafy_grass', 'diff', { repeat: [DETAIL_B, DETAIL_B], tier: 'mobile' }),
     ]);
     if (!pbr.map) return false;
+    if (armLo) { pbr.roughnessMap = pbr.metalnessMap = pbr.aoMap = armLo; }
     const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 });
     applyPBR(mat, pbr, { aoIntensity: 0.45, normalScale: mobile ? 0.6 : 0.9 });
     const kField = (GROUND_REPEAT / DETAIL_A).toFixed(6);
@@ -897,12 +901,73 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
   }
   buildProcBushes(bushM);
 
+  // ── A-4c 高規闊葉樹與三層 LOD ─────────────────────────
+  // 300 KB 的一般版葉量只剩高規版的 1/5,六月的諾曼第看起來像枯樹。桌機核心區改吃
+  // `glb_hi`(約 49k 面、512² 貼圖),但不能整片都付全額,所以分三層:
+  //   hero  砲線田鏡頭(一號砲～四號砲)看得到的範圍 → 完整高規幾何
+  //   mid   核心區其餘 → 同一份高規幾何,葉片以「整張 quad」為單位抽稀到 40%
+  //   far   核心區外 → 維持程序化(手機也是)
+  // 樹籬灌木是縮小版的樹,單株在畫面上只有高樹的 1/3,抽稀到 30% 看不出來但省最多面。
+  // hero 範圍 = 砲線田那圈 lush 樹籬(x −20..60、z −14..86)再外擴一點
+  const inHero = (it) => Math.abs(it.x) < 105 && it.z > -55 && it.z < 115;
+  const LEAF_KEEP_MID = 0.45;
+  const LEAF_KEEP_BUSH = 0.28;
+  // 實測:`_branches`(枝條,13–15k 面)沒被抽稀時比抽稀後的葉片還貴 —— 灌木叢一整排
+  //   光枝條就 172 萬面。枝條是管狀幾何,逐三角形抽稀會破洞,所以 mid 與灌木直接整支不畫:
+  //   灌木只有 1/3 大、mid 在 150 單位外,枝條本來就被葉團蓋住。
+  // 高規葉片貼圖偏黃(六月諾曼第該是濃綠),在材質 color 上乘一點綠把色相拉回來
+  const LEAF_TINT = new THREE.Color(0.88, 1.10, 0.78);
+  const leafMats = new Map();
+  function vegMaterial(src) {
+    let m = leafMats.get(src.uuid);
+    if (!m) {
+      m = src.clone();
+      if (m.alphaTest > 0) {
+        m.color.multiply(LEAF_TINT);   // 只調葉片,樹幹枝條維持原色
+        // 葉片是 alpha 卡片,MASK cutoff 0.5 會把每片葉子的柔邊整圈切掉 → 冠層看起來稀疏。
+        // 降到 0.3 等於把葉子還原成貼圖畫的大小,樹冠明顯變密,一個三角形都沒多加。
+        m.alphaTest = Math.min(m.alphaTest, 0.30);
+      }
+      m.envMapIntensity = 1;
+      leafMats.set(src.uuid, m);
+    }
+    return m;
+  }
+
+  // 樹籬的樹是「照程序化量體放大」擺的(一棵 4.5 公尺的樹拉到 8 公尺,是刻意的可讀性取捨),
+  // 葉片卡片跟著放大 1.8 倍 → 卡片之間就空出來,再多的葉子數也補不滿。
+  // 解法是每個位置再疊一株轉過角度、縮小一點的同款樹:兩株交錯就是一頂密實的樹冠,
+  // 而且共用同一份幾何與材質,只多一個 InstancedMesh。
+  function densify(list, { rotY = 2.1, scale = 0.78, dx = 0.7, dz = -0.6 } = {}) {
+    const extra = new THREE.Matrix4().makeRotationY(rotY)
+      .multiply(new THREE.Matrix4().makeScale(scale, scale, scale));
+    extra.setPosition(dx, 0, dz);
+    return list.map((it) => ({ ...it, m: new THREE.Matrix4().multiplyMatrices(it.m, extra) }));
+  }
+
+  // 把一組 primitive 以指定的葉片保留率鋪成 InstancedMesh
+  function addVegInstances(prims, list, leafKeep, { shadow = true, branches = true } = {}) {
+    if (!list.length) return;
+    for (const p of prims) {
+      const name = p.material.name || '';
+      if (!branches && name.endsWith('_branches')) continue;
+      const leafy = p.material.alphaTest > 0;
+      const geo = leafy ? thinGeometry(p.geometry, leafKeep) : p.geometry;
+      const im = new THREE.InstancedMesh(geo, vegMaterial(p.material), list.length);
+      for (let i = 0; i < list.length; i++) im.setMatrixAt(i, list[i].m);
+      im.instanceMatrix.needsUpdate = true;
+      im.frustumCulled = true;
+      if (shadows) { im.castShadow = shadow; im.receiveShadow = true; }
+      g.add(im);
+    }
+  }
+
   // 縮小版 island_tree_02 的基準高度(單位scale=1 時)。1 場景單位 ≈ 0.5 m,
   // 5.0 搭配實例的 0.76–1.33 縮放 → 實際 1.9–3.3 m,正好是樹籬灌木叢的尺寸。
   const BUSH_BASE_H = 5.0;
   async function upgradeBushes() {
     if (mobile) return false;   // 手機維持程序化
-    const mdl = await loadModel('island_tree_02');
+    const mdl = await loadModel('island_tree_02', { kind: 'glb_hi' });
     if (!mdl) return false;
     const core = bushM.filter((b) => b.lush);
     const rest = bushM.filter((b) => !b.lush);
@@ -912,13 +977,7 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
     const prims = collectPrimitives(mdl, { matrix: alignMatrix({ scale: BUSH_BASE_H / size.y }) });
     if (!prims.length) return false;
     buildProcBushes(rest);           // 核心區外仍是程序化灌木叢
-    for (const p of prims) {
-      const im = new THREE.InstancedMesh(p.geometry, p.material, core.length);
-      for (let i = 0; i < core.length; i++) im.setMatrixAt(i, core[i].m);
-      im.instanceMatrix.needsUpdate = true;
-      if (shadows) { im.castShadow = false; im.receiveShadow = true; }
-      g.add(im);
-    }
+    addVegInstances(prims, core, LEAF_KEEP_BUSH, { shadow: false, branches: false });
     return true;
   }
 
@@ -937,20 +996,25 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
 
   // A-4:核心區(±430)的樹換 Poly Haven glb;遠景樹維持程序化(一棵 17k 三角形,
   //      全圖 120 棵會是 200 萬面,遠景吃不到細節卻要付全額 → 只在看得到的地方付)。
-  // [高, 矮],對應 treeGeos。矮的那棵用 island_tree_02 而不是 tree_small_02:
-  // 樹籬灌木已經在載它了(同一份幾何與材質),省下 0.3 MB 下載,而且它 9.8k 面
-  // 比 tree_small_02 的 17k 面便宜一半 —— 同樣的畫面,少一個檔、少一半三角形。
-  const TREE_GLB = ['island_tree_01', 'island_tree_02'];
+  // [高, 矮],對應 treeGeos。
+  //   高的用 tree_small_02_hi:它 94% 的面都在葉子上(高規版約 46k 面的葉片),
+  //     是這批闊葉樹裡唯一真的有「茂密綠冠」的;island_tree_01 連高規版都只有
+  //     33k 葉片配 14.6k 枝條,近看是一株半禿的地中海小樹,六月諾曼第不該長那樣。
+  //     順帶比 island_tree_01_hi 小 0.2 MB。
+  //   矮的用 island_tree_02_hi:樹籬灌木已經在載它了(同一份檔),剪影也跟高的不同。
+  const TREE_GLB = ['tree_small_02', 'island_tree_02'];
   async function upgradeTrees() {
     if (mobile) return false;   // 手機維持程序化
-    const models = await Promise.all(TREE_GLB.map(loadModel));
+    const models = await Promise.all(TREE_GLB.map((id) => loadModel(id, { kind: 'glb_hi' })));
     if (!models.every(Boolean)) return false;
     const size = new THREE.Vector3();
     let replaced = 0;
     for (let v = 0; v < 2; v++) {
-      const near = treeM[v].filter(inCore);
+      const core = treeM[v].filter(inCore);
+      const hero = core.filter(inHero);
+      const mid = core.filter((t) => !inHero(t));
       const far = treeM[v].filter((t) => !inCore(t));
-      if (!near.length) continue;
+      if (!core.length) continue;
       // 程序化樹的高度 = 對位目標(樹籬尺度刻意放大,照著現有量體走才不會破壞可讀性)
       treeGeos[v].computeBoundingBox();
       const targetH = treeGeos[v].boundingBox.max.y;
@@ -958,18 +1022,16 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
       const sc = size.y > 1e-6 ? targetH / size.y : 1;
       const prims = collectPrimitives(models[v], { matrix: alignMatrix({ scale: sc }) });
       if (!prims.length) continue;
-      // 先換掉:遠景那份重建,核心那份改 glb
+      // 先換掉:遠景那份重建,核心那份分 hero／mid 兩層
       if (treeIM[v]) { g.remove(treeIM[v]); treeIM[v].dispose(); }
       buildProcTrees(v, far);
-      for (const p of prims) {
-        const im = new THREE.InstancedMesh(p.geometry, p.material, near.length);
-        for (let i = 0; i < near.length; i++) im.setMatrixAt(i, near[i].m);
-        im.instanceMatrix.needsUpdate = true;
-        im.frustumCulled = true;
-        if (shadows) { im.castShadow = true; im.receiveShadow = true; }
-        g.add(im);
-      }
-      replaced += near.length;
+      addVegInstances(prims, hero, 1);
+      // 補密的第二株:不投影、不畫枝條(枝條疊兩份會變成一團亂枝),葉片留 70%
+      addVegInstances(prims, densify(hero), 0.7, { shadow: false, branches: false });
+      // mid 不投影:陰影 pass 是整份幾何再跑一次,而這些樹離砲線田鏡頭都在 150 單位外,
+      // 地上那團影子有沒有它們看不出來
+      addVegInstances(prims, mid, LEAF_KEEP_MID, { shadow: false, branches: false });
+      replaced += core.length;
     }
     return replaced > 0;
   }

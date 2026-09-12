@@ -174,15 +174,16 @@ export function ensureUV1(geometry) {
 const envCache = new Map();   // id → Promise<Texture|null>
 let pmrem = null;
 
-export function loadEnvMap(id) {
-  let p = envCache.get(id);
+export function loadEnvMap(id, { tonemapped = false } = {}) {
+  const cacheKey = `${id}|${tonemapped ? 'tm' : 'auto'}`;
+  let p = envCache.get(cacheKey);
   if (p) return p;
   p = (async () => {
     if (!cfg.renderer) { warnMissing(`hdri:${id}(no renderer)`); return null; }
     const m = await getManifest();
     const tier = assetTier();
     const e = manifestEntry(m, id);
-    const hdr = tier === 'desktop' ? e?.files?.desktop?.hdr?.path : null;
+    const hdr = (tier === 'desktop' && !tonemapped) ? e?.files?.desktop?.hdr?.path : null;
     const jpg = e?.files?.[tier]?.tonemapped?.path ?? e?.files?.desktop?.tonemapped?.path;
     const path = hdr ?? jpg;
     if (!path) { warnMissing(`hdri:${id}`); return null; }
@@ -201,7 +202,7 @@ export function loadEnvMap(id) {
       return null;
     }
   })();
-  envCache.set(id, p);
+  envCache.set(cacheKey, p);
   return p;
 }
 
@@ -219,13 +220,18 @@ function loader() {
 
 const modelCache = new Map();   // id → Promise<Object3D|null>
 
-/** 載入 glb,回傳「範本」場景(不要直接加進場景;用 instantiate／collectPrimitives) */
-export function loadModel(id) {
-  let p = modelCache.get(id);
+/**
+ * 載入 glb,回傳「範本」場景(不要直接加進場景;用 instantiate／collectPrimitives)。
+ * kind: 'glb'(預設)或 'glb_hi'(高規版:葉量完整、512² 貼圖,manifest 另外登記)。
+ */
+export function loadModel(id, { kind = 'glb' } = {}) {
+  const cacheKey = `${id}|${kind}`;
+  let p = modelCache.get(cacheKey);
   if (p) return p;
   p = (async () => {
     const m = await getManifest();
-    const path = manifestPath(m, id, 'glb') ?? `/models/${id}.glb`;
+    const path = manifestPath(m, id, kind)
+      ?? (kind === 'glb' ? `/models/${id}.glb` : `/models/${id}_hi.glb`);
     try {
       const gltf = await loader().loadAsync(path);
       const root = gltf.scene;
@@ -247,12 +253,39 @@ export function loadModel(id) {
       });
       return root;
     } catch (err) {
-      warnMissing(`model:${id}`, err);
+      warnMissing(`model:${id}/${kind}`, err);
       return null;
     }
   })();
-  modelCache.set(id, p);
+  modelCache.set(cacheKey, p);
   return p;
+}
+
+/**
+ * 以「整張 quad(2 個三角形)」為單位抽稀 alpha 卡片幾何 —— 葉片是一片片的卡片,
+ * 逐三角形丟會留下半片葉子。位置／法線／UV 直接沿用原幾何的 buffer(GPU 上不複製),
+ * 只重建 index → mid 層可以吃同一份高規幾何但只付一部分面數。
+ */
+export function thinGeometry(geo, keep) {
+  if (!(keep > 0) || keep >= 0.999 || !geo.index) return geo;
+  const src = geo.index.array;
+  const QUAD = 6;
+  const quads = Math.floor(src.length / QUAD);
+  const out = [];
+  let acc = 0;
+  for (let q = 0; q < quads; q++) {
+    acc += keep;
+    if (acc >= 1) { acc -= 1; for (let k = 0; k < QUAD; k++) out.push(src[q * QUAD + k]); }
+  }
+  for (let i = quads * QUAD; i < src.length; i++) out.push(src[i]);   // 收尾不足一組的照舊
+  if (!out.length) return geo;
+  const g = new THREE.BufferGeometry();
+  for (const name of Object.keys(geo.attributes)) g.setAttribute(name, geo.attributes[name]);
+  const Arr = geo.attributes.position.count > 65535 ? Uint32Array : Uint16Array;
+  g.setIndex(new THREE.BufferAttribute(new Arr(out), 1));
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
+  return g;
 }
 
 /** 一次載一批,回傳 { id: Object3D|null }(缺件不影響其他) */
