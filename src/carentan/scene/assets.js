@@ -24,8 +24,11 @@ const DRACO_PATH = '/draco/';
 // 本場首屏預算：桌機 ≤ 6 MB、手機 ≤ 2.5 MB。
 // 1k 只給「近看的主角」：市鎮鋪石街與房舍灰泥牆；其餘一律 512（地表是高 repeat 平鋪，
 // 512 在 11 單位／格的密度下已看不出差別，省下來的頻寬留給 HDRI 與模型）。
+// 2026-09-12 第三輪：闊葉樹高規版（island_tree_01_hi，1.02 MB）進核心區，
+// 為了守住桌機 6 MB，鋪石街從 1k 降到 512（街面多半在 10 單位外，macro canvas 才是主色，
+// 細節層只貢獻法線起伏）；灰泥牆維持 1k（市鎮鏡頭離牆最近）。
 const TIER = {
-  desktop: { cobblestone_floor_04: '1k', painted_plaster_wall: '1k' },
+  desktop: { painted_plaster_wall: '1k' },
   mobile: {},
 };
 const DEFAULT_TIER = '512';
@@ -164,17 +167,21 @@ export function createAssetHub({ mobile = false, renderer = null } = {}) {
   }
 
   // 回傳 gltf.scene（共用實例，呼叫端請自行 clone 或抽 geometry）
-  function model(id) {
-    if (modelCache.has(id)) return modelCache.get(id);
+  // hi: true → 取 manifest 的 files.desktop.glb_hi（高規植被，約 4.9 萬面、512² 貼圖）。
+  //   只給桌機核心區的 hero 物件用；沒有 glb_hi 或手機一律退回一般版。
+  function model(id, { hi = false } = {}) {
+    const key = hi ? `${id}#hi` : id;
+    if (modelCache.has(key)) return modelCache.get(key);
     const p = (async () => {
       const mf = await manifest();
       const e = entry(mf, id);
-      let path = e?.files?.[profile]?.glb?.path ?? e?.files?.desktop?.glb?.path ?? null;
+      const hiFile = !mobile && hi ? e?.files?.desktop?.glb_hi : null;
+      let path = hiFile?.path ?? e?.files?.[profile]?.glb?.path ?? e?.files?.desktop?.glb?.path ?? null;
       if (!path) {
         if (!hasBlenderModel(id)) return null;   // 還沒建好 → 不發請求，保持 console 乾淨
         path = `/models/${id}.glb`;
       }
-      note(path, e?.files?.[profile]?.glb?.bytes ?? e?.files?.desktop?.glb?.bytes ?? 0);
+      note(path, hiFile?.bytes ?? e?.files?.[profile]?.glb?.bytes ?? e?.files?.desktop?.glb?.bytes ?? 0);
       try {
         let seen = 0;
         const gltf = await loader().loadAsync(path, (ev) => { if (ev?.total) seen = ev.total; });
@@ -186,7 +193,7 @@ export function createAssetHub({ mobile = false, renderer = null } = {}) {
         return null;
       }
     })();
-    modelCache.set(id, p);
+    modelCache.set(key, p);
     return p;
   }
 

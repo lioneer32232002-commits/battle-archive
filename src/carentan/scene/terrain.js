@@ -1443,19 +1443,57 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
   }
 
   // A-3 植被：Poly Haven 樹與灌木的 InstancedMesh（沿用同一批 instance matrix）
+  // 分兩級（2026-09-12 第三輪）：
+  //   hero —— 市鎮周邊與血腥溝兩個主鏡頭看得到的樹與樹籬灌木，吃 glb_hi（約 4.9 萬面、
+  //            512² 貼圖、alphaTest 0.5），葉量是一般版的 5 倍，近看才是茂密的夏綠樹冠；
+  //   far  —— 其餘全場維持一般版（約 1 萬面），遠看只需要剪影。
+  // 一般版是「300 KB 預算版」，葉片被 decimate 掉約 4/5，放大到近景就是一棵枯樹 —— 這是
+  // 前一輪「遠處的樹像枯樹」的根因，不是 alphaTest 也不是色調的問題。
+  const HERO_ZONES = [
+    { x: 2, z: -12, r: 78 },    // 市鎮（Y 形路口／主街鏡頭）
+    { x: -70, z: 60, r: 62 },   // 鐵路路堤・血腥溝
+  ];
+  // hero 每株貴 5 倍，數量要掐住；實測整場 scene render 2.6 ms／幀（GPU finish 同步計時），
+  // 所以從 7／4／8 放寬到 10／5／12，讓中景的樹也進得了高規版，不會出現「前景茂密、
+  // 中景枯枝」的斷層。
+  // 上限訂在「兩個 hero 區內實際有幾株」：實測高樹 12、圓樹 5、灌木 14 就把兩區內
+  // 全部吃下，不會出現同一個鏡頭裡一半茂密一半枯枝。
+  const HERO_CAP = { tree: 12, round: 5, bush: 14 };
+
+  const _hp = new THREE.Vector3();
+  function heroSplit(placements, max) {
+    const scored = placements.map((m) => {
+      _hp.setFromMatrixPosition(m);
+      let best = Infinity;
+      for (const z of HERO_ZONES) {
+        const d = Math.hypot(_hp.x - z.x, _hp.z - z.z) - z.r;
+        if (d < best) best = d;
+      }
+      return { m, d: best };
+    });
+    const inZone = scored.filter((x) => x.d < 0).sort((a, b) => a.d - b.d);
+    const hero = inZone.slice(0, max).map((x) => x.m);
+    const heroSet = new Set(hero);
+    return [hero, placements.filter((m) => !heroSet.has(m))];
+  }
+
   async function applyVegetation(assets) {
     if (mobile) return;   // 手機維持程序化樹（省 700 KB 與三角形）
     // 樹種：island_tree_01（高，枝幹開展）＋ island_tree_02（圓，較密），灌木也用 02 縮小。
     // tree_small_02 實測是細瘦的小樹苗，放大到 8 單位像一根竹竿，不用（也省 304 KB）。
     // Poly Haven 的 shrub_01／shrub_04 實測是「又寬又扁的地被」（2.59 × 0.40 × 0.22 公尺），
     // 放到 bocage 土堤上是一張趴著的葉片墊，撐不起樹籬剪影，故不用。
-    const [tall, round, shrub] = await Promise.all([
-      assets.model('island_tree_01'), assets.model('island_tree_02'), assets.model('island_tree_02'),
+    // 高規版只載 island_tree_01_hi 一種（1.02 MB）：hero 區的高樹、圓樹、灌木共用它，
+    // 換到第二種 _hi 就會把桌機 6 MB 的預算吃穿。
+    const [tall, round, hero] = await Promise.all([
+      assets.model('island_tree_01'),
+      assets.model('island_tree_02'),
+      assets.model('island_tree_01', { hi: true }),
     ]);
-    const add = (src, placements, target, axis, { cast = true, receive = true, leavesOnly = false } = {}) => {
+    const add = (src, placements, target, axis, { cast = true, receive = true, leavesOnly = false, hi = false } = {}) => {
       if (!src || !placements.length) return false;
-      // 超過 40 株就不投影：Poly Haven 的樹每株近 1 萬三角形，陰影 pass 等於再畫一次，
-      // 是本場 fps 的第一號開銷；樹影對「市鎮街戰＋圩田」的可讀性也不是必要條件。
+      // 超過 40 株就不投影：每株上萬三角形，陰影 pass 等於再畫一次，是本場 fps 的第一號開銷；
+      // hero 群數量少（≤ 7），保留投影 —— 市鎮街上的樹影是晨光斜射的主要質感來源。
       if (placements.length > 40) cast = false;
       const s = fitScale(src, target, axis);
       const mx = new THREE.Matrix4().makeScale(s, s, s);
@@ -1465,11 +1503,12 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
         if (leavesOnly && !/leaves/i.test(name)) continue;
         const geo = item.geos.length === 1 ? item.geos[0] : mergeGeometries(item.geos, false);
         if (!geo) continue;
-        // 葉片微微提亮（諾曼第六月的樹是飽滿的夏綠；Poly Haven 的葉片貼圖偏暗，
-        // 在本場 ACES ＋ 低斜晨光下會整棵看起來像枯樹）
         const mat = item.material;
         if (mat && /leaves/i.test(mat.name ?? '') && !mat.userData.carentanTint) {
+          // 葉片微微提亮（諾曼第六月是飽滿的夏綠）；高規版葉量夠，alphaTest 回到原本的 0.5，
+          // 一般版維持 0.33（薄卡片遠看會被 mipmap 把 alpha 平均掉而掉葉子）。
           mat.color.setHex(0xc9d8a6);
+          if (hi) mat.alphaTest = 0.5;
           mat.userData.carentanTint = true;
         }
         const im = new THREE.InstancedMesh(geo, item.material, placements.length);
@@ -1481,14 +1520,21 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
       }
       return true;
     };
+
+    // 樹籬灌木：沿線取 1/4 的位置（土堤本體已經撐住連續剪影）
+    const shrubSpots = bushPlacements.filter((_, i) => i % 4 === 0);
+    const [heroTall, farTall] = heroSplit(treePlacements[0], HERO_CAP.tree);
+    const [heroRound, farRound] = heroSplit(treePlacements[1], HERO_CAP.round);
+    const [heroBush, farBush] = heroSplit(shrubSpots, HERO_CAP.bush);
+
     let any = false;
-    // 尺度：闊葉樹 9.5 單位（約 7 公尺）。拉到 11 以上葉片會被拉稀，看起來像枯樹。
-    any = add(tall, treePlacements[0], 9.5, 'y') || any;
-    any = add(round, treePlacements[1], 7, 'y') || any;
-    // 樹籬灌木：每株近 1 萬三角形，沿線取 1/3 的位置（土堤本體已經撐住連續剪影）。
-    // 全場 glb 植被約 110 萬三角形；再多就算 InstancedMesh 也會在陰影 pass 上吃掉 fps。
-    const shrubSpots = bushPlacements.filter((_, i) => i % 3 === 0);
-    any = add(shrub, shrubSpots, 4.2, 'y', { cast: false, leavesOnly: true }) || any;
+    // 尺度回到原設定：闊葉高樹 11.5 單位、圓樹 8 單位、樹籬灌木 4.2 單位
+    any = add(hero ?? tall, heroTall, 11.5, 'y', { hi: !!hero }) || any;
+    any = add(tall, farTall, 11.5, 'y') || any;
+    any = add(hero ?? round, heroRound, 8, 'y', { hi: !!hero }) || any;
+    any = add(round, farRound, 8, 'y') || any;
+    any = add(hero ?? round, heroBush, 4.2, 'y', { cast: false, leavesOnly: true, hi: !!hero }) || any;
+    any = add(round, farBush, 4.2, 'y', { cast: false, leavesOnly: true }) || any;
     if (any) {
       for (const im of procVegetation) im.visible = false;
       assetsApplied.vegetation = true;
