@@ -70,7 +70,10 @@ controls.enableDamping = true;
 // 資產管線:桌機 1k 貼圖 + 1k .hdr;手機 512 貼圖 + tonemapped JPG(asset-pipeline-spec §3)
 configureAssets({ mobile: isMobile, anisotropy: Math.min(8, renderer.capabilities.getMaxAnisotropy()) });
 
-const environment = createEnvironment(scene, { shadows: SHADOWS, mobile: isMobile, renderer });
+// R4 驗收用:dev server 加 ?legacy=1 就整條回到升級前(單張正交陰影＋舊後製),
+// 同機位拍開／關對照。import.meta.env.DEV 在正式 build 是常數 false,整段會被搖掉。
+const QA_LEGACY = !!(import.meta.env && import.meta.env.DEV) && location.search.includes('legacy=1');
+const environment = createEnvironment(scene, { shadows: SHADOWS, mobile: isMobile, renderer, camera: QA_LEGACY ? null : camera });
 const geo = createOkinawa(scene, { shadows: SHADOWS });
 const particles = new ParticlePool(scene, {
   addMax: isMobile ? 260 : 760, normMax: isMobile ? 320 : 900,
@@ -82,7 +85,22 @@ const effects = new Effects(scene, { particles, surface, mobile: isMobile, crash
 const director = new Director(camera, controls);
 
 // 後製 composer(桌機);手機直接 renderer.render
-const post = POSTFX ? createComposer(renderer, scene, camera) : null;
+// R4-4 調色(§R4.4)＋ R4-1 GTAO ＋ R4-3 導演景深
+const post = POSTFX ? createComposer(renderer, scene, camera, {
+  grade: {
+    lift: [0, 0.004, 0.012],
+    gamma: [1, 1, 1.012],
+    gain: [0.975, 1, 1.045],
+    saturation: 0.94,
+    contrast: 0.18,
+    shadowTint: [0, 0.5, 0.75],
+    highlightTint: [0.85, 0.6, 0.2],
+    split: [0.05, 0.035],
+  },
+  gtao: { radius: 25, distanceExponent: 1, thickness: 1, scale: 1.5, blend: 0.7 },
+  bokeh: { aperture: 0.00008, maxblur: 0.006 },
+}) : null;
+if (QA_LEGACY && post) post.setPipeline('legacy');
 function renderFrame(dt) {
   if (post) post.render(dt);
   else renderer.render(scene, camera);
@@ -93,6 +111,7 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   if (post) post.setSize(window.innerWidth, window.innerHeight);
+  environment.resizeShadows();   // CSM 的切分是依鏡頭視錐算的
 });
 
 // 地名標籤(南:沖繩 目的地;北:九州/大隅 出擊方向)
@@ -610,10 +629,28 @@ function frame(dt) {
     if (!playing) hud.setTime(battleT);
   }
 
+  // R4-2／R4-3:鏡頭這一幀已經定案 → 更新 cascade 陰影框、跟拍景深
+  environment.updateShadows();
+  if (post) {
+    const following = director.mode === 'director' && !!director.followFn;
+    post.setBokeh(following);
+    if (following) post.setFocus(camera.position.distanceTo(controls.target));
+  }
+
   renderFrame(dt);
 }
 
 // ── 動態解析度(P-4):滾動平均 FPS,每 2 秒結算 ─────────────
+// R4-6:降級順序是「先砍 GTAO 再降解析度」(GTAO 內部要重跑一次幾何,是最貴的一關)。
+//   0 = 全開 → 1 = GTAO 降 1/4 解析度 → 2 = GTAO 關 → 之後才動 pixelRatio。
+let aoLevel = 0;
+let perfLock = false;   // __dbg.dbgPerf／freezeQuality 量測期間凍結畫質
+function setAoLevel(n) {
+  if (!post || aoLevel === n) return;
+  aoLevel = n;
+  post.setGtaoScale(n >= 1 ? 0.25 : 0.5);
+  post.setGTAO(n < 2);
+}
 let fpsAcc = 0, fpsFrames = 0, fpsTimer = 0, goodStreak = 0;
 let curRatio = DPR_CAP;
 const FLOOR = isMobile ? 1.0 : DPR_CAP * 0.75;
@@ -622,20 +659,30 @@ function fpsSample(dt) {
   if (fpsTimer < 2) return;
   const fps = fpsFrames / fpsAcc;
   fpsTimer = 0; fpsAcc = 0; fpsFrames = 0;
+  if (perfLock) return;   // R4:量測/截圖期間凍結畫質
   const lowT = isMobile ? 27 : 45;
-  if (fps < lowT && curRatio > FLOOR) {
+  if (fps < lowT && post && aoLevel < 2) {
+    setAoLevel(aoLevel + 1);   // R4-6:先砍 GTAO,再談解析度
+    goodStreak = 0;
+  } else if (fps < lowT && curRatio > FLOOR) {
     curRatio = Math.max(FLOOR, curRatio - 0.25);
     renderer.setPixelRatio(curRatio); if (post) post.setPixelRatio(curRatio);
     goodStreak = 0;
   } else if (fps > (isMobile ? 40 : 55)) {
     goodStreak += 2;
-    if (goodStreak >= 4 && curRatio < DPR_CAP) {
+    if (goodStreak >= 4 && aoLevel > 0) {
+      setAoLevel(aoLevel - 1);   // R4-6:回升時先把 GTAO 救回來
+      goodStreak = 0;
+    } else if (goodStreak >= 4 && curRatio < DPR_CAP) {
       curRatio = Math.min(DPR_CAP, curRatio + 0.25);
       renderer.setPixelRatio(curRatio); if (post) post.setPixelRatio(curRatio);
       goodStreak = 0;
     }
   } else goodStreak = 0;
 }
+
+// R4-2:程序化場景建好後,把現有材質一次註冊給 CSM(資產載入後 environment 內每 0.5 秒會再掃一次)
+environment.refreshShadowMaterials();
 
 hud.setTime(battleT);
 tick();
@@ -685,7 +732,48 @@ if (import.meta.env && import.meta.env.DEV) {
     return { t, swapped: !!o.group.userData.modelId, ...dbgCalls(), bytes: assetBytes() };
   };
 
+  // R4-6 效能量測:固定 1600×1000、dpr 1.5,同步量單幀渲染時間。
+  // ⚠ gl.finish() 在 ANGLE/D3D11 上不會真的擋住 CPU(同一幀量得出 5 ms 與 123 ms),
+  //   要用 readPixels 讀預設 framebuffer 才會逼出真正的同步點。
+  const _px = new Uint8Array(4);
+  const dbgPerf = (n = 10) => {
+    const gl = renderer.getContext();
+    const sync = () => { renderer.setRenderTarget(null); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, _px); };
+    const prevRatio = renderer.getPixelRatio();
+    const prevSize = renderer.getSize(new THREE.Vector2());
+    const prevAspect = camera.aspect;
+    perfLock = true;
+    renderer.setPixelRatio(1.5);
+    renderer.setSize(1600, 1000, false);
+    if (post) post.setSize(1600, 1000);
+    camera.aspect = 1.6; camera.updateProjectionMatrix();
+    renderFrame(0.016); sync();
+    const t0 = performance.now();
+    for (let i = 0; i < n; i++) renderFrame(0.016);
+    sync();
+    const ms = (performance.now() - t0) / n;
+    renderer.setPixelRatio(prevRatio);
+    renderer.setSize(prevSize.x, prevSize.y, false);
+    if (post) post.setSize(prevSize.x, prevSize.y);
+    camera.aspect = prevAspect; camera.updateProjectionMatrix();
+    perfLock = false;
+    return Math.round(ms * 100) / 100;
+  };
   window.__dbg = {
+    post, dbgPerf,
+    // A/B 對照:__dbg.pipeline('legacy') 回到升級前的後製,('modern') 全開
+    pipeline: (mode) => { if (post) post.setPipeline(mode); renderFrame(0.016); return mode; },
+    // 截圖前凍結畫質(擋掉動態解析度／GTAO 自動降級,否則慢機器上拍到的是降級後的畫面)
+    freezeQuality: (on = true) => {
+      perfLock = !!on;
+      if (on) {   // 回到全畫質:GTAO 全開、pixelRatio 回到上限
+        setAoLevel(0);
+        curRatio = DPR_CAP;
+        renderer.setPixelRatio(curRatio);
+        if (post) post.setPixelRatio(curRatio);
+      }
+      return perfLock;
+    },
     dbgShot,
     THREE, scene, camera, controls, renderer, director, effects, particles, surface,
     dbgSeek, dbgLook, dbgCalls, frame, render: () => renderFrame(0.016),

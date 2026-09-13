@@ -92,7 +92,8 @@ def build_barrel():
     return b.finish('barrel', uv_scale=0.4)
 
 
-def main():
+def build():
+    """建出 [carriage, barrel]（已設好樞軸與父子關係，不匯出）。"""
     C.reset()
     car = build_carriage()
     bar = build_barrel()
@@ -101,6 +102,11 @@ def main():
     C.setparent(bar, car)
     objs = [car, bar]
     bpy.context.view_layer.update()
+    return objs
+
+
+def main():
+    objs = build()
     _, n = C.export(objs, 'howitzer_105')
     C.render(objs, 'howitzer_105', yaw=44, pitch=18, zoom=1.05)
     print('howitzer_105 tris =', n)

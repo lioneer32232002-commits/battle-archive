@@ -340,8 +340,8 @@ AA_POSITIONS = [
   + [(sx * 6.6, -88.0, deck_z(-88) + 0.6) for sx in (-1, 1)]
 
 
-def main():
-    args = C.parse_args()
+def build():
+    """建出全部物件並回傳 [hull, turret_A, barrels_A, ...]（不匯出，供烘焙用）。"""
     C.reset_scene()
     M = materials()
 
@@ -382,7 +382,13 @@ def main():
         t, b = main_turret(letter, y, pz, M, aft=aft)
         turrets += [t, b]
 
-    res = C.finish([body] + turrets, "yamato", args, tri_budget=12000, water=True,
+    return [body] + turrets
+
+
+def main():
+    args = C.parse_args()
+    objs = build()
+    res = C.finish(objs, "yamato", args, tri_budget=12000, water=True,
                    previews=[("side", dict(azimuth=88, elevation=3, water=True,
                                                      target=(0, 0, 8))),
                              ("bow", dict(azimuth=18, elevation=12, water=True)),

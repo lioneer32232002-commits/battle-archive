@@ -24,8 +24,8 @@ FD_BOT, FD_TOP = 19.2, 20.5      # 飛行甲板上下緣
 FD_HALF = 15.2
 
 
-def build(side, args):
-    """side: -1 左舷島（赤城）／ +1 右舷島（加賀）"""
+def build(side, args, export=True):
+    """side: -1 左舷島（赤城）／ +1 右舷島（加賀）。export=False 只回傳物件。"""
     C.reset_scene()
     M = N.palette("ijn")
     # 飛行甲板貼圖：v=0 艦艉、v=1 艦艏（甲板 y 從 -119 到 126）
@@ -151,6 +151,9 @@ def build(side, args):
 
     body = C.join(parts, "carrier_ijn")
     name = "carrier_ijn_" + ("L" if side < 0 else "R")
+    if not export:
+        body.name = body.data.name = name
+        return [body]
     return C.finish([body], name, args, tri_budget=10000, water=True,
                     previews=[("side", dict(azimuth=88, elevation=4, water=True,
                                             target=(0, 0, 10))),

@@ -9,7 +9,22 @@
 //   N-1 海面 6 波(含 3 個高頻碎浪)、太陽 glitter、fresnel 天空反射、浪峰白沫、遠距霧化。
 //   N-6 雲改成 InstancedBufferGeometry 批次:低層 + 高層 + 地平線雲帶合計約 170 片,
 //       但只有 1 個 draw call(舊版 110 個 Sprite = 110 個 draw call)。
-import * as THREE from 'three';
+import * as THREE from 'three';//
+// ── R4-2 階層式陰影 CSM(docs/realism-spec.md §R4.2,2026-09-13) ──────────────
+// 原本是「一張正交陰影只罩核心區」:出了框就完全沒有影子,框內 2048² 攤在幾百單位上
+// 也不夠銳利。改成 CSM(3 層、practical 切分、2048²)後,近層 texel 密度大幅提高,
+// 遠層仍有影子。
+//
+// ⚠ 給整合代理:CSM 會改寫每一個「會被光照的材質」的 shader,**沒有註冊到 CSM 的
+//   MeshStandard／Lambert／Phong 材質會被三盞 cascade 燈各照一次 → 亮度變成三倍**。
+//   所以任何在資產載入後才新建/替換的材質,一定要註冊:
+//       environment.registerObject(group)    // 最常用:traverse 整棵子樹,自動撿出材質
+//       environment.registerMaterial(mat)    // 只有單一材質時
+//       environment.refreshShadowMaterials() // 懶人版:重掃整個 scene(冪等,可重複呼叫)
+//   三個都是冪等的,手機(無 CSM)時是 no-op,回傳新註冊的材質數。
+//   保險起見 update() 內每 0.2 秒會自動重掃一次 scene,漏接的材質最多亮 0.2 秒就會被收編。
+//   自寫 ShaderMaterial(天空、海面)本來就不吃 three 的燈光系統,不會被註冊也不受影響。
+import { CSM } from 'three/addons/csm/CSM.js';
 import { BillboardField, makeAtlas, mulberry, OCEAN_WAVE_GLSL } from './gfx.js';
 import { loadHDRI } from './assets.js';
 
@@ -60,7 +75,7 @@ const SUN_DIR = new THREE.Vector3(-0.81, 0.56, -0.16).normalize();
 const WAVE_GLSL = OCEAN_WAVE_GLSL + `
   float waveSum(vec2 p) { return oceanHeight(p, uTime); }`;
 
-export function createEnvironment(scene, { shadows = false, mobile = false, renderer = null } = {}) {
+export function createEnvironment(scene, { shadows = false, mobile = false, renderer = null, camera = null } = {}) {
   // ── 天空圓頂 ───────────────────────────────────────
   const skyUniforms = {
     uTop: { value: new THREE.Color(PALETTES.overcast.top) },
@@ -100,6 +115,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false, rend
     })
   );
   sky.renderOrder = -10;
+  sky.userData.noAO = true;   // R4-1:天空圓頂不進 GTAO 的 G-buffer(見 postfx.js 註)
   scene.add(sky);
 
   // ── 海面(N-1) ─────────────────────────────────────
@@ -179,6 +195,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false, rend
   );
   ocean.rotation.x = -Math.PI / 2;
   ocean.renderOrder = 0;
+  ocean.userData.noAO = true;   // R4-1:海面波形是 vertex shader 做的,override 材質畫出來會對不上
   scene.add(ocean);
 
   // ── 光照(P-2) ─────────────────────────────────────
@@ -187,7 +204,39 @@ export function createEnvironment(scene, { shadows = false, mobile = false, rend
   sun.position.copy(SUN_DIR).multiplyScalar(SUN_DIST);
   scene.add(sun);
   scene.add(sun.target);
-  if (shadows) {
+
+  // ── R4-2:階層式陰影(桌機) ─────────────────────────────
+  // sun 本身在開 CSM 時不發光也不投影(intensity 0),只當「日照方向」的單一真源;
+  // 光與影由 CSM 的三盞 cascade 燈負責。刻意留在 scene 裡而不移除:three 會把
+  // castShadow 的燈排在前面,一盞 intensity 0 的非投影平行光排在後面,對 cascade
+  // 索引與亮度都沒有影響。
+  const useCSM = shadows && !!camera;
+  const _lightDir = new THREE.Vector3();
+  let csm = null;
+  if (useCSM) {
+    _lightDir.copy(sun.position).sub(sun.target.position).normalize().negate();
+    csm = new CSM({
+      parent: scene,
+      camera,
+      cascades: 3,
+      maxFar: 3500,
+      mode: 'practical',
+      shadowMapSize: 2048,
+      shadowBias: -0.0006,
+      lightDirection: _lightDir.clone(),
+      lightIntensity: PALETTES.overcast.sunInt,
+      lightNear: 1,
+      lightFar: 12000,
+      lightMargin: 1200,
+    });
+    for (const l of csm.lights) {
+      l.shadow.bias = -0.0006;
+      l.shadow.normalBias = 0.8;
+    }
+    sun.intensity = 0;
+    sun.castShadow = false;
+  } else if (shadows) {
+    // 後備:沒有傳 camera 進來就退回原本的單張正交陰影(手機不會走到這裡)
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     const cam = sun.shadow.camera;
@@ -197,6 +246,62 @@ export function createEnvironment(scene, { shadows = false, mobile = false, rend
     sun.shadow.bias = -0.0006;
     sun.shadow.normalBias = 0.8;
   }
+
+  // ── CSM 材質註冊(給整合代理的入口,見檔頭註) ────────────────
+  const csmMats = new Set();
+  const LIT = (m) => !!(m && (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial
+    || m.isMeshLambertMaterial || m.isMeshPhongMaterial || m.isMeshToonMaterial));
+  function registerMaterial(mat) {
+    if (!csm || !LIT(mat) || csmMats.has(mat)) return 0;
+    csmMats.add(mat);
+    // ⚠ csm.setupMaterial 會直接覆寫 onBeforeCompile。地表／植被那些自己接了
+    //   onBeforeCompile 的材質必須串接,不能被吃掉。
+    const prev = mat.onBeforeCompile;
+    csm.setupMaterial(mat);
+    const hook = mat.onBeforeCompile;
+    if (typeof prev === 'function' && prev !== hook) {
+      mat.onBeforeCompile = function (shader, renderer) {
+        prev.call(this, shader, renderer);
+        hook.call(this, shader, renderer);
+      };
+    }
+    mat.needsUpdate = true;   // 已經編譯過的材質要重編(defines 變了)
+    return 1;
+  }
+  function registerObject(obj) {
+    if (!csm || !obj) return 0;
+    let n = 0;
+    obj.traverse((o) => {
+      const m = o.material;
+      if (!m) return;
+      if (Array.isArray(m)) { for (const x of m) n += registerMaterial(x); }
+      else n += registerMaterial(m);
+    });
+    return n;
+  }
+  const refreshShadowMaterials = () => registerObject(scene);
+  let csmScan = 0;
+  // 每幀在 controls／director 更新完、renderFrame 之前呼叫(main.js):
+  // cascade 框是跟著鏡頭視錐走的,必須拿到「這一幀最終的」camera 矩陣。
+  function updateShadows() {
+    if (!csm) return;
+    camera.updateMatrixWorld();
+    csm.update();
+  }
+  function resizeShadows() {   // 鏡頭 aspect／near／far 變了(resize)要重算切分
+    if (!csm) return;
+    csm.updateFrustums();
+  }
+  // 日相會動太陽方向的場次,每幀同步 cascade 燈的方向與顏色強度
+  function syncCSM(dt, color, intensity) {
+    if (!csm) return;
+    for (const l of csm.lights) { l.color.copy(color); l.intensity = intensity; }
+    _lightDir.copy(sun.position).sub(sun.target.position).normalize().negate();
+    if (!csm.lightDirection.equals(_lightDir)) csm.lightDirection.copy(_lightDir);
+    csmScan += dt;
+    if (csmScan > 0.2) { csmScan = 0; refreshShadowMaterials(); }   // 收編漏網材質
+  }
+
   const hemi = new THREE.HemisphereLight(0xc7dcea, 0x1d4c66, PALETTES.overcast.amb);
   scene.add(hemi);
 
@@ -225,6 +330,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false, rend
   const BAND = mobile ? 34 : 70;
   const total = LOW + HIGH + BAND;
   const clouds = new BillboardField(makeCloudAtlas(), total, { renderOrder: 1 });
+  clouds.mesh.userData.noAO = true;   // R4-1:instanced billboard,override 材質畫出來是垃圾
   scene.add(clouds.mesh);
 
   const rand = mulberry(42);
@@ -315,7 +421,8 @@ export function createEnvironment(scene, { shadows = false, mobile = false, rend
     oceanUniforms.uSunColor.value = lerpColor(pa.sun, pb.sun, f);
     oceanUniforms.uFog.value = lerpColor(pa.fog, pb.fog, f);
     sun.color = lerpColor(pa.sun, pb.sun, f);
-    sun.intensity = pa.sunInt + (pb.sunInt - pa.sunInt) * f;
+    const sunInt = pa.sunInt + (pb.sunInt - pa.sunInt) * f;
+    if (csm) syncCSM(dt, sun.color, sunInt); else sun.intensity = sunInt;
     hemi.intensity = pa.amb + (pb.amb - pa.amb) * f;
     scene.fog.color = lerpColor(pa.fog, pb.fog, f);
 
@@ -347,7 +454,12 @@ export function createEnvironment(scene, { shadows = false, mobile = false, rend
     sun.target.updateMatrixWorld();
   }
 
-  return { update, setShadowFocus, sunDir: SUN_DIR.clone(), sunLight: sun };
+  return {
+    update, setShadowFocus, sunDir: SUN_DIR.clone(), sunLight: sun,
+    updateShadows, resizeShadows,
+    registerMaterial, registerObject, refreshShadowMaterials,
+    csm: () => csm,
+  };
 }
 
 // ── 貼圖 ──────────────────────────────────────────────

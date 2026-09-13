@@ -59,7 +59,10 @@ export const ENV_BY_PHASE = {
   clear: 'kloofendal_48d_partly_cloudy_puresky',
 };
 
-export function createAssets({ mobile = false, renderer = null } = {}) {
+// onMaterial:R4-2 的 CSM 材質註冊掛勾(main.js 傳 environment.registerMaterial 進來)。
+//   glb 一載進來就先收編一次,之後被 clone／換材質的,由呼叫端自己
+//   `environment.registerObject(group)`(environment.js 檔頭有說明)。
+export function createAssets({ mobile = false, renderer = null, onMaterial = null } = {}) {
   const tier = mobile ? 'mobile' : 'desktop';
   const anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 8;
 
@@ -127,6 +130,17 @@ export function createAssets({ mobile = false, renderer = null } = {}) {
   }
 
   // 模型:回傳 Promise<GLTF|null>。找不到／載入失敗一律 null(呼叫端保留程序化)。
+  // R4-2:把一棵 glb 子樹內的材質交給 onMaterial(通常是 environment.registerMaterial)
+  function registerMaterials(root) {
+    if (!onMaterial || !root) return;
+    root.traverse((o) => {
+      const m = o.material;
+      if (!m) return;
+      if (Array.isArray(m)) for (const x of m) onMaterial(x);
+      else onMaterial(m);
+    });
+  }
+
   // hi:桌機高規版(manifest 的 files.desktop.glb_hi,512² 貼圖、面數放寬);手機或沒有高規版時
   //    自動退回一般版,呼叫端不必分支。
   function model(id, { hi = false } = {}) {
@@ -141,7 +155,7 @@ export function createAssets({ mobile = false, renderer = null } = {}) {
       return p;
     }
     const p = new Promise((resolve) => {
-      gltfLoader.load(path, (gltf) => resolve(gltf), undefined, () => {
+      gltfLoader.load(path, (gltf) => { registerMaterials(gltf?.scene); resolve(gltf); }, undefined, () => {
         missing.push(id);
         console.info(`[assets] 模型尚未產出,保留程序化:${id}`);
         resolve(null);

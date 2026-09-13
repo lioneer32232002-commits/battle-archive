@@ -8,7 +8,22 @@
 // P-2：太陽 castShadow，正交範圍只罩市鎮＋西南圩田的戰鬥核心區。
 // P-5：沿 sun 方向在天幕上放太陽本體 Sprite ＋ 更大更淡的光暈；低仰角時放大轉橘。
 // P-6：sky shader 地平線再混一層薄霧帶，地平線不是一條硬線。
-import * as THREE from 'three';
+import * as THREE from 'three';//
+// ── R4-2 階層式陰影 CSM(docs/realism-spec.md §R4.2,2026-09-13) ──────────────
+// 原本是「一張正交陰影只罩核心區」:出了框就完全沒有影子,框內 2048² 攤在幾百單位上
+// 也不夠銳利。改成 CSM(3 層、practical 切分、2048²)後,近層 texel 密度大幅提高,
+// 遠層仍有影子。
+//
+// ⚠ 給整合代理:CSM 會改寫每一個「會被光照的材質」的 shader,**沒有註冊到 CSM 的
+//   MeshStandard／Lambert／Phong 材質會被三盞 cascade 燈各照一次 → 亮度變成三倍**。
+//   所以任何在資產載入後才新建/替換的材質,一定要註冊:
+//       environment.registerObject(group)    // 最常用:traverse 整棵子樹,自動撿出材質
+//       environment.registerMaterial(mat)    // 只有單一材質時
+//       environment.refreshShadowMaterials() // 懶人版:重掃整個 scene(冪等,可重複呼叫)
+//   三個都是冪等的,手機(無 CSM)時是 no-op,回傳新註冊的材質數。
+//   保險起見 update() 內每 0.2 秒會自動重掃一次 scene,漏接的材質最多亮 0.2 秒就會被收編。
+//   自寫 ShaderMaterial(天空、海面)本來就不吃 three 的燈光系統,不會被註冊也不受影響。
+import { CSM } from 'three/addons/csm/CSM.js';
 
 // 日相調色盤（皆已為 ACES 補償後的值）
 // dir = 太陽方向單位向量（x 東、y 上、z 南）；lowSun 用於太陽本體放大轉橘與地平霧帶加厚。
@@ -82,7 +97,7 @@ function phaseAt(t) {
 function lerpColor(a, b, f) { return new THREE.Color(a).lerp(new THREE.Color(b), f); }
 function lerpNum(a, b, f) { return a + (b - a) * f; }
 
-export function createEnvironment(scene, { shadows = false, mobile = false } = {}) {
+export function createEnvironment(scene, { shadows = false, mobile = false, camera = null } = {}) {
   const P0 = PALETTES.dawn;
 
   // ── 天空圓頂（P-6：地平線再疊一層薄霧帶） ───────────────────
@@ -117,6 +132,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false } = {
         }`,
     })
   );
+  sky.userData.noAO = true;   // R4-1:天空圓頂不進 GTAO 的 G-buffer(見 postfx.js 註)
   scene.add(sky);
 
   // ── 星空（藍調微光時段的天幕；天亮淡出） ────────────────────
@@ -157,21 +173,104 @@ export function createEnvironment(scene, { shadows = false, mobile = false } = {
   // P-2：陰影只罩「市鎮＋西南圩田」的戰鬥核心區（範圍越緊越銳利）
   sun.target.position.set(-40, 0, 20);
   scene.add(sun.target);
-  if (shadows) {
+
+  // ── R4-2:階層式陰影(桌機) ─────────────────────────────
+  // sun 本身在開 CSM 時不發光也不投影(intensity 0),只當「日照方向」的單一真源;
+  // 光與影由 CSM 的三盞 cascade 燈負責。刻意留在 scene 裡而不移除:three 會把
+  // castShadow 的燈排在前面,一盞 intensity 0 的非投影平行光排在後面,對 cascade
+  // 索引與亮度都沒有影響。
+  const useCSM = shadows && !!camera;
+  const _lightDir = new THREE.Vector3();
+  let csm = null;
+  if (useCSM) {
+    _lightDir.copy(sun.position).sub(sun.target.position).normalize().negate();
+    csm = new CSM({
+      parent: scene,
+      camera,
+      cascades: 3,
+      maxFar: 900,
+      mode: 'practical',
+      shadowMapSize: 2048,
+      shadowBias: -0.0004,
+      lightDirection: _lightDir.clone(),
+      lightIntensity: P0.sunInt,
+      lightNear: 1,
+      lightFar: 5200,
+      lightMargin: 300,
+    });
+    for (const l of csm.lights) {
+      l.shadow.bias = -0.0004;
+      l.shadow.normalBias = 0.15;
+    }
+    sun.intensity = 0;
+    sun.castShadow = false;
+  } else if (shadows) {
+    // 後備:沒有傳 camera 進來就退回原本的單張正交陰影(手機不會走到這裡)
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     const cam = sun.shadow.camera;
     cam.left = -320; cam.right = 320; cam.top = 320; cam.bottom = -320;
     cam.near = 400; cam.far = 5200;
     sun.shadow.bias = -0.0004;
-    // 本場 1 單位 = 10 公尺、小兵僅約 2 單位高：normalBias 沿用巴斯通的 0.8 會把接地影整個推掉，
-    // 2048 map 罩 640 單位 → 每 texel 0.31 單位，取 0.15（約半個 texel）剛好去掉痤瘡又留得住影子。
     sun.shadow.normalBias = 0.15;
-    // ⚠️ 改了正交範圍／near／far 之後一定要 updateProjectionMatrix()：
-    //    three 的 LightShadow.updateMatrices() 只更新位置與朝向，不會重算投影矩陣，
-    //    少這一行的話陰影相機仍是預設的 ±5、far 500，光源在 2600 外 → 整場完全沒有影子。
     sun.shadow.camera.updateProjectionMatrix();
   }
+
+  // ── CSM 材質註冊(給整合代理的入口,見檔頭註) ────────────────
+  const csmMats = new Set();
+  const LIT = (m) => !!(m && (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial
+    || m.isMeshLambertMaterial || m.isMeshPhongMaterial || m.isMeshToonMaterial));
+  function registerMaterial(mat) {
+    if (!csm || !LIT(mat) || csmMats.has(mat)) return 0;
+    csmMats.add(mat);
+    // ⚠ csm.setupMaterial 會直接覆寫 onBeforeCompile。地表／植被那些自己接了
+    //   onBeforeCompile 的材質必須串接,不能被吃掉。
+    const prev = mat.onBeforeCompile;
+    csm.setupMaterial(mat);
+    const hook = mat.onBeforeCompile;
+    if (typeof prev === 'function' && prev !== hook) {
+      mat.onBeforeCompile = function (shader, renderer) {
+        prev.call(this, shader, renderer);
+        hook.call(this, shader, renderer);
+      };
+    }
+    mat.needsUpdate = true;   // 已經編譯過的材質要重編(defines 變了)
+    return 1;
+  }
+  function registerObject(obj) {
+    if (!csm || !obj) return 0;
+    let n = 0;
+    obj.traverse((o) => {
+      const m = o.material;
+      if (!m) return;
+      if (Array.isArray(m)) { for (const x of m) n += registerMaterial(x); }
+      else n += registerMaterial(m);
+    });
+    return n;
+  }
+  const refreshShadowMaterials = () => registerObject(scene);
+  let csmScan = 0;
+  // 每幀在 controls／director 更新完、renderFrame 之前呼叫(main.js):
+  // cascade 框是跟著鏡頭視錐走的,必須拿到「這一幀最終的」camera 矩陣。
+  function updateShadows() {
+    if (!csm) return;
+    camera.updateMatrixWorld();
+    csm.update();
+  }
+  function resizeShadows() {   // 鏡頭 aspect／near／far 變了(resize)要重算切分
+    if (!csm) return;
+    csm.updateFrustums();
+  }
+  // 日相會動太陽方向的場次,每幀同步 cascade 燈的方向與顏色強度
+  function syncCSM(dt, color, intensity) {
+    if (!csm) return;
+    for (const l of csm.lights) { l.color.copy(color); l.intensity = intensity; }
+    _lightDir.copy(sun.position).sub(sun.target.position).normalize().negate();
+    if (!csm.lightDirection.equals(_lightDir)) csm.lightDirection.copy(_lightDir);
+    csmScan += dt;
+    if (csmScan > 0.2) { csmScan = 0; refreshShadowMaterials(); }   // 收編漏網材質
+  }
+
   const hemi = new THREE.HemisphereLight(P0.hemiSky, P0.hemiGnd, P0.amb);
   scene.add(hemi);
 
@@ -308,6 +407,8 @@ export function createEnvironment(scene, { shadows = false, mobile = false } = {
       lerpNum(pa.dir[2], pb.dir[2], f)
     ).normalize();
     sun.position.copy(_dir).multiplyScalar(SUN_DIST).add(sun.target.position);
+    // R4-2:太陽在天空劃弧 → cascade 燈的方向／顏色／強度每幀同步
+    if (csm) syncCSM(dt, sun.color, lerpNum(pa.sunInt, pb.sunInt, f));
 
     // P-5：太陽本體貼天幕；低仰角放大、偏橘（bloom 會自然讓它泛光）
     const size = lerpNum(pa.sunSize, pb.sunSize, f);
@@ -350,7 +451,12 @@ export function createEnvironment(scene, { shadows = false, mobile = false } = {
     }
   }
 
-  return { update, sun, applyAssets, envActive: () => envOn };
+  return {
+    update, sun, applyAssets, envActive: () => envOn,
+    updateShadows, resizeShadows,
+    registerMaterial, registerObject, refreshShadowMaterials,
+    csm: () => csm,
+  };
 }
 
 function makeCloudTexture() {

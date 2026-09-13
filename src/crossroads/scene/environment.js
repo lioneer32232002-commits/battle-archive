@@ -8,7 +8,22 @@
 // P-2：太陽 castShadow，正交範圍只罩堤防戰鬥核心區（±300）。
 // P-5：沿 sun 方向的太陽本體 Sprite ＋ 更大更淡的光暈；拂曉橘紅低日、白晝縮小變白。
 // P-6：sky shader 地平線再混一層霧帶，讓地平線不是一條硬線（濃霧日尤其重要）。
-import * as THREE from 'three';
+import * as THREE from 'three';//
+// ── R4-2 階層式陰影 CSM(docs/realism-spec.md §R4.2,2026-09-13) ──────────────
+// 原本是「一張正交陰影只罩核心區」:出了框就完全沒有影子,框內 2048² 攤在幾百單位上
+// 也不夠銳利。改成 CSM(3 層、practical 切分、2048²)後,近層 texel 密度大幅提高,
+// 遠層仍有影子。
+//
+// ⚠ 給整合代理:CSM 會改寫每一個「會被光照的材質」的 shader,**沒有註冊到 CSM 的
+//   MeshStandard／Lambert／Phong 材質會被三盞 cascade 燈各照一次 → 亮度變成三倍**。
+//   所以任何在資產載入後才新建/替換的材質,一定要註冊:
+//       environment.registerObject(group)    // 最常用:traverse 整棵子樹,自動撿出材質
+//       environment.registerMaterial(mat)    // 只有單一材質時
+//       environment.refreshShadowMaterials() // 懶人版:重掃整個 scene(冪等,可重複呼叫)
+//   三個都是冪等的,手機(無 CSM)時是 no-op,回傳新註冊的材質數。
+//   保險起見 update() 內每 0.2 秒會自動重掃一次 scene,漏接的材質最多亮 0.2 秒就會被收編。
+//   自寫 ShaderMaterial(天空、海面)本來就不吃 three 的燈光系統,不會被註冊也不受影響。
+import { CSM } from 'three/addons/csm/CSM.js';
 
 // 日相調色盤（皆已為 ACES 補償後的值；fogNear/fogFar 是這場的主要情緒旋鈕）
 const PALETTES = {
@@ -46,7 +61,7 @@ function lerpColor(a, b, f) {
 }
 function lerpNum(a, b, f) { return a + (b - a) * f; }
 
-export function createEnvironment(scene, { shadows = false, mobile = false } = {}) {
+export function createEnvironment(scene, { shadows = false, mobile = false, camera = null } = {}) {
   // ── 天空圓頂（P-6：地平線再疊一層霧帶） ─────────────────────
   const skyUniforms = {
     uTop: { value: new THREE.Color(PALETTES.night.top) },
@@ -79,6 +94,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false } = {
         }`,
     })
   );
+  sky.userData.noAO = true;   // R4-1:天空圓頂不進 GTAO 的 G-buffer(見 postfx.js 註)
   scene.add(sky);
 
   // ── 星空（拂曉前的天幕，天亮淡出） ────────────────────────
@@ -116,17 +132,104 @@ export function createEnvironment(scene, { shadows = false, mobile = false } = {
   sun.position.set(2400, PALETTES.night.sunY, -320); // 拂曉自東方（下萊茵河上游）低斜射入
   scene.add(sun);
   scene.add(sun.target);
-  if (shadows) {
-    // P-2：陰影只罩堤防戰鬥核心區（收緊的正交範圍，範圍越緊越銳利）
+
+  // ── R4-2:階層式陰影(桌機) ─────────────────────────────
+  // sun 本身在開 CSM 時不發光也不投影(intensity 0),只當「日照方向」的單一真源;
+  // 光與影由 CSM 的三盞 cascade 燈負責。刻意留在 scene 裡而不移除:three 會把
+  // castShadow 的燈排在前面,一盞 intensity 0 的非投影平行光排在後面,對 cascade
+  // 索引與亮度都沒有影響。
+  const useCSM = shadows && !!camera;
+  const _lightDir = new THREE.Vector3();
+  let csm = null;
+  if (useCSM) {
+    _lightDir.copy(sun.position).sub(sun.target.position).normalize().negate();
+    csm = new CSM({
+      parent: scene,
+      camera,
+      cascades: 3,
+      maxFar: 900,
+      mode: 'practical',
+      shadowMapSize: 2048,
+      shadowBias: -0.0006,
+      lightDirection: _lightDir.clone(),
+      lightIntensity: PALETTES.night.sunInt,
+      lightNear: 1,
+      lightFar: 4000,
+      lightMargin: 300,
+    });
+    for (const l of csm.lights) {
+      l.shadow.bias = -0.0006;
+      l.shadow.normalBias = 0.15;
+    }
+    sun.intensity = 0;
+    sun.castShadow = false;
+  } else if (shadows) {
+    // 後備:沒有傳 camera 進來就退回原本的單張正交陰影(手機不會走到這裡)
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     const cam = sun.shadow.camera;
     cam.left = -300; cam.right = 300; cam.top = 300; cam.bottom = -300;
     cam.near = 200; cam.far = 4200;
     sun.shadow.bias = -0.0006;
-    sun.shadow.normalBias = 0.15;   // 1 單位≈10 公尺,0.8 會把採樣點推出 8 公尺(卡倫坦實測 0.15 即可)
-    cam.updateProjectionMatrix();   // 改完正交範圍必須重算投影矩陣,否則仍是預設 ±5
+    sun.shadow.normalBias = 0.15;
+    cam.updateProjectionMatrix();
   }
+
+  // ── CSM 材質註冊(給整合代理的入口,見檔頭註) ────────────────
+  const csmMats = new Set();
+  const LIT = (m) => !!(m && (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial
+    || m.isMeshLambertMaterial || m.isMeshPhongMaterial || m.isMeshToonMaterial));
+  function registerMaterial(mat) {
+    if (!csm || !LIT(mat) || csmMats.has(mat)) return 0;
+    csmMats.add(mat);
+    // ⚠ csm.setupMaterial 會直接覆寫 onBeforeCompile。地表／植被那些自己接了
+    //   onBeforeCompile 的材質必須串接,不能被吃掉。
+    const prev = mat.onBeforeCompile;
+    csm.setupMaterial(mat);
+    const hook = mat.onBeforeCompile;
+    if (typeof prev === 'function' && prev !== hook) {
+      mat.onBeforeCompile = function (shader, renderer) {
+        prev.call(this, shader, renderer);
+        hook.call(this, shader, renderer);
+      };
+    }
+    mat.needsUpdate = true;   // 已經編譯過的材質要重編(defines 變了)
+    return 1;
+  }
+  function registerObject(obj) {
+    if (!csm || !obj) return 0;
+    let n = 0;
+    obj.traverse((o) => {
+      const m = o.material;
+      if (!m) return;
+      if (Array.isArray(m)) { for (const x of m) n += registerMaterial(x); }
+      else n += registerMaterial(m);
+    });
+    return n;
+  }
+  const refreshShadowMaterials = () => registerObject(scene);
+  let csmScan = 0;
+  // 每幀在 controls／director 更新完、renderFrame 之前呼叫(main.js):
+  // cascade 框是跟著鏡頭視錐走的,必須拿到「這一幀最終的」camera 矩陣。
+  function updateShadows() {
+    if (!csm) return;
+    camera.updateMatrixWorld();
+    csm.update();
+  }
+  function resizeShadows() {   // 鏡頭 aspect／near／far 變了(resize)要重算切分
+    if (!csm) return;
+    csm.updateFrustums();
+  }
+  // 日相會動太陽方向的場次,每幀同步 cascade 燈的方向與顏色強度
+  function syncCSM(dt, color, intensity) {
+    if (!csm) return;
+    for (const l of csm.lights) { l.color.copy(color); l.intensity = intensity; }
+    _lightDir.copy(sun.position).sub(sun.target.position).normalize().negate();
+    if (!csm.lightDirection.equals(_lightDir)) csm.lightDirection.copy(_lightDir);
+    csmScan += dt;
+    if (csmScan > 0.2) { csmScan = 0; refreshShadowMaterials(); }   // 收編漏網材質
+  }
+
   const hemi = new THREE.HemisphereLight(0xbfcbd0, 0x35402c, PALETTES.night.amb);
   scene.add(hemi);
 
@@ -206,8 +309,9 @@ export function createEnvironment(scene, { shadows = false, mobile = false } = {
     skyUniforms.uFog.value = lerpColor(pa.fog, pb.fog, f);
     ground.material.color = lerpColor(pa.ground, pb.ground, f);
     sun.color = lerpColor(pa.sun, pb.sun, f);
-    sun.intensity = lerpNum(pa.sunInt, pb.sunInt, f);
-    sun.position.y = lerpNum(pa.sunY, pb.sunY, f);
+    const sunInt = lerpNum(pa.sunInt, pb.sunInt, f);
+    sun.position.y = lerpNum(pa.sunY, pb.sunY, f);   // 太陽方向隨日相變 → cascade 方向要跟著
+    if (csm) syncCSM(dt, sun.color, sunInt); else sun.intensity = sunInt;
     hemi.intensity = lerpNum(pa.amb, pb.amb, f);
     scene.fog.color = lerpColor(pa.fog, pb.fog, f);
     scene.fog.near = lerpNum(pa.fogNear, pb.fogNear, f);
@@ -285,7 +389,12 @@ export function createEnvironment(scene, { shadows = false, mobile = false } = {
     scene.environmentIntensity = ENV_MAX * (0.12 + 0.88 * Math.min(1, d * 1.25));
   }
 
-  return { update, sun, daylightAt, applyAssets };
+  return {
+    update, sun, daylightAt, applyAssets,
+    updateShadows, resizeShadows,
+    registerMaterial, registerObject, refreshShadowMaterials,
+    csm: () => csm,
+  };
 }
 
 // 中心實、外緣柔的圓（太陽本體用 stop 靠外、光暈用 stop 靠內）

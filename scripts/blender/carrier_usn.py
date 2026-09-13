@@ -26,8 +26,7 @@ FD_HALF = 13.0
 FD_Y0, FD_Y1 = -119.0, 122.0
 
 
-def main():
-    args = C.parse_args()
+def build(args=None, export=True):
     C.reset_scene()
     M = N.palette("usn")
 
@@ -149,11 +148,17 @@ def main():
     bpy.data.objects.remove(proto, do_unlink=True)
 
     body = C.join(parts, "carrier_usn")
+    if not export:
+        return [body]
     return C.finish([body], "carrier_usn", args, tri_budget=10000, water=True,
                     previews=[("side", dict(azimuth=88, elevation=4, water=True,
                                             target=(0, 0, 9))),
                               ("top", dict(azimuth=30, elevation=52,
                                            water=True))])
+
+
+def main():
+    build(C.parse_args())
 
 
 if __name__ == "__main__":

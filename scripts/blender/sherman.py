@@ -154,7 +154,8 @@ BARREL_AT = Vector((0, 0.95, 0.30))      # 耳軸（砲塔本地）
 HATCH_AT = Vector((0.36, -0.70, 0.90))   # 艙門鉸鏈（砲塔本地）
 
 
-def main():
+def build():
+    """建出 [hull, turret, barrel, hatch]（已設好樞軸與父子關係，不匯出）。"""
     C.reset()
     hull = build_hull()
 
@@ -175,6 +176,11 @@ def main():
 
     objs = [hull, turret, barrel, hatch]
     bpy.context.view_layer.update()
+    return objs
+
+
+def main():
+    objs = build()
     _, n = C.export(objs, 'sherman')
     C.render(objs, 'sherman', yaw=42, pitch=20, zoom=1.05)
     C.render(objs, 'sherman_side', yaw=92, pitch=8, zoom=1.04)

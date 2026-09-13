@@ -118,7 +118,8 @@ def build_barrel():
     return b.finish('barrel', uv_scale=0.5)
 
 
-def main():
+def build():
+    """建出 [hull, barrel]（已設好樞軸與父子關係，不匯出）。"""
     C.reset()
     hull = build_hull()
     barrel = build_barrel()
@@ -127,6 +128,11 @@ def main():
     C.setparent(barrel, hull)
     objs = [hull, barrel]
     bpy.context.view_layer.update()
+    return objs
+
+
+def main():
+    objs = build()
     _, n = C.export(objs, 'stug')
     C.render(objs, 'stug', yaw=42, pitch=18, zoom=1.05)
     C.render(objs, 'stug_side', yaw=92, pitch=8, zoom=1.04)

@@ -19,7 +19,7 @@ R = math.radians
 LOA = 118.0
 
 
-def build(nation, args):
+def build(nation, args, export=True):
     C.reset_scene()
     M = N.palette(nation)
     ijn = nation == "ijn"
@@ -136,6 +136,8 @@ def build(nation, args):
     bpy.data.objects.remove(proto, do_unlink=True)
 
     body = C.join(parts, "destroyer_" + nation)
+    if not export:
+        return [body]
     return C.finish([body], "destroyer_" + nation, args, tri_budget=5000,
                     water=True,
                     previews=[("side", dict(azimuth=88, elevation=4, water=True,

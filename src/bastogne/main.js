@@ -51,7 +51,12 @@ controls.minDistance = 20;
 controls.maxDistance = 3000;
 controls.enableDamping = true;
 
-const environment = createEnvironment(scene, { shadows: SHADOWS });
+// R4 驗收用:dev server 加 ?legacy=1 就整條回到升級前(單張正交陰影＋舊後製),
+// 同機位拍開／關對照。import.meta.env.DEV 在正式 build 是常數 false,整段會被搖掉。
+const QA_LEGACY = !!(import.meta.env && import.meta.env.DEV) && location.search.includes('legacy=1');
+
+// R4-2:CSM 需要鏡頭(cascade 框跟著視錐走);手機不傳 shadows 就完全不建 CSM
+const environment = createEnvironment(scene, { shadows: SHADOWS, camera: QA_LEGACY ? null : camera });
 const terrain = createBastogneTerrain(scene, { shadows: SHADOWS, mobile: isMobile });
 const effects = new Effects(scene, { mobile: isMobile });
 const director = new Director(camera, controls);
@@ -60,7 +65,26 @@ const snow = createSnow(scene, { count: isMobile ? 500 : 1500 });
 const townFires = createTownFires(scene, [{ x: 40, z: 300 }, { x: -30, z: 320 }, { x: 110, z: 300 }]);
 
 // 後製 composer(桌機);手機直接 renderer.render
-const post = POSTFX ? createComposer(renderer, scene, camera) : null;
+// R4-4 調色:巴斯通＝低飽和冷灰(圍城的陰霾與雪),陰影再壓一點青、亮部只留極淡的暖,
+//   對比走 S 曲線讓雪面不死白、林線不糊成一團。
+const post = POSTFX ? createComposer(renderer, scene, camera, {
+  grade: {
+    lift: [0.004, 0.008, 0.016],
+    gamma: [1.00, 1.00, 1.015],
+    gain: [0.975, 0.99, 1.035],
+    saturation: 0.86,
+    contrast: 0.20,
+    shadowTint: [0.0, 0.5, 0.7],
+    highlightTint: [0.8, 0.55, 0.15],
+    split: [0.045, 0.03],
+  },
+  // GTAO:規格寫「陸戰約 6 單位」,但本場 1 單位≈1 個人身寬,實測 6 單位的取樣半徑太散、
+  //   接地感反而不見(AO 幾乎恆為 1)。收到 4 並把 scale 拉到 1.5、blend 0.7,
+  //   才在士兵腳下、沙包堆、散兵坑緣、彈藥箱底看得到接觸暗部,且無黑邊光暈。
+  gtao: { radius: 4, distanceExponent: 1, thickness: 1, scale: 1.5, blend: 0.7 },
+  bokeh: { aperture: 0.00008, maxblur: 0.006 },
+}) : null;
+if (QA_LEGACY && post) post.setPipeline('legacy');
 function renderFrame(dt) {
   if (post) post.render(dt);
   else renderer.render(scene, camera);
@@ -71,6 +95,7 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   if (post) post.setSize(window.innerWidth, window.innerHeight);
+  environment.resizeShadows();   // CSM 的切分是依鏡頭視錐算的
 });
 
 // 地名標籤
@@ -102,10 +127,16 @@ for (const u of units) {
   group.rotation.y = u.facing != null ? u.facing : 0;
 }
 
+// R4-2:程序化場景建好後,把現有材質一次註冊給 CSM(之後載入的資產另外再註冊一次)
+environment.refreshShadowMaterials();
+
 // ── 真實資產(docs/asset-pipeline-spec.md §3) ────────────────
 // 場景已經在上面用程序化版本建好、也已經開始跑;資產是「之後補上去」的,
 // 任何一項失敗都只是留著程序化版本,首屏與 HUD 不等它。
-const assets = createAssets({ mobile: isMobile, renderer });
+const assets = createAssets({
+  mobile: isMobile, renderer,
+  onMaterial: (m) => environment.registerMaterial(m),   // R4-2:glb 材質一載進來就註冊給 CSM
+});
 const assetsApplied = assets.ready.then(async () => {
   environment.applyAssets(assets);
   const terrainDone = await terrain.applyAssets(assets);
@@ -114,7 +145,9 @@ const assetsApplied = assets.ready.then(async () => {
     const ok = await upgradeUnit(o.group, o.spec, assets, { shadows: SHADOWS });
     if (ok) { o.mats = null; o.faded = false; unitDone.push(o.spec.id); }
   }
-  const report = { terrain: terrainDone, units: unitDone, missing: assets.missingModels() };
+  // 換模／換材質之後一定要重新註冊,否則新材質會被三盞 cascade 燈各照一次(變三倍亮)
+  const csmMats = environment.refreshShadowMaterials();
+  const report = { terrain: terrainDone, units: unitDone, csmMats, missing: assets.missingModels() };
   if (import.meta.env && import.meta.env.DEV) console.info('[bastogne] 資產替換', report);
   return report;
 }).catch((e) => { console.warn('[bastogne] 資產替換失敗,保留程序化場景', e); return null; });
@@ -445,6 +478,14 @@ function tick() {
     hud.setHeading(camBearing);
   }
 
+  // R4-2／R4-3:鏡頭這一幀已經定案 → 更新 cascade 陰影框、跟拍景深
+  environment.updateShadows();
+  if (post) {
+    const following = director.mode === 'director' && !!director.followFn;
+    post.setBokeh(following);
+    if (following) post.setFocus(camera.position.distanceTo(controls.target));
+  }
+
   panelAcc += dt;
   if (panelAcc > 0.5) {
     panelAcc = 0;
@@ -465,16 +506,30 @@ function animateScene(time) {
 }
 
 // ── 動態解析度(C-3):滾動平均 FPS,每 2 秒結算 ─────────────
+// R4-6:降級順序是「先砍 GTAO 再降解析度」(GTAO 內部要重跑一次幾何,是最貴的一關)。
+//   0 = 全開 → 1 = GTAO 降 1/4 解析度 → 2 = GTAO 關 → 之後才動 pixelRatio。
 let fpsAcc = 0, fpsFrames = 0, fpsTimer = 0, goodStreak = 0;
 let curRatio = DPR_CAP;
+let aoLevel = 0;
+let perfLock = false;   // __dbg.dbgPerf 量測期間凍結動態解析度
 const FLOOR = isMobile ? 1.0 : DPR_CAP * 0.75;
+function setAoLevel(n) {
+  if (!post || aoLevel === n) return;
+  aoLevel = n;
+  post.setGtaoScale(n >= 1 ? 0.25 : 0.5);
+  post.setGTAO(n < 2);
+}
 function fpsSample(dt) {
   fpsAcc += dt; fpsFrames++; fpsTimer += dt;
   if (fpsTimer < 2) return;
   const fps = fpsFrames / fpsAcc;
   fpsTimer = 0; fpsAcc = 0; fpsFrames = 0;
+  if (perfLock) return;
   const lowT = isMobile ? 27 : 45;
-  if (fps < lowT && curRatio > FLOOR) {
+  if (fps < lowT && post && aoLevel < 2) {
+    setAoLevel(aoLevel + 1);
+    goodStreak = 0;
+  } else if (fps < lowT && curRatio > FLOOR) {
     curRatio = Math.max(FLOOR, curRatio - 0.25);
     renderer.setPixelRatio(curRatio); if (post) post.setPixelRatio(curRatio);
     snow.setCount(isMobile ? 260 : 780);   // 降級同時砍半雪粒子
@@ -485,6 +540,9 @@ function fpsSample(dt) {
       curRatio = Math.min(DPR_CAP, curRatio + 0.25);
       renderer.setPixelRatio(curRatio); if (post) post.setPixelRatio(curRatio);
       snow.setCount(isMobile ? 500 : 1500);
+      goodStreak = 0;
+    } else if (goodStreak >= 4 && aoLevel > 0) {
+      setAoLevel(aoLevel - 1);
       goodStreak = 0;
     }
   } else goodStreak = 0;
@@ -506,6 +564,7 @@ if (import.meta.env && import.meta.env.DEV) {
       restoreLook(o);
     }
     environment.update(0, t);
+    environment.updateShadows();
     renderFrame(0.016);
     return t;
   };
@@ -514,6 +573,7 @@ if (import.meta.env && import.meta.env.DEV) {
     camera.position.set(px, py, pz);
     camera.lookAt(tx, ty, tz);
     camera.updateMatrixWorld();
+    environment.updateShadows();
     renderFrame(0.016);
   };
   // 美術驗收:凍結運鏡與 HUD,讓截圖只反映場景本身
@@ -524,10 +584,50 @@ if (import.meta.env && import.meta.env.DEV) {
     st.textContent = 'aside,.side-panel,.event-card,.intel-card,.summary,.figure-card{display:none!important}';
     document.head.appendChild(st);
   };
+  // R4-6 效能量測:固定 1600×1000、dpr 1.5,同步量單幀渲染時間。
+  // ⚠ gl.finish() 在 ANGLE/D3D11 上不會真的擋住 CPU(實測同一幀量出 5 ms 與 123 ms),
+  //   要用 readPixels 讀預設 framebuffer 才會逼出真正的同步點。
+  const _px = new Uint8Array(4);
+  const dbgPerf = (n = 10) => {
+    const gl = renderer.getContext();
+    const sync = () => { renderer.setRenderTarget(null); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, _px); };
+    const prevRatio = renderer.getPixelRatio();
+    const prevSize = renderer.getSize(new THREE.Vector2());
+    const prevAspect = camera.aspect;
+    perfLock = true;
+    renderer.setPixelRatio(1.5);
+    renderer.setSize(1600, 1000, false);
+    if (post) post.setSize(1600, 1000);
+    camera.aspect = 1.6; camera.updateProjectionMatrix();
+    renderFrame(0.016); sync();
+    const t0 = performance.now();
+    for (let i = 0; i < n; i++) renderFrame(0.016);
+    sync();
+    const ms = (performance.now() - t0) / n;
+    renderer.setPixelRatio(prevRatio);
+    renderer.setSize(prevSize.x, prevSize.y, false);
+    if (post) post.setSize(prevSize.x, prevSize.y);
+    camera.aspect = prevAspect; camera.updateProjectionMatrix();
+    perfLock = false;
+    return Math.round(ms * 100) / 100;
+  };
   window.__dbg = {
     dbgFreeze,
     THREE, scene, camera, controls, renderer, director, effects, terrain, environment, dbgSeek, dbgLook,
-    assets, assetsApplied,
+    assets, assetsApplied, post, dbgPerf,
+    // A/B 對照:__dbg.pipeline('legacy') 回到升級前的管線,('modern') 全開
+    pipeline: (mode) => { if (post) post.setPipeline(mode); renderFrame(0.016); return mode; },
+    // 截圖前凍結畫質(擋掉動態解析度／GTAO 自動降級,否則慢機器上拍到的是降級後的畫面)
+    freezeQuality: (on = true) => {
+      perfLock = !!on;
+      if (on) {   // 回到全畫質:GTAO 全開、pixelRatio 回到上限
+        setAoLevel(0);
+        curRatio = DPR_CAP;
+        renderer.setPixelRatio(curRatio);
+        if (post) post.setPixelRatio(curRatio);
+      }
+      return perfLock;
+    },
     render: () => renderFrame(0.016),
   };
 
