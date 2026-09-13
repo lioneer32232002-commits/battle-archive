@@ -9,7 +9,8 @@ import {
 import { unitStateAt, newEvents } from './engine/timeline.js';
 import { createEnvironment } from './scene/environment.js';
 import { createBastogneTerrain } from './scene/terrain.js';
-import { createUnit, upgradeUnit } from './scene/soldiers.js';
+import { createUnit, upgradeUnit, animateUnit } from './scene/soldiers.js';
+import { getQuality, cycleQuality, TIER_LABEL } from './scene/quality.js';
 import { createAssets } from './scene/assets.js';
 import { Effects } from './scene/effects.js';
 import { makeLabel } from './scene/labels.js';
@@ -21,13 +22,16 @@ import { createComposer } from './scene/postfx.js';
 
 const isMobile = window.matchMedia('(max-width: 640px)').matches;
 const LABEL_SCALE = isMobile ? 0.6 : 1;
-const SHADOWS = !isMobile;   // B-2：陰影桌機限定
-const POSTFX = !isMobile;    // B-5：後製桌機限定
+// R5 畫質分級:?q=high|medium|low → localStorage → 依 UNMASKED_RENDERER 自動判定。
+//   一定要在建場景**之前**問出來:植被數量、CSM 層數、composer 組成都是建構時決定的。
+const Q = getQuality({ mobile: isMobile });
+const SHADOWS = Q.shadows !== 'none';   // B-2：陰影桌機限定
+const POSTFX = !isMobile;               // B-5：後製桌機限定(low 只剩 OutputPass＋調色)
 
 // ── 基本場景 ─────────────────────────────────────────
 const container = document.getElementById('scene-container');
 const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, powerPreference: 'high-performance', preserveDrawingBuffer: true });
-const DPR_CAP = Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2);
+const DPR_CAP = Math.min(window.devicePixelRatio, Q.pixelRatioCap);
 renderer.setPixelRatio(DPR_CAP);
 renderer.setSize(window.innerWidth, window.innerHeight);
 // B-1:ACES 色調映射(手機桌機都開;調色盤已據此重校)
@@ -56,12 +60,13 @@ controls.enableDamping = true;
 const QA_LEGACY = !!(import.meta.env && import.meta.env.DEV) && location.search.includes('legacy=1');
 
 // R4-2:CSM 需要鏡頭(cascade 框跟著視錐走);手機不傳 shadows 就完全不建 CSM
-const environment = createEnvironment(scene, { shadows: SHADOWS, camera: QA_LEGACY ? null : camera });
-const terrain = createBastogneTerrain(scene, { shadows: SHADOWS, mobile: isMobile });
+const environment = createEnvironment(scene, { shadows: SHADOWS, camera: QA_LEGACY ? null : camera, quality: Q });
+const terrain = createBastogneTerrain(scene, { shadows: SHADOWS, mobile: isMobile, quality: Q });
 const effects = new Effects(scene, { mobile: isMobile });
 const director = new Director(camera, controls);
 const audio = new AudioEngine();
-const snow = createSnow(scene, { count: isMobile ? 500 : 1500 });
+const SNOW_FULL = Math.max(300, Math.round(1500 * Q.particles));   // §R5.2 粒子量依畫質
+const snow = createSnow(scene, { count: SNOW_FULL });
 const townFires = createTownFires(scene, [{ x: 40, z: 300 }, { x: -30, z: 320 }, { x: 110, z: 300 }]);
 
 // 後製 composer(桌機);手機直接 renderer.render
@@ -83,6 +88,10 @@ const post = POSTFX ? createComposer(renderer, scene, camera, {
   //   才在士兵腳下、沙包堆、散兵坑緣、彈藥箱底看得到接觸暗部,且無黑邊光暈。
   gtao: { radius: 4, distanceExponent: 1, thickness: 1, scale: 1.5, blend: 0.7 },
   bokeh: { aperture: 0.00008, maxblur: 0.006 },
+  // §R5.2:high 全開;medium 關 GTAO、bloom 半解析度;low 只剩 OutputPass ＋ 調色
+  features: { gtao: Q.gtao, bloom: Q.bloom, bokeh: Q.bokeh, smaa: Q.smaa },
+  bloomScale: Q.bloomScale,
+  samples: Q.msaa,
 }) : null;
 if (QA_LEGACY && post) post.setPipeline('legacy');
 function renderFrame(dt) {
@@ -142,8 +151,16 @@ const assetsApplied = assets.ready.then(async () => {
   const terrainDone = await terrain.applyAssets(assets);
   const unitDone = [];
   for (const [, o] of unitObjs) {
-    const ok = await upgradeUnit(o.group, o.spec, assets, { shadows: SHADOWS });
-    if (ok) { o.mats = null; o.faded = false; unitDone.push(o.spec.id); }
+    const ok = await upgradeUnit(o.group, o.spec, assets, {
+      shadows: SHADOWS, quality: Q,
+      register: (obj) => environment.registerObject(obj),   // R6:clone 過的材質立刻收編給 CSM
+    });
+    if (ok) {
+      o.mats = null; o.faded = false;
+      o.troopers = o.group.userData.troopers ?? [];          // R1:改指向 SkinnedMesh
+      o.animated = !!o.group.userData.anim;
+      unitDone.push(o.spec.id);
+    }
   }
   // 換模／換材質之後一定要重新註冊,否則新材質會被三盞 cascade 燈各照一次(變三倍亮)
   const csmMats = environment.refreshShadowMaterials();
@@ -248,6 +265,8 @@ const hud = createHUD({
   },
   onVolume: (v) => audio.setVolume(v),
   onAudioToggle: (on) => audio.setEnabled(on),
+  // §R5.3:HUD 右上角的「畫質：高／中／低」小按鈕,循環切換(寫 localStorage 後重載)
+  quality: isMobile ? null : { label: TIER_LABEL[Q.tier], onCycle: () => cycleQuality() },
 });
 
 // 點擊 3D 人物標記 → 開啟小卡
@@ -334,6 +353,7 @@ const DESTROY_DUR = 9;
 let lastNow = performance.now();
 let elapsed = 0;
 let panelAcc = 0;
+let mixerAcc = 0, mixerFrames = 0;   // R1：骨架 mixer 的更新節流
 
 const FADE_PALE = new THREE.Color(0x53565c);
 function prepMats(o) {
@@ -384,6 +404,7 @@ function tick() {
   elapsed += dt;
   const time = elapsed;
   fpsSample(dt);
+  Q.sample(dt);      // §R5.1:連續 3 秒平均幀時間 > 40 ms → 降一級(寫 localStorage 後重載)
 
   if (playing && started) {
     prevT = battleT;
@@ -401,6 +422,15 @@ function tick() {
     hud.setTime(battleT);
   }
 
+  // R1／R5:士兵 mixer 的更新頻率依畫質(high 每幀、medium 每 2 幀、low 每 3 幀)。
+  //   略過的那幾幀把 dt 累起來,下次一次補上 —— 動作速度不變,只是更新粗一點。
+  mixerAcc += dt;
+  mixerFrames++;
+  let mixerTick = false, mixerDt = 0;
+  if (mixerFrames >= Q.mixerEvery) {
+    mixerFrames = 0; mixerTick = true; mixerDt = mixerAcc; mixerAcc = 0;
+  }
+
   // 單位
   const rotK = 1 - Math.pow(0.001, dt); // A-2 阻尼係數
   for (const [id, o] of unitObjs) {
@@ -414,14 +444,26 @@ function tick() {
     else o.curRot += shortestAngleDiff(targetRot, o.curRot) * rotK;
     o.group.rotation.y = o.curRot;
 
-    // A-3:行進微動作
+    // R1:骨架動畫。實際移動速度(單位／秒)決定 clip 與播放倍率;
+    //   拖曳／跳轉那一幀的位移是假的(整個時間軸跳過去),用 snapRot 當旗標略過。
     const moved = Math.hypot(st.pos.x - o.prevX, st.pos.z - o.prevZ);
     o.prevX = st.pos.x; o.prevZ = st.pos.z;
     const destroyed = st.status === 'destroyed' && o.downT != null;
-    if (!destroyed && o.troopers.length) {
-      const movingAmp = moved > 0.03 ? 1 : 0.22;   // 靜止單位保留 ~1/4 呼吸感
+    const rawSpeed = dt > 1e-4 && !snapRot ? moved / dt : 0;
+    o.speed = o.speed == null ? rawSpeed : o.speed + (rawSpeed - o.speed) * 0.25;   // 抖動平滑
+    if (o.animated && mixerTick) {
+      animateUnit(o.group, {
+        dt: mixerDt, speed: o.speed, destroyed,
+        snap: snapRot || o.wasSnapped,
+      });
+      o.wasSnapped = false;
+    } else if (o.animated && snapRot) {
+      o.wasSnapped = true;    // 這一幀不輪到 mixer,把「要歸位」記著,下次更新時處理
+    } else if (!o.animated && !destroyed && o.troopers.length) {
+      // A-3 行進微動作(骨架版之前的 fallback:靜態姿態 glb／程序化小兵)
+      const movingAmp = moved > 0.03 ? 1 : 0.22;
       for (const tr of o.troopers) {
-        const ph = tr.userData.phase;
+        const ph = tr.userData.phase ?? 0;
         tr.position.y = (tr.userData.baseY ?? 0) + Math.sin(time * 7 + ph) * 0.14 * movingAmp;
         tr.rotation.z = Math.sin(time * 7 + ph) * 0.03 * movingAmp;
       }
@@ -514,7 +556,7 @@ let aoLevel = 0;
 let perfLock = false;   // __dbg.dbgPerf 量測期間凍結動態解析度
 const FLOOR = isMobile ? 1.0 : DPR_CAP * 0.75;
 function setAoLevel(n) {
-  if (!post || aoLevel === n) return;
+  if (!post || !post.features.gtao || aoLevel === n) return;
   aoLevel = n;
   post.setGtaoScale(n >= 1 ? 0.25 : 0.5);
   post.setGTAO(n < 2);
@@ -526,20 +568,20 @@ function fpsSample(dt) {
   fpsTimer = 0; fpsAcc = 0; fpsFrames = 0;
   if (perfLock) return;
   const lowT = isMobile ? 27 : 45;
-  if (fps < lowT && post && aoLevel < 2) {
+  if (fps < lowT && post && post.features.gtao && aoLevel < 2) {
     setAoLevel(aoLevel + 1);
     goodStreak = 0;
   } else if (fps < lowT && curRatio > FLOOR) {
     curRatio = Math.max(FLOOR, curRatio - 0.25);
     renderer.setPixelRatio(curRatio); if (post) post.setPixelRatio(curRatio);
-    snow.setCount(isMobile ? 260 : 780);   // 降級同時砍半雪粒子
+    snow.setCount(Math.round(SNOW_FULL * 0.52));   // 降級同時砍半雪粒子
     goodStreak = 0;
   } else if (fps > (isMobile ? 40 : 55)) {
     goodStreak += 2;
     if (goodStreak >= 4 && curRatio < DPR_CAP) {
       curRatio = Math.min(DPR_CAP, curRatio + 0.25);
       renderer.setPixelRatio(curRatio); if (post) post.setPixelRatio(curRatio);
-      snow.setCount(isMobile ? 500 : 1500);
+      snow.setCount(SNOW_FULL);
       goodStreak = 0;
     } else if (goodStreak >= 4 && aoLevel > 0) {
       setAoLevel(aoLevel - 1);
@@ -595,6 +637,7 @@ if (import.meta.env && import.meta.env.DEV) {
     const prevSize = renderer.getSize(new THREE.Vector2());
     const prevAspect = camera.aspect;
     perfLock = true;
+    Q.setLock(true);
     renderer.setPixelRatio(1.5);
     renderer.setSize(1600, 1000, false);
     if (post) post.setSize(1600, 1000);
@@ -613,13 +656,18 @@ if (import.meta.env && import.meta.env.DEV) {
   };
   window.__dbg = {
     dbgFreeze,
+    // 美術驗收:dbgFreeze 之後把時間軸放回去跑(運鏡仍然凍結),才拍得到士兵真的在邁步
+    setPlaying: (v = true) => { started = true; playing = !!v; return playing; },
+    setSpeed: (s) => { speed = s; return speed; },
     THREE, scene, camera, controls, renderer, director, effects, terrain, environment, dbgSeek, dbgLook,
     assets, assetsApplied, post, dbgPerf,
     // A/B 對照:__dbg.pipeline('legacy') 回到升級前的管線,('modern') 全開
     pipeline: (mode) => { if (post) post.setPipeline(mode); renderFrame(0.016); return mode; },
     // 截圖前凍結畫質(擋掉動態解析度／GTAO 自動降級,否則慢機器上拍到的是降級後的畫面)
+    quality: Q,
     freezeQuality: (on = true) => {
       perfLock = !!on;
+      Q.setLock(!!on);          // 連畫質分級的自動降級(會 reload!)也一起凍結
       if (on) {   // 回到全畫質:GTAO 全開、pixelRatio 回到上限
         setAoLevel(0);
         curRatio = DPR_CAP;

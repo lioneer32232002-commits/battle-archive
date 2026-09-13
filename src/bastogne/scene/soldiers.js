@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { collectByGroup, geoMetrics } from './assets.js';
+import { rigTemplate, spawnTrooper, pickClip, clipRate } from './soldier-rig.js';
 
 const SIDE_COLOR = { red: 0xd9442e, blue: 0x2e7bd9 };
 const UNIFORM = { blue: 0x51573a, red: 0xdfe3e4 };   // 美軍橄欖綠 / 德軍白色偽裝罩衫
@@ -182,6 +183,7 @@ function makeSquad(side, count, spread, seed, cfg, mat, troopers) {
     sd.scale.multiplyScalar(0.92 + r() * 0.16);
     sd.userData.baseY = 0;
     sd.userData.pose = pose;       // §3:資產版依姿態換成對應的 soldier_*.glb
+    sd.userData.weapon = weapon;   // R1:骨架版把武器烘進 hand_R,要知道這兵拿的是哪一把
     troopers.push(sd);
     g.add(sd);
   }
@@ -233,7 +235,9 @@ function makeMGNest(mat, troopers) {
   const gunner = makeSoldier('red', 'kneel', 'kar98', mat, 1.7);
   gunner.position.set(apex.x + 0.9, 0, apex.z); gunner.rotation.y = -Math.PI / 2;
   gunner.scale.multiplyScalar(0.95);
-  gunner.userData.baseY = 0; troopers.push(gunner);
+  gunner.userData.baseY = 0;
+  gunner.userData.pose = 'kneel'; gunner.userData.weapon = 'kar98';
+  troopers.push(gunner);
   g.add(gunner);
   return g;
 }
@@ -333,6 +337,9 @@ const MODEL_KIND = {
   gun: { id: 'howitzer_105', length: 9.2, yaw: 0, whitewash: true },
   mg: { id: 'mg_nest', length: 6.0, yaw: 0, whitewash: false },
 };
+// R2:Cycles 烘焙舊化版(單一材質＋ basecolor／normal／ORM 三張貼圖)。桌機 high／medium 優先用,
+//   low 與手機維持平塗版(貼圖多 100 KB、材質多三張取樣,在內顯上不划算)。
+const BAKED_ID = { sherman: 'sherman_baked', panzer: 'stug_baked', gun: 'howitzer_105_baked' };
 const _cache = new Map();
 
 function buildVehicle(gltf, cfg, assets) {
@@ -364,11 +371,62 @@ function buildVehicle(gltf, cfg, assets) {
   return { geo, base, scale, yaw: cfg.yaw };
 }
 
-function vehicleAsset(key, assets) {
-  if (_cache.has(key)) return _cache.get(key);
+// ── R2 烘焙版:單一材質、四張貼圖直接用(不烘頂點色、不疊 Poly Haven 鋼板) ──────
+const ROUGH_MIN = 0.35;          // §R2.4:粗糙度下限,避免塑膠感
+const VEH_ENV_I = 0.85;          // envMapIntensity 依場:巴斯通雪原的反射比夏季場景強一點
+
+// 冬季白漆:烘焙版沒有頂點色可刷,改在 fragment 依「烘出來的 basecolor 亮度」判斷 ——
+// 與平塗版同一條規則(近黑的履帶、槍管刷不到白漆),但磨損／鏽跡仍由 normal／ORM 留著。
+function whitewashMaterial(mat) {
+  mat.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `
+      #include <map_fragment>
+      {
+        float ww = dot( diffuseColor.rgb, vec3( 0.3, 0.6, 0.1 ) );
+        float wk = smoothstep( 0.025, 0.075, ww ) * 0.74;
+        diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.52, 0.55, 0.58 ), wk );
+      }
+    `);
+  };
+  mat.customProgramCacheKey = () => 'bastogne-whitewash';
+  return mat;
+}
+
+function buildBakedVehicle(gltf, cfg) {
+  const parts = [];
+  let src = null;
+  gltf.scene.updateWorldMatrix(true, true);
+  gltf.scene.traverse((o) => {
+    if (!o.isMesh) return;
+    const geo = o.geometry.clone();
+    geo.applyMatrix4(o.matrixWorld);
+    for (const k of Object.keys(geo.attributes)) {
+      if (!['position', 'normal', 'uv'].includes(k)) geo.deleteAttribute(k);
+    }
+    if (geo.groups?.length) geo.clearGroups();
+    parts.push(geo);
+    if (!src) src = Array.isArray(o.material) ? o.material[0] : o.material;
+  });
+  if (!parts.length || !src) return null;
+  const geo = parts.length === 1 ? parts[0] : mergeGeometries(parts, false);
+  if (!geo) return null;
+  const met = geoMetrics(geo);
+  const base = src.clone();
+  base.vertexColors = false;
+  base.roughness = Math.max(ROUGH_MIN, base.roughness ?? 0.7);
+  base.envMapIntensity = VEH_ENV_I;
+  if (cfg.whitewash) whitewashMaterial(base);
+  return { geo, base, scale: cfg.length / Math.max(1e-3, met.length), yaw: cfg.yaw, baked: true };
+}
+
+function vehicleAsset(key, assets, { baked = false } = {}) {
+  const cacheKey = baked ? `${key}@baked` : key;
+  if (_cache.has(cacheKey)) return _cache.get(cacheKey);
   const cfg = MODEL_KIND[key];
-  const p = assets.model(cfg.id).then((gltf) => (gltf ? buildVehicle(gltf, cfg, assets) : null));
-  _cache.set(key, p);
+  const bakedId = baked ? BAKED_ID[key] : null;
+  const p = (bakedId ? assets.model(bakedId).then((g) => (g ? buildBakedVehicle(g, cfg) : null)) : Promise.resolve(null))
+    .then((v) => v ?? assets.model(cfg.id).then((gltf) => (gltf ? buildVehicle(gltf, cfg, assets) : null)));
+  _cache.set(cacheKey, p);
   return p;
 }
 
@@ -423,18 +481,81 @@ function soldierAsset(side, pose, assets) {
   return p;
 }
 
-export async function upgradeUnit(group, spec, assets, { shadows = false } = {}) {
+// ── R1 骨架士兵:每兵一個 SkinnedMesh(共用幾何與骨架定義,材質每單位一份) ──────
+// 衝鋒段(§R1.5)= 攻擊中的擲彈兵／突擊班:移動時放 crouch_walk(貓腰前進)而不是 walk。
+const ASSAULT_KINDS = new Set(['grenadier', 'assault']);
+const WEAPON_MODEL = { garand: 'garand', thompson: 'thompson', bar: 'bar', kar98: 'kar98k', mp40: 'mp40', mg42: 'mg42' };
+
+async function upgradeSquadRig(group, spec, assets, { shadows = false, register = null } = {}) {
+  const troopers = group.userData.troopers ?? [];
+  if (!troopers.length) return false;
+  const variant = spec.side === 'blue' ? 'us' : 'de_coat';
+  const camo = spec.side !== 'blue';
+  const wanted = new Set(troopers.map((t) => WEAPON_MODEL[t.userData.weapon] ?? 'garand'));
+  const packs = new Map();
+  for (const w of wanted) packs.set(w, await rigTemplate(variant, w, assets, { camo }));
+  const first = [...packs.values()].find(Boolean);
+  if (!first) return false;
+
+  const unitMat = first.mat.clone();       // 每單位一份:被擊毀時只有自己淡出
+  unitMat.vertexColors = true;
+  const states = [];
+  for (const t of troopers) {
+    const pack = packs.get(WEAPON_MODEL[t.userData.weapon] ?? 'garand') ?? first;
+    for (const c of [...t.children]) c.visible = false;    // 程序化小兵留著當 fallback
+    const st = spawnTrooper(pack, t, unitMat, { phase: (t.userData.phase ?? 0) / (Math.PI * 2) });
+    st.mesh.castShadow = !!shadows;
+    st.pose = t.userData.pose ?? 'stand';
+    // 世界單位／rig 公尺:clip 的 extras.speed 是 m/s,要換算成本場的單位才不會腳滑
+    st.unitsPerMeter = pack.scale * (t.scale?.x ?? 1);
+    st.snap(pickClip(0, st.pose));
+    states.push(st);
+  }
+  group.userData.anim = { states, assault: ASSAULT_KINDS.has(spec.kind), fallen: false };
+  group.userData.troopers = states.map((s) => s.mesh);   // §R1.5:troopers 改指向 SkinnedMesh
+  if (register) register(group);                          // ⚠ clone 過的材質一定要重新註冊給 CSM
+  return true;
+}
+
+// ── 每幀:依單位實際移動速度選 clip、定播放倍率(main.js 每 1／2／3 幀呼叫一次) ──
+export function animateUnit(group, { dt = 0, speed = 0, destroyed = false, snap = false } = {}) {
+  const a = group.userData.anim;
+  if (!a) return false;
+  a.speed = speed;          // 除錯用:__dbg 可以直接看這一單位這一幀認定的移動速度
+  if (destroyed) {
+    if (!a.fallen) {                       // 摧毀:先倒下,再由 main.js 淡出
+      a.fallen = true;
+      for (const s of a.states) s.play('hit_fall', 1, 0.12);
+    }
+  } else {
+    if (a.fallen) { a.fallen = false; snap = true; }
+    for (const s of a.states) {
+      const mps = speed / Math.max(1e-3, s.unitsPerMeter);
+      const clip = pickClip(mps, s.pose, { assault: a.assault });
+      const rate = clipRate(mps, s.clipSpeed(clip));
+      if (snap) s.snap(clip, rate);
+      else s.play(clip, rate);
+    }
+  }
+  for (const s of a.states) s.mixer.update(dt);
+  return true;
+}
+
+export async function upgradeUnit(group, spec, assets, { shadows = false, quality = null, register = null } = {}) {
   const proc = group.userData.proc;
   if (spec.kind === 'armor' || spec.kind === 'gun' || spec.kind === 'mg') {
     const key = spec.kind === 'armor' ? (spec.variant === 'panzer' ? 'panzer' : 'sherman') : spec.kind;
-    const a = await vehicleAsset(key, assets);
+    const a = await vehicleAsset(key, assets, { baked: !!quality?.baked });
     if (!a) return false;
     const mat = a.base.clone();            // 每個單位一份材質:被擊毀時只有自己淡出
+    // Material.clone() 不會複製 onBeforeCompile／customProgramCacheKey,白漆 hook 要自己補回去
+    if (a.baked && MODEL_KIND[key]?.whitewash) whitewashMaterial(mat);
     const mesh = new THREE.Mesh(a.geo, mat);
     mesh.scale.setScalar(a.scale);
     mesh.rotation.y = a.yaw;
     if (shadows) { mesh.castShadow = true; mesh.receiveShadow = true; }
     group.add(mesh);
+    if (register) register(group);         // ⚠ clone 過的材質一定要重新註冊給 CSM
     if (proc) proc.visible = false;
     group.userData.assetModel = mesh;
     // MG 巢的射手是程序化小兵,沙包換成 glb 之後把他留在原位
@@ -447,7 +568,9 @@ export async function upgradeUnit(group, spec, assets, { shadows = false } = {})
     return true;
   }
 
-  // 步兵班:每個小兵換成對應姿態的 glb(找不到就整班保留程序化)
+  // 步兵班:優先換成 R1 骨架版(會走路);骨架資產還沒產出時退回靜態姿態 glb,再退回程序化
+  if (await upgradeSquadRig(group, spec, assets, { shadows, register })) return true;
+
   const troopers = group.userData.troopers ?? [];
   if (!troopers.length) return false;
   const wanted = new Set(troopers.map((t) => t.userData.pose ?? 'stand'));
@@ -466,5 +589,6 @@ export async function upgradeUnit(group, spec, assets, { shadows = false } = {})
     if (shadows) mesh.castShadow = true;
     t.add(mesh);
   }
+  if (register) register(group);
   return true;
 }

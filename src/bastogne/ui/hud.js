@@ -47,6 +47,7 @@ export function createHUD(callbacks) {
         <input id="vol" class="vol-slider" type="range" min="0" max="100" value="50" title="音量" />
         <button id="btn-panel-red" class="hud-btn panel-toggle"><i class="dot red"></i>德軍</button>
         <button id="btn-panel-blue" class="hud-btn panel-toggle"><i class="dot blue"></i>美軍</button>
+        <button id="btn-quality" class="hud-btn" title="畫質（高／中／低，切換後重新載入）">畫質：—</button>
         <button id="btn-mode" class="hud-btn active">🎬 導演模式</button>
       </div>
     </div>
@@ -217,6 +218,15 @@ export function createHUD(callbacks) {
     btnSpeed.textContent = `${speeds[speedIdx]}×`;
     callbacks.onSpeedChange(speeds[speedIdx]);
   });
+  // §R5.3 畫質切換:高 → 中 → 低 → 高(寫 localStorage 後重載;植被數量與 CSM 層數要重建)
+  const btnQuality = document.getElementById('btn-quality');
+  if (callbacks.quality) {
+    btnQuality.textContent = `畫質：${callbacks.quality.label}`;
+    btnQuality.addEventListener('click', () => callbacks.quality.onCycle());
+  } else {
+    btnQuality.remove();      // 手機維持既有路徑,不給這顆按鈕
+  }
+
   btnMode.addEventListener('click', () => {
     const free = btnMode.classList.toggle('active');
     btnMode.textContent = free ? '🎬 導演模式' : '🔓 自由視角';

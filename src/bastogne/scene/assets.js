@@ -28,6 +28,17 @@ const LOCAL_MODELS = {
   house_ardennes_damaged: '/models/house_ardennes_damaged.glb',
   barn: '/models/barn.glb',
   church: '/models/church.glb',
+  // R2 Cycles 舊化烘焙版(單一材質＋ basecolor／normal／ORM):桌機 high／medium 優先用
+  sherman_baked: '/models/sherman_baked.glb',
+  stug_baked: '/models/stug_baked.glb',
+  howitzer_105_baked: '/models/howitzer_105_baked.glb',
+  house_ardennes_baked: '/models/house_ardennes_baked.glb',
+  barn_baked: '/models/barn_baked.glb',
+  church_baked: '/models/church_baked.glb',
+  // R1 骨架士兵(20 骨、七個循環 clip;武器仍是獨立的 glb,掛點是骨頭 hand_R)
+  soldier_rig_us: '/models/soldier_rig_us.glb',
+  soldier_rig_de: '/models/soldier_rig_de.glb',
+  soldier_rig_de_coat: '/models/soldier_rig_de_coat.glb',
   foxhole: '/models/foxhole.glb',
   sandbag_wall: '/models/sandbag_wall.glb',
   ammo_crate: '/models/ammo_crate.glb',

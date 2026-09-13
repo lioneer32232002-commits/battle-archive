@@ -30,12 +30,21 @@ import { CSM } from 'three/addons/csm/CSM.js';
 // 冬季日相調色盤(皆已為 ACES 補償後的值)
 // disc/halo/discCol：P-5 太陽本體與光暈。阿登 12 月＝低斜冬陽,陰霾相位只剩一團模糊亮斑,
 //   放晴(clear)才露出真正的日輪,解圍(relief)午後偏西、放大轉暖。夜相全關。
+//
+// ⚠ 2026-09-13 第三輪重校(R6):原本 hemi(amb)在陰霾／放晴相位是 0.96–1.00,幾乎把
+//   cascade 燈的影子填平 —— 加上雪面細節貼花層不收陰影,雪地上根本看不到樹與房舍的投影。
+//   本輪把 amb 壓到 0.62–0.74(§R6「降到約 0.75」;放晴要看得到樹影,再多壓一點),
+//   壓掉的亮度由 sunInt 補回(陰霾 0.62→0.80、放晴 1.48→2.05、解圍 1.30→1.88),
+//   整體曝光與上一版相當,但畫面從「平光的雪地」變成「有方向光的雪地」。
+//   ⚠ 只壓 hemi 是不夠的:實測(readPixels 量雪面)放晴相位還有一大半照度來自 HDRI 的 IBL,
+//     ENV_INTENSITY.clear 也要從 0.42 降到 0.30,影子才吃得出來(見下方 ENV_INTENSITY 註)。
+//   夜相 amb 只小幅下修(0.46→0.40、0.42→0.36):夜裡本來就靠環境光看得見部隊,壓太多會全黑。
 const PALETTES = {
-  nightArrival: { top: 0x070b16, horizon: 0x1b2432, sun: 0x9fb4d0, sunInt: 0.42, amb: 0.46, ground: 0x303a49, fog: 0x141d2a, fogNear: 300, fogFar: 3200, disc: 0,    halo: 0,    discSize: 300, haloSize: 900,  discCol: 0xbcd0ea },
-  overcast:     { top: 0x77879a, horizon: 0xa9b6c2, sun: 0xdfe4ea, sunInt: 0.62, amb: 0.96, ground: 0x93a0ae, fog: 0xa9b4bf, fogNear: 320, fogFar: 3600, disc: 0.18, halo: 0.34, discSize: 640, haloSize: 3200, discCol: 0xf2f6fa },
-  nightCold:    { top: 0x05080f, horizon: 0x131b27, sun: 0x9db4d2, sunInt: 0.46, amb: 0.42, ground: 0x2b3441, fog: 0x0c131f, fogNear: 220, fogFar: 2800, disc: 0,    halo: 0,    discSize: 300, haloSize: 900,  discCol: 0xbcd0ea },
-  clear:        { top: 0x4a7ab8, horizon: 0xd2e0ec, sun: 0xfff4da, sunInt: 1.48, amb: 1.00, ground: 0xd9e3ed, fog: 0xcbd9e6, fogNear: 560, fogFar: 8600, disc: 0.95, halo: 0.50, discSize: 460, haloSize: 3200, discCol: 0xfff6e2 },
-  relief:       { top: 0x658cbd, horizon: 0xdfd6c2, sun: 0xffedcc, sunInt: 1.30, amb: 0.98, ground: 0xd7dfe7, fog: 0xd1d5c9, fogNear: 660, fogFar: 9200, disc: 0.9,  halo: 0.58, discSize: 620, haloSize: 3800, discCol: 0xffe6b4 },
+  nightArrival: { top: 0x070b16, horizon: 0x1b2432, sun: 0x9fb4d0, sunInt: 0.50, amb: 0.40, ground: 0x303a49, fog: 0x141d2a, fogNear: 300, fogFar: 3200, disc: 0,    halo: 0,    discSize: 300, haloSize: 900,  discCol: 0xbcd0ea },
+  overcast:     { top: 0x77879a, horizon: 0xa9b6c2, sun: 0xdfe4ea, sunInt: 0.80, amb: 0.74, ground: 0x93a0ae, fog: 0xa9b4bf, fogNear: 320, fogFar: 3600, disc: 0.18, halo: 0.34, discSize: 640, haloSize: 3200, discCol: 0xf2f6fa },
+  nightCold:    { top: 0x05080f, horizon: 0x131b27, sun: 0x9db4d2, sunInt: 0.54, amb: 0.36, ground: 0x2b3441, fog: 0x0c131f, fogNear: 220, fogFar: 2800, disc: 0,    halo: 0,    discSize: 300, haloSize: 900,  discCol: 0xbcd0ea },
+  clear:        { top: 0x4a7ab8, horizon: 0xd2e0ec, sun: 0xfff4da, sunInt: 2.05, amb: 0.62, ground: 0xd9e3ed, fog: 0xcbd9e6, fogNear: 560, fogFar: 8600, disc: 0.95, halo: 0.50, discSize: 460, haloSize: 3200, discCol: 0xfff6e2 },
+  relief:       { top: 0x658cbd, horizon: 0xdfd6c2, sun: 0xffedcc, sunInt: 1.88, amb: 0.62, ground: 0xd7dfe7, fog: 0xd1d5c9, fogNear: 660, fogFar: 9200, disc: 0.9,  halo: 0.58, discSize: 620, haloSize: 3800, discCol: 0xffe6b4 },
 };
 
 // 日相關鍵格(t 與 battle.js 事件對齊;keep in sync)。phaseAt 於相鄰關鍵格之間線性混合。
@@ -81,9 +90,16 @@ const ENV_PHASE = {
 };
 // ⚠ 強度要壓低:五相調色盤(sunInt／amb)是在「沒有 IBL」的前提下校過的,
 //   HDRI 直接按 1.0 疊上去會整個過曝,放晴相位變成一片白。這裡只當補光與反射用。
-const ENV_INTENSITY = { night: 0.16, overcast: 0.34, clear: 0.42 };
+// ⚠ R6 第三輪:clear 從 0.42 降到 0.30。IBL 是「無方向的環境光」,它跟 hemi 一樣會把投影填平 ——
+//   實測(readPixels 量雪面)放晴相位的照度有一半以上來自這張 HDRI,不壓它,光壓 hemi 是沒有用的。
+const ENV_INTENSITY = { night: 0.16, overcast: 0.30, clear: 0.30 };
 
-export function createEnvironment(scene, { shadows = false, camera = null } = {}) {
+// quality:§R5 的畫質分級參數(cascades／shadowMapSize／particles);沒傳就是升級前的 3 層 2048。
+export function createEnvironment(scene, { shadows = false, camera = null, quality = null } = {}) {
+  const Q = {
+    shadows: 'csm', cascades: 3, shadowMapSize: 2048, particles: 1,
+    ...(quality ?? {}),
+  };
   // ── 天空圓頂 ──────────────────────────────────────────
   const skyUniforms = {
     uTop: { value: new THREE.Color(PALETTES.nightArrival.top) },
@@ -159,7 +175,7 @@ export function createEnvironment(scene, { shadows = false, camera = null } = {}
   scene.add(sun.target);
 
   // ── R4-2:階層式陰影(桌機) ─────────────────────────────
-  const useCSM = shadows && !!camera;
+  const useCSM = shadows && !!camera && Q.shadows === 'csm';
   const _lightDir = new THREE.Vector3();
   let csm = null;
   if (useCSM) {
@@ -167,10 +183,10 @@ export function createEnvironment(scene, { shadows = false, camera = null } = {}
     csm = new CSM({
       parent: scene,
       camera,
-      cascades: 3,
+      cascades: Q.cascades,      // §R5.2:high 3 層 2048、medium 2 層 1536
       maxFar: 900,               // 陸戰 900(§R4.2)
       mode: 'practical',
-      shadowMapSize: 2048,
+      shadowMapSize: Q.shadowMapSize,
       shadowBias: -0.0006,
       lightDirection: _lightDir.clone(),
       lightIntensity: PALETTES.nightArrival.sunInt,
@@ -185,9 +201,9 @@ export function createEnvironment(scene, { shadows = false, camera = null } = {}
     sun.intensity = 0;             // 光交給 cascade 燈,sun 只剩方向
     sun.castShadow = false;
   } else if (shadows) {
-    // 後備:沒有傳 camera 進來就退回原本的單張正交陰影(手機不會走到這裡)
+    // legacy 路徑:單張正交陰影罩住核心區(§R5.2 的 low,以及沒有傳 camera 進來時)
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(Q.shadowMapSize || 1024, Q.shadowMapSize || 1024);
     const cam = sun.shadow.camera;
     cam.left = -400; cam.right = 400; cam.top = 400; cam.bottom = -400;
     cam.near = 200; cam.far = 4200;
@@ -256,7 +272,8 @@ export function createEnvironment(scene, { shadows = false, camera = null } = {}
   const cloudTex = makeCloudTexture();
   const clouds = new THREE.Group();
   const rand = mulberry(42);
-  for (let i = 0; i < 46; i++) {
+  const cloudN = Math.max(12, Math.round(46 * Q.particles));   // §R5.2 雲 sprite 依畫質
+  for (let i = 0; i < cloudN; i++) {
     const c = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: cloudTex, color: 0xccd3dc, transparent: true, opacity: 0.2 + rand() * 0.22, depthWrite: false })
     );
@@ -273,7 +290,8 @@ export function createEnvironment(scene, { shadows = false, camera = null } = {}
   const mistTex = makeCloudTexture();
   const mist = new THREE.Group();
   const rm = mulberry(123);
-  for (let i = 0; i < 24; i++) {
+  const mistN = Math.max(8, Math.round(24 * Q.particles));
+  for (let i = 0; i < mistN; i++) {
     const m = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: mistTex, color: 0xcfd6de, transparent: true, opacity: 0, depthWrite: false })
     );

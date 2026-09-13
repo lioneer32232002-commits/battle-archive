@@ -261,7 +261,8 @@ function makeTreelineTexture(W, H) {
   return t;
 }
 
-export function createBastogneTerrain(scene, { shadows = false, mobile = false } = {}) {
+// quality:§R5 的畫質分級參數(hero／mid 植被分層、雪面細節);沒傳就是升級前的全量。
+export function createBastogneTerrain(scene, { shadows = false, mobile = false, quality = null } = {}) {
   const g = new THREE.Group();
   const rng = mulberry(777);
   const TS = mobile ? 512 : 1024;          // 平鋪雪地貼圖
@@ -371,6 +372,9 @@ export function createBastogneTerrain(scene, { shadows = false, mobile = false }
   detail.rotation.x = -Math.PI / 2;
   detail.position.set(0, 0.04, FIELD_CZ);
   detail.renderOrder = -1;
+  // ⚠ R6:這一層蓋在雪原上,它自己不收陰影的話,核心區的雪面就永遠看不到樹與房舍的投影
+  //   (底下的 field 有影子,但被這層不帶影子的貼花蓋掉一半,加上原本 hemi 0.98 幾乎填平暗部)。
+  if (shadows) detail.receiveShadow = true;
   g.add(detail);
 
   // ── E 連散兵坑線(MLR):沿樹線 z≈0、面北 -z ────────────────
@@ -520,7 +524,7 @@ export function createBastogneTerrain(scene, { shadows = false, mobile = false }
 
   // ── 真實資產接口(§3):把「換得掉的東西」交出去,程序化版本留著當 fallback ──
   const art = {
-    group: g, shadows, mobile, fieldW: FIELD_W, fieldCZ: FIELD_CZ,
+    group: g, shadows, mobile, quality, fieldW: FIELD_W, fieldCZ: FIELD_CZ,
     field, snowMat, detail, detailTex,
     roadMeshes, rutMeshes, roadMat, rutMat, roads,
     forest, forestMeshes, treeSpots, holeXs,

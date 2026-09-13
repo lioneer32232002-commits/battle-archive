@@ -141,9 +141,14 @@ function forestMaskTexture(treeSpots, fieldW, fieldCZ, S) {
 //   far  = 核心區以外 → 維持程序化圓錐(那個距離只看得到輪廓,換成真樹只是白燒三角形)
 // 程序化圓錐不是整組關掉,而是把 InstancedMesh 的矩陣重建成「只剩 far 的那些」再縮 count,
 // 所以 fallback 仍然完整(手機、載入失敗時照樣是 520 棵)。
+//
+// §R5.2 畫質分級:hero 的抽稀比例(heroKeep)、mid 的數量(midFraction)、針葉是否投影
+//   都由 quality 決定;low 直接不走這條(heroTrees === 'procedural'),整片維持程序化圓錐。
 const HERO_NEAR = 110;       // hero 圈半徑(MLR 樹線不論遠近一律 hero)
 async function upgradeForest(art, assets) {
   if (art.mobile) return false;                        // 手機保留程序化(§3 效能)
+  const Q = art.quality ?? {};
+  if (Q.heroTrees === 'procedural') return false;      // low:glb 森林整組不建
   const [fir, pine] = await Promise.all([
     assets.model('fir_tree_01', { hi: true }),
     assets.model('pine_tree_01', { hi: true }),
@@ -153,10 +158,12 @@ async function upgradeForest(art, assets) {
   // keep = 針葉保留比例。_hi 一棵 4.5 萬面,220 棵原封不動就是一千萬面。
   // 有了螢幕空間保底寬度(見 withNeedleCenters)之後,抽稀的分寸不再由「遠處看不看得見」決定,
   // 而是純粹的面數預算:hero 0.34 ≈ 1.5 萬面／棵,mid 0.12 ≈ 5.4 千面／棵,全場樹約 190 萬面。
-  const firHero = prepTree(fir ?? pine, 0.34);
-  const pineHero = prepTree(pine ?? fir, 0.34);
-  const firMid = prepTree(fir ?? pine, 0.12);
-  const pineMid = prepTree(pine ?? fir, 0.12);
+  const heroKeep = Q.heroKeep ?? 0.34;
+  const midKeep = Q.midKeep ?? 0.12;
+  const firHero = prepTree(fir ?? pine, heroKeep);
+  const pineHero = prepTree(pine ?? fir, heroKeep);
+  const firMid = prepTree(fir ?? pine, midKeep);
+  const pineMid = prepTree(pine ?? fir, midKeep);
   if (!firHero || !firMid) return false;
 
   // 樹種:沿用 terrain.js 原本的三變體索引(v),佈局座標與旋轉完全不動 → 樹下暗斑貼花仍對位
@@ -167,9 +174,13 @@ async function upgradeForest(art, assets) {
   const hero = [[], [], []];
   const mid = [[], [], []];
   const far = [[], [], []];
+  const midFrac = Q.midFraction ?? 1;
+  let midSeen = 0;
   for (const t of art.treeSpots) {
     const d = Math.hypot(t.x, t.z - 4);
-    const bucket = (t.mlr || d < HERO_NEAR) ? hero : d <= GLB_NEAR ? mid : far;
+    let bucket = (t.mlr || d < HERO_NEAR) ? hero : d <= GLB_NEAR ? mid : far;
+    // medium:mid 圈只換一半,另一半留給程序化圓錐(密度不變,面數減半)
+    if (bucket === mid && midFrac < 1 && (midSeen++ % 2) === 1) bucket = far;
     bucket[t.v].push(t);
   }
 
@@ -190,7 +201,7 @@ async function upgradeForest(art, assets) {
       });
       im.instanceMatrix.needsUpdate = true;
       im.frustumCulled = false;                 // 實例散佈全圖,單一包圍球沒有意義
-      // 針葉不投影:alphaTest 的陰影 pass 等於整片森林再畫一次,代價遠大於收穫
+      // 針葉不投影(見下方 addCrownShadows 的實測說明:一根針一個三角形,在陰影圖裡根本取樣不到)
       if (art.shadows) { im.castShadow = !p.twig; im.receiveShadow = true; }
       art.forest.add(im);
       meshes.push(im);
@@ -201,6 +212,11 @@ async function upgradeForest(art, assets) {
     build(midOf[v], mid[v], sizeOf[v]);
   }
   if (!meshes.length) return false;
+
+  // R6:雪地要看得到樹的投影
+  if (art.shadows && Q.crownShadows) {
+    addCrownShadows(art, Q.crownShadows === 'all' ? [hero, mid] : [hero]);
+  }
 
   // 程序化圓錐:只留下核心區以外的那些(重建矩陣＋縮 count,幾何與材質原封不動)
   art.forestMeshes.forEach((im, v) => {
@@ -220,6 +236,47 @@ async function upgradeForest(art, assets) {
   art.assetForest = meshes;
   art.forestTiers = { hero: hero.flat().length, mid: mid.flat().length, far: far.flat().length };
   return true;
+}
+
+// ── 樹冠投影代理(R6:「雪地要看得到樹與房舍的投影」) ────────────────────
+// ⚠ 實測:讓 glb 的針葉自己投影是**無效**的。針葉是「一根針一個三角形」,陰影 pass 走的是
+//   three 自動生成的 MeshDepthMaterial —— 它不會跑我們在 snowyNeedleMaterial 裡加的
+//   「依距離沿重心把三角形撐胖」那段 vertex hook,所以在 2048² 的 cascade 陰影圖裡,
+//   每根針都遠小於一個 texel,整棵樹只投出樹幹那幾根線(雪原上就是一排電線桿的影子)。
+//   而且開了針葉投影還要整片森林多跑一次 alphaTest 的深度 pass,貴得莫名其妙。
+// 解法:用**程序化圓錐**(terrain.js 本來就有、遠景 far 那批還在用的那份幾何)當
+//   「只投影不顯示」的代理 —— colorWrite/depthWrite 都關掉,castShadow 開著。
+//   深度 pass 便宜、樹形正確,畫面上完全看不到它。
+//   ⚠ 它必須掛 userData.noAO:GTAO 的 G-buffer 是用 overrideMaterial 重畫一次場景,
+//     override 材質的 depthWrite 是 true,不擋的話雪原上會多出一片看不見的圓錐擋住 AO。
+function addCrownShadows(art, buckets) {
+  const mat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+  const dummy = new THREE.Object3D();
+  const out = [];
+  for (let v = 0; v < 3; v++) {
+    const geo = art.forestMeshes[v]?.geometry;
+    if (!geo) continue;
+    const list = buckets.flatMap((b) => b[v] ?? []);
+    if (!list.length) continue;
+    const im = new THREE.InstancedMesh(geo, mat, list.length);
+    list.forEach((t, i) => {
+      dummy.position.set(t.x, 0, t.z);
+      dummy.rotation.set(0, t.ry, 0);
+      dummy.scale.setScalar(t.s);
+      dummy.updateMatrix();
+      im.setMatrixAt(i, dummy.matrix);
+    });
+    im.instanceMatrix.needsUpdate = true;
+    im.frustumCulled = false;
+    im.castShadow = true;
+    im.receiveShadow = false;
+    im.userData.noAO = true;
+    im.renderOrder = -20;
+    art.forest.add(im);
+    out.push(im);
+  }
+  art.crownShadows = out;
+  return out;
 }
 
 // 一棵 glb 樹 → 可直接餵 InstancedMesh 的「葉＋幹」兩份幾何與材質。
@@ -391,7 +448,98 @@ const HOUSE_GROUPS = (name) => {
   return 'shell';
 };
 
+// R2 烘焙版房舍:單一材質＋ basecolor／normal／ORM 三張貼圖,**不烘頂點色、不疊 Poly Haven 牆面**。
+// 分組只剩「snow_cap 一組、其餘一組」(兩個節點名),雪帽仍然是獨立的 InstancedMesh。
+// 夜間窗光仍要:烘焙版把玻璃併進單一材質了(沒有 glass 那一組),所以額外載一份 17 KB 的
+// 平塗 house_ardennes.glb,只取它的 glass 幾何來承接 emissive —— 比整套 PBR 牆面便宜得多。
+const BAKED_GROUPS = (name, o) => (o?.name === 'snow_cap' ? 'snow' : 'shell');
+const GLASS_ONLY = (name) => (name === 'glass' ? 'glass' : null);
+
+function bakedMaterial(gltf) {
+  let src = null;
+  gltf.scene.traverse((o) => { if (o.isMesh && !src) src = Array.isArray(o.material) ? o.material[0] : o.material; });
+  if (!src) return null;
+  const m = src.clone();
+  m.vertexColors = false;
+  m.roughness = Math.max(ROUGH_MIN, m.roughness ?? 0.9);
+  m.envMapIntensity = ENV_I;
+  return m;
+}
+function modelHeight(gltf) {
+  const b = new THREE.Box3().setFromObject(gltf.scene);
+  return Math.max(1e-3, b.max.y - b.min.y);
+}
+
+async function upgradeBuildingsBaked(art, assets) {
+  const [house, church, barn, plain] = await Promise.all([
+    assets.model('house_ardennes_baked'), assets.model('church_baked'),
+    assets.model('barn_baked'), assets.model('house_ardennes'),
+  ]);
+  if (!house) return false;
+  const houseMat = bakedMaterial(house);
+  if (!houseMat) return false;
+  const glassMat = new THREE.MeshStandardMaterial({
+    vertexColors: true, color: 0x1a1f26, roughness: 0.25, metalness: 0.2,
+    emissive: 0xffb066, emissiveIntensity: 0,
+  });
+
+  const { plainSpecs, barnSpecs, churchSpec } = houseLayout(art, !!barn);
+  const houseH = modelHeight(house);
+  const added = [];
+  added.push(...instanceBuilding(house, plainSpecs, { shell: houseMat, snow: houseMat }, art,
+    { groupOf: BAKED_GROUPS, tint: false, modelH: houseH }));
+  if (plain) {
+    added.push(...instanceBuilding(plain, plainSpecs, { glass: glassMat }, art,
+      { groupOf: GLASS_ONLY, tint: false, modelH: houseH }));
+  }
+  if (barn && barnSpecs.length) {
+    const barnMat = bakedMaterial(barn);
+    if (barnMat) {
+      added.push(...instanceBuilding(barn, barnSpecs, { shell: barnMat, snow: barnMat }, art,
+        { groupOf: BAKED_GROUPS, tint: false, modelH: modelHeight(barn) }));
+    }
+  }
+  if (church && churchSpec) {
+    const churchMat = bakedMaterial(church);
+    if (churchMat) {
+      added.push(...instanceBuilding(church, [{ ...churchSpec, x: churchSpec.x - 5, heightRef: 30 }],
+        { shell: churchMat, snow: churchMat }, art,
+        { groupOf: BAKED_GROUPS, tint: false, modelH: modelHeight(church) }));
+    }
+  }
+  if (!added.length) return false;
+  hideProceduralVillages(art);
+  art.nightHooks.push((k) => { glassMat.emissiveIntensity = k * 0.9; });
+  art.assetBuildings = added;
+  art.bakedBuildings = true;
+  return true;
+}
+
+// 鎮上挑三棟最大的當穀倉(阿登村落的招牌:石屋之間夾著木構穀倉)
+function houseLayout(art, hasBarn) {
+  const houseSpecs = art.houseSpecs.filter((h) => h.village === 'town' || h.village === 'foy');
+  const sorted = [...houseSpecs].filter((h) => h.village === 'town').sort((a, b) => b.w - a.w);
+  const barnSpecs = hasBarn ? sorted.slice(0, 3) : [];
+  const barnSet = new Set(barnSpecs);
+  return {
+    plainSpecs: houseSpecs.filter((h) => !barnSet.has(h)),
+    barnSpecs,
+    churchSpec: art.houseSpecs.find((h) => h.village === 'church'),
+  };
+}
+function hideProceduralVillages(art) {
+  for (const m of [art.townWalls, art.townRoofs, art.townSnow, art.foyWalls, art.foyRoofM, art.foySnowM]) {
+    if (m) m.visible = false;                     // 程序化村落退場(fallback 留著)
+  }
+}
+
 async function upgradeBuildings(art, assets) {
+  // 桌機 high／medium 優先用 Cycles 舊化烘焙版(§R2.4);失敗就往下走平塗＋Poly Haven 那條
+  if (art.quality?.baked) {
+    try {
+      if (await upgradeBuildingsBaked(art, assets)) return true;
+    } catch (e) { console.warn('[bastogne] 烘焙版房舍失敗,改用平塗版', e); }
+  }
   const [house, church, barn] = await Promise.all([
     assets.model('house_ardennes'), assets.model('church'), assets.model('barn'),
   ]);
@@ -418,12 +566,7 @@ async function upgradeBuildings(art, assets) {
     emissive: 0xffb066, emissiveIntensity: 0,
   });
 
-  const houseSpecs = art.houseSpecs.filter((h) => h.village === 'town' || h.village === 'foy');
-  // 鎮上挑三棟最大的當穀倉(阿登村落的招牌:石屋之間夾著木構穀倉)
-  const sorted = [...houseSpecs].filter((h) => h.village === 'town').sort((a, b) => b.w - a.w);
-  const barnSpecs = barn ? sorted.slice(0, 3) : [];
-  const barnSet = new Set(barnSpecs);
-  const plainSpecs = houseSpecs.filter((h) => !barnSet.has(h));
+  const { plainSpecs, barnSpecs, churchSpec } = houseLayout(art, !!barn);
 
   const added = [];
   added.push(...instanceBuilding(house, plainSpecs, {
@@ -434,7 +577,6 @@ async function upgradeBuildings(art, assets) {
       shell: mkMat('shell', stonePBR), roof: mkMat('roof', tilePBR), snow: snowMat, glass: glassMat,
     }, art));
   }
-  const churchSpec = art.houseSpecs.find((h) => h.village === 'church');
   if (church && churchSpec) {
     added.push(...instanceBuilding(church, [{ ...churchSpec, x: churchSpec.x - 5, heightRef: 30 }], {
       shell: mkMat('shell', stonePBR), roof: mkMat('roof', slatePBR), snow: snowMat, glass: glassMat,
@@ -442,9 +584,7 @@ async function upgradeBuildings(art, assets) {
   }
   if (!added.length) return false;
 
-  for (const m of [art.townWalls, art.townRoofs, art.townSnow, art.foyWalls, art.foyRoofM, art.foySnowM]) {
-    if (m) m.visible = false;                     // 程序化村落退場(fallback 留著)
-  }
+  hideProceduralVillages(art);
   // 夜間窗光改由 glass 那一組承接(圍城中的小鎮是燈火管制的,只給很弱的一點)
   art.nightHooks.push((k) => { glassMat.emissiveIntensity = k * 0.9; });
   art.assetBuildings = added;
@@ -456,18 +596,19 @@ const _q = new THREE.Quaternion();
 const _v = new THREE.Vector3();
 const _col = new THREE.Color();
 
-function instanceBuilding(gltf, specs, mats, art) {
-  const groups = collectByGroup(gltf.scene, HOUSE_GROUPS);
+function instanceBuilding(gltf, specs, mats, art, opts = {}) {
+  const { groupOf = HOUSE_GROUPS, tint = true, modelH: modelHIn = 0 } = opts;
+  const groups = collectByGroup(gltf.scene, groupOf);
   const out = [];
   const merged = new Map();
   for (const [key, list] of groups) {
     const g = list.length === 1 ? list[0] : mergeGeometries(list, false);
     if (g) merged.set(key, g);
   }
-  const shell = merged.get('shell');
-  if (!shell) return out;
-  let modelH = 0;
-  for (const g of merged.values()) modelH = Math.max(modelH, geoMetrics(g).height);
+  if (!merged.size) return out;
+  // modelH 由呼叫端指定時代表「與另一個模型共用同一套縮放」(烘焙版的殼 ＋ 平塗版的玻璃)
+  let modelH = modelHIn;
+  if (!modelH) for (const g of merged.values()) modelH = Math.max(modelH, geoMetrics(g).height);
   if (!modelH) return out;
 
   for (const [key, geo] of merged) {
@@ -481,7 +622,8 @@ function instanceBuilding(gltf, specs, mats, art) {
       _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), s.rot);
       _m4.compose(_v.set(s.x, 0, s.z), _q, new THREE.Vector3(k, k, k));
       im.setMatrixAt(i, _m4);
-      if (key === 'shell') im.setColorAt(i, _col.setHex(s.wallHex ?? 0xb4b0a6).multiplyScalar(1.25));
+      // 烘焙版的顏色已經在貼圖裡(instanceColor 會再乘一次牆色 → 整排房子變深),所以只有平塗版染色
+      if (tint && key === 'shell') im.setColorAt(i, _col.setHex(s.wallHex ?? 0xb4b0a6).multiplyScalar(1.25));
     });
     im.instanceMatrix.needsUpdate = true;
     if (im.instanceColor) im.instanceColor.needsUpdate = true;
