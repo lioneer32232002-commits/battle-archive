@@ -123,6 +123,10 @@ body {
 .hud-btn.active { border-color: #c9a227; color: #ffd97a; }
 .hud-btn.big { font-size: 1.1rem; padding: 8px 18px; }
 
+/* R5 畫質分級小按鈕（右上；切換後會重新載入） */
+.quality-btn { padding: 7px 10px; font-size: 0.8rem; letter-spacing: 0.02em; color: #9fb0c8; }
+.quality-btn:hover { color: #ffd97a; }
+
 /* ── 側面板 ── */
 .side-panel {
   position: absolute;

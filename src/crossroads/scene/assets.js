@@ -22,8 +22,12 @@ const DRACO_PATH = '/draco/';
 const LOCAL_MODEL_IDS = [
   // 陣地與建築
   'mg_nest', 'farmhouse_dutch', 'farmhouse_dutch_damaged', 'windmill', 'windmill_damaged', 'barn',
+  // R2 Cycles 舊化烘焙版（單一材質＋四張貼圖；桌機 high／medium 優先載這個）
+  'farmhouse_dutch_baked', 'barn_baked',
   // 道具
   'signpost', 'fence_wood', 'sandbag_wall', 'foxhole', 'ammo_crate',
+  // R1 骨架動畫士兵（20 骨、七個 clip；德軍這場用長大衣版）
+  'soldier_rig_us', 'soldier_rig_de', 'soldier_rig_de_coat',
   // 士兵（美軍傘兵／德軍國民擲彈兵長大衣版）
   'soldier_us_stand_rifle', 'soldier_us_advance_rifle', 'soldier_us_kneel_fire',
   'soldier_us_crouch_run', 'soldier_us_prone_mg',
@@ -192,6 +196,10 @@ export function createAssetLoader({ mobile = false, renderer = null } = {}) {
       });
       if (!gltf) return null;
       const root = gltf.scene;
+      // R1：骨架動畫的 clip 掛在 gltf.animations 上（GLTFLoader 不會塞進 scene），
+      // 呼叫端只拿得到 scene，所以在這裡掛一份上去。glTF 的 animation extras
+      // （walk／run 的 speed）由 GLTFLoader 放在 clip.userData。
+      root.animations = gltf.animations ?? [];
       root.updateMatrixWorld(true);
       root.traverse((o) => {
         if (!o.isMesh) return;

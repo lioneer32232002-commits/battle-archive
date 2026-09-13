@@ -377,7 +377,17 @@ function makeTreeGeometry(variant, seed) {
   return mergeGeometries(parts, false);
 }
 
-export function createCrossroadsTerrain(scene, { shadows = false, mobile = false } = {}) {
+// R5 畫質分級：草叢數量、hero／mid 植被的 glb 換裝與抽稀、建築是否吃烘焙版，
+// 全部由 quality.js 的參數表決定（貼圖尺寸仍依 mobile，那是頻寬不是算力）。
+const DEFAULT_Q = {
+  grassFactor: 1,
+  vegetation: { glb: true, heroHi: true, midFactor: 1, willowFactor: 1 },
+  baked: true,
+};
+
+export function createCrossroadsTerrain(scene, { shadows = false, mobile = false, quality = null } = {}) {
+  const Q = { ...DEFAULT_Q, ...(quality ?? {}) };
+  const VEG = { ...DEFAULT_Q.vegetation, ...(Q.vegetation ?? {}) };
   const g = new THREE.Group();
   const TEX = mobile ? 1024 : 2048;
   const rng = mulberry(777);
@@ -642,7 +652,7 @@ export function createCrossroadsTerrain(scene, { shadows = false, mobile = false
 
   // ── L-2：草叢（桌機限定；核心區交叉雙面 quad，隨風輕擺） ──────
   let grassMesh = null;
-  const GRASS_BASE = mobile ? 0 : 2400;
+  const GRASS_BASE = Math.round(2400 * (Q.grassFactor ?? 1));
   if (GRASS_BASE > 0) {
     const blade = new THREE.PlaneGeometry(2.6, 1.7);
     blade.translate(0, 0.85, 0);
@@ -764,9 +774,15 @@ export function createCrossroadsTerrain(scene, { shadows = false, mobile = false
 
   const glbMeshes = [];
   let windmillSails = null;   // { pivot, axis }：glb 風車的車翼，update() 讓它慢慢轉
-  async function applyAssets(assets) {
+  /**
+   * @param assets createAssetLoader 的實例
+   * @param {{register?:(o:THREE.Object3D)=>void}} [opts]
+   *        register：R6 CSM 材質註冊——換上來的 glb 跟新材質一定要註冊，
+   *        否則會被三盞 cascade 燈各照一次、亮度變三倍。
+   */
+  async function applyAssets(assets, { register = null } = {}) {
     if (!assets) return { textures: false, vegetation: false, buildings: [] };
-    const report = { textures: false, vegetation: false, buildings: [], missing: [] };
+    const report = { textures: false, vegetation: false, buildings: [], missing: [], baked: [] };
 
     // ── 1. 地表 PBR ─────────────────────────────────────
     const [grassSet, dikeSet, asphaltSet, mudSet, dirtSet, bankSet, brickSet, plasterSet, roofSet] =
@@ -843,7 +859,7 @@ export function createCrossroadsTerrain(scene, { shadows = false, mobile = false
     }
 
     // ── 2. 植被：Poly Haven glb InstancedMesh（桌機限定） ──
-    if (!mobile) {
+    if (VEG.glb) {
       // 樹分三級（首屏預算 6 MB 擺不下「每一棵都是 1 MB 的高規版」，所以按鏡頭會不會看到來分）：
       //   hero = 離十字路口 < HERO_R 的行道樹與農舍高樹（齊射／上刺刀／潰敗三段都入鏡）→ _hi 全幾何
       //   mid  = 外側堤段的行道樹、北岸樹線 → 一般版（葉量較稀，但那個距離看不出來）
@@ -854,22 +870,27 @@ export function createCrossroadsTerrain(scene, { shadows = false, mobile = false
         const x = m4.elements[12], z = m4.elements[14];
         (Math.hypot(x, z) < HERO_R ? heroSlots : midSlots).push(m4);
       }
+      // R5：medium 的 hero 樹改一般版（不吃 _hi 的全幾何）、mid 樹與柳叢抽稀到半量
+      const thin = (arr, f) => (f >= 1 ? arr : (f <= 0 ? [] : arr.filter((_, i) => i % Math.round(1 / f) === 0)));
+      const midThin = thin(midSlots, VEG.midFactor);
+      const bankThin = thin(glbSlots.bankTree, VEG.midFactor);
+      const willowThin = thin(glbSlots.willow, VEG.willowFactor);
       const [heroTree, midTree, willow] = await Promise.all([
-        assets.model('tree_small_02', { hi: true }),
+        assets.model('tree_small_02', { hi: !!VEG.heroHi }),
         assets.model('island_tree_02'),
         assets.model('shrub_04'),
       ]);
       if (heroTree && midTree) {
         glbMeshes.push(...instanceGlb(heroTree, heroSlots, PROC_H[0]));
-        glbMeshes.push(...instanceGlb(midTree, midSlots, PROC_H[0]));
+        glbMeshes.push(...instanceGlb(midTree, midThin, PROC_H[0]));
         // 北岸樹線在河對岸，影子落在沒人看的高地上；不投影可省掉一次 alphaTest 葉片的 shadow pass
-        glbMeshes.push(...instanceGlb(midTree, glbSlots.bankTree, PROC_H[0], { cast: false }));
+        glbMeshes.push(...instanceGlb(midTree, bankThin, PROC_H[0], { cast: false }));
         treeMeshes[0].count = proceduralBase[0];          // 程序化近景樹整段退場（遠景剪影留著）
-        report.vegetation = { hero: heroSlots.length, mid: midSlots.length + glbSlots.bankTree.length };
+        report.vegetation = { hero: heroSlots.length, mid: midThin.length + bankThin.length, hi: !!VEG.heroHi };
       } else report.missing.push('tree_small_02_hi/island_tree_02');
       if (willow) {
         // 灌木不投影：alphaTest 的葉片在 shadow pass 很吃 fill rate，收益又低
-        glbMeshes.push(...instanceGlb(willow, glbSlots.willow, PROC_H[1], { cast: false }));
+        glbMeshes.push(...instanceGlb(willow, willowThin, PROC_H[1], { cast: false }));
         treeMeshes[1].count = proceduralBase[1];
       } else report.missing.push('shrub_04');
     }
@@ -882,12 +903,33 @@ export function createCrossroadsTerrain(scene, { shadows = false, mobile = false
       roof_tile: { set: roofSet, roughness: 0.8 },
       thatch: { set: roofSet, color: 0xa8935e, roughness: 1 },
     };
-    const [fhGlb, wmGlb, barnGlb] = await Promise.all([
-      assets.model('farmhouse_dutch'), assets.model('windmill'), assets.model('barn'),
+    // R2：桌機 high／medium 優先載 Cycles 舊化烘焙版（單一材質＋四張貼圖）。
+    // 風車與戰損變體沒有烘焙版，維持現況；low 與手機一律走平塗版。
+    const wantBaked = !!Q.baked;
+    const [fhBaked, barnBaked] = await Promise.all([
+      wantBaked ? assets.model('farmhouse_dutch_baked') : null,
+      wantBaked ? assets.model('barn_baked') : null,
     ]);
-    for (const [glb, name] of [[fhGlb, 'farmhouse_dutch'], [wmGlb, 'windmill'], [barnGlb, 'barn']]) {
-      if (glb) applyMaterialTextures(glb, buildingTable, { shadows });
-      else report.missing.push(name);
+    const [fhPlain, wmGlb, barnPlain] = await Promise.all([
+      fhBaked ? null : assets.model('farmhouse_dutch'),
+      assets.model('windmill'),
+      barnBaked ? null : assets.model('barn'),
+    ]);
+    const fhGlb = fhBaked ?? fhPlain;
+    const barnGlb = barnBaked ?? barnPlain;
+    if (fhBaked) report.baked.push('farmhouse_dutch_baked');
+    else if (wantBaked) report.missing.push('farmhouse_dutch_baked');
+    if (barnBaked) report.baked.push('barn_baked');
+    else if (wantBaked) report.missing.push('barn_baked');
+    for (const [glb, name, isBaked] of [
+      [fhGlb, 'farmhouse_dutch', !!fhBaked], [wmGlb, 'windmill', false], [barnGlb, 'barn', !!barnBaked],
+    ]) {
+      if (!glb) { report.missing.push(name); continue; }
+      // 烘焙版已經把磨損、鏽跡、接縫、髒汙烘進貼圖：直接用 glb 自己的材質
+      // （roughness 下限 0.35 與 envMapIntensity 由 assets.normalizeMaterial 統一處理），
+      // **不再疊 Poly Haven 的磚牆／瓦頂貼圖**，否則等於把烘好的細節蓋掉。
+      if (isBaked) { if (shadows) glb.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); }
+      else applyMaterialTextures(glb, buildingTable, { shadows });
     }
     if (fhGlb) {
       for (const fh of farmhouses) {
@@ -954,6 +996,8 @@ export function createCrossroadsTerrain(scene, { shadows = false, mobile = false
     } else report.missing.push('signpost');
 
     for (const d of disposables.splice(0)) d.dispose();
+    // R6：換上來的 glb 與 swapMaterial 新建的地表材質一次註冊給 CSM（冪等、手機 no-op）
+    register?.(g);
     return report;
   }
 

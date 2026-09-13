@@ -9,7 +9,7 @@ import {
 import { unitStateAt, newEvents } from './engine/timeline.js';
 import { createEnvironment } from './scene/environment.js';
 import { createCrossroadsTerrain } from './scene/terrain.js';
-import { createUnit, applyUnitAssets } from './scene/soldiers.js';
+import { createUnit, applyUnitAssets, apparentSpeed } from './scene/soldiers.js';
 import { createAssetLoader } from './scene/assets.js';
 import { Effects } from './scene/effects.js';
 import { makeLabel } from './scene/labels.js';
@@ -17,6 +17,10 @@ import { Director } from './camera/director.js';
 import { createHUD } from './ui/hud.js';
 import { AudioEngine } from './scene/audio.js';
 import { createComposer } from './scene/postfx.js';
+import {
+  getQuality, qualityParams, setQuality, cycleTier, createFrameWatcher,
+  markAutoDowngrade, consumeAutoDowngradeFlag, TIER_LABEL,
+} from './scene/quality.js';
 
 // dev 時可用 ?mobile 強制走手機分流（無陰影／無後製／512 貼圖／tonemapped 環境光／植被不換 glb），
 // 方便在桌機視窗上驗收手機路徑；正式 build 走的永遠是 matchMedia。
@@ -24,13 +28,20 @@ const FORCE_MOBILE = !!(import.meta.env && import.meta.env.DEV)
   && new URLSearchParams(location.search).has('mobile');
 const isMobile = FORCE_MOBILE || window.matchMedia('(max-width: 640px)').matches;
 const LABEL_SCALE = isMobile ? 0.6 : 1;
-const SHADOWS = !isMobile;   // P-2：陰影桌機限定
-const POSTFX = !isMobile;    // P-3：後製桌機限定
 
 // ── 基本場景 ─────────────────────────────────────────
 const container = document.getElementById('scene-container');
 const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, powerPreference: 'high-performance', preserveDrawingBuffer: true });
-const DPR_CAP = Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2);
+
+// R5 畫質分級（docs/realism-spec.md §R5）：?q= → localStorage → UNMASKED_RENDERER 自動判定。
+// ⚠ 必須在建場景之前決定：CSM 層數、植被數量、composer 的關卡組成都是建構期參數。
+const Q = getQuality({ gl: renderer.getContext(), mobile: isMobile });
+const downgraded = consumeAutoDowngradeFlag();
+if (downgraded) console.info(`[crossroads] 上一輪幀時間超標，這次以「${TIER_LABEL[downgraded]}」畫質載入`);
+
+const SHADOWS = Q.shadows;   // P-2：陰影桌機限定（low 走單張正交、手機無陰影）
+const POSTFX = Q.postfx;     // P-3：後製桌機限定（low 只留 OutputPass ＋ 調色）
+const DPR_CAP = Math.min(window.devicePixelRatio, Q.pixelRatioCap);
 renderer.setPixelRatio(DPR_CAP);
 renderer.setSize(window.innerWidth, window.innerHeight);
 // P-1：ACES 色調映射（手機桌機都開；environment.js 調色盤已據此重校）
@@ -58,9 +69,13 @@ controls.enableDamping = true;
 // R4 驗收用:dev server 加 ?legacy=1 就整條回到升級前(單張正交陰影＋舊後製),
 // 同機位拍開／關對照。import.meta.env.DEV 在正式 build 是常數 false,整段會被搖掉。
 const QA_LEGACY = !!(import.meta.env && import.meta.env.DEV) && location.search.includes('legacy=1');
-const environment = createEnvironment(scene, { shadows: SHADOWS, mobile: isMobile, camera: QA_LEGACY ? null : camera });
-const terrain = createCrossroadsTerrain(scene, { shadows: SHADOWS, mobile: isMobile });
-const effects = new Effects(scene, { mobile: isMobile });
+const environment = createEnvironment(scene, {
+  shadows: SHADOWS, mobile: isMobile, camera: QA_LEGACY ? null : camera, quality: Q,
+});
+const terrain = createCrossroadsTerrain(scene, { shadows: SHADOWS, mobile: isMobile, quality: Q });
+const effects = new Effects(scene, { mobile: isMobile, particleFactor: Q.particleFactor });
+// R6：資產載入後才新建／clone 的材質一律走這支註冊給 CSM（冪等、手機與 low 是 no-op）
+const registerCSM = (obj) => environment.registerObject(obj);
 const director = new Director(camera, controls);
 const audio = new AudioEngine();
 
@@ -80,6 +95,9 @@ const post = POSTFX ? createComposer(renderer, scene, camera, {
   },
   gtao: { radius: 4, distanceExponent: 1, thickness: 1, scale: 1.5, blend: 0.7 },
   bokeh: { aperture: 0.00008, maxblur: 0.006 },
+  // R5：哪幾關進 composer 依畫質等級（medium 關 GTAO、bloom 半解析度；low 只留 OutputPass ＋ 調色）
+  passes: Q.passes,
+  bloomScale: Q.bloomScale,
 }) : null;
 if (QA_LEGACY && post) post.setPipeline('legacy');
 function renderFrame(dt) {
@@ -120,6 +138,7 @@ for (const u of units) {
     troopers: group.userData.troopers ?? [],
     curRot: u.facing != null ? u.facing : 0,
     prevX: u.track[0].x, prevZ: u.track[0].z,
+    speedMps: 0,   // R1：平滑後的「小人自己尺度」移動速度，決定 clip 與播放倍率
   });
   group.rotation.y = u.facing != null ? u.facing : 0;
 }
@@ -218,6 +237,9 @@ const hud = createHUD({
   },
   onVolume: (v) => audio.setVolume(v),
   onAudioToggle: (on) => audio.setEnabled(on),
+  // R5：右上角的畫質小按鈕（高 → 中 → 低 循環；寫 localStorage 後重載重建）
+  qualityLabel: isMobile ? null : TIER_LABEL[Q.tier],
+  onQualityCycle: isMobile ? null : () => setQuality(cycleTier(Q.tier), { reason: 'user' }),
 });
 
 // 點擊 3D 中的人物標記 → 開啟小卡
@@ -383,11 +405,18 @@ function tick() {
     else o.curRot += shortestAngleDiff(targetRot, o.curRot) * rotK;
     o.group.rotation.y = o.curRot;
 
-    // M-3：行進微動作（上刺刀衝鋒段最有感）
+    // R1 骨架動畫／M-3 行進微動作（上刺刀衝鋒段最有感）
     const moved = Math.hypot(st.pos.x - o.prevX, st.pos.z - o.prevZ);
     o.prevX = st.pos.x; o.prevZ = st.pos.z;
     const isDown = st.status === 'destroyed' && o.downT != null;
-    if (!isDown && o.troopers.length) {
+    const animator = o.group.userData.animator;
+    if (animator) {
+      // 「實際移動速度」＝ 這一幀在場上的位移換算成小人自己尺度的 m/s（見 soldiers.apparentSpeed）。
+      // 拖曳／跳轉那一幀的位移是瞬移，不能拿來選 clip → 速度直接歸零、狀態 snap。
+      const raw = snapRot ? 0 : apparentSpeed(moved / Math.max(dt, 1e-4));
+      o.speedMps = snapRot ? 0 : o.speedMps + (raw - o.speedMps) * (1 - Math.exp(-dt / 0.25));
+      animator.update(dt, { speed: o.speedMps, battleT, destroyed: isDown, snap: snapRot });
+    } else if (!isDown && o.troopers.length) {
       const movingAmp = moved > 0.03 ? 1 : 0.22;   // 靜止單位保留 ~1/4 呼吸感
       for (const tr of o.troopers) {
         const ph = tr.userData.phase;
@@ -484,7 +513,29 @@ function setAoLevel(n) {
 let fpsAcc = 0, fpsFrames = 0, fpsTimer = 0, goodStreak = 0;
 let curRatio = DPR_CAP;
 const FLOOR = isMobile ? 1.0 : DPR_CAP * 0.75;
+
+// R5:執行期自動降級 —— 滾動 3 秒平均幀時間 > 40 ms 就降一級。
+// 先動可即時切換的旋鈕(GTAO、pixelRatio、草叢),再寫 localStorage 重載把需重建的
+// (CSM 層數、植被數量、composer 組成)一起換掉。?q= 指定時不自動降級(量測要固定畫質)。
+const frameWatcher = createFrameWatcher({
+  tier: Q.tier,
+  enabled: Q.autoDowngrade,
+  onDowngrade: (next, avgMs) => {
+    console.warn(`[crossroads] 平均幀時間 ${avgMs.toFixed(1)} ms > 40 ms → 畫質降到「${TIER_LABEL[next]}」並重新載入`);
+    setAoLevel(2);
+    const cap = qualityParams(next, { mobile: isMobile }).pixelRatioCap;
+    curRatio = Math.min(curRatio, cap);
+    renderer.setPixelRatio(curRatio);
+    if (post) post.setPixelRatio(curRatio);
+    terrain.setDetail(0.5);
+    markAutoDowngrade(next);
+    setTimeout(() => setQuality(next, { reason: 'auto' }), 800);
+  },
+});
+
 function fpsSample(dt) {
+  frameWatcher.setPaused(perfLock);
+  frameWatcher.sample(dt);
   fpsAcc += dt; fpsFrames++; fpsTimer += dt;
   if (fpsTimer < 2) return;
   const fps = fpsFrames / fpsAcc;
@@ -530,14 +581,20 @@ async function loadAssets() {
   assetsKicked = true;
   try {
     const [terrainRep, envRep] = await Promise.all([
-      terrain.applyAssets(assets),
+      terrain.applyAssets(assets, { register: registerCSM }),
       environment.applyAssets(assets),
     ]);
     assetReport.terrain = terrainRep;
     assetReport.env = envRep;
     for (const [, o] of unitObjs) {
-      const rep = await applyUnitAssets(o.group, o.spec, assets, { shadows: SHADOWS });
+      const rep = await applyUnitAssets(o.group, o.spec, assets, {
+        shadows: SHADOWS, quality: Q, register: registerCSM,
+      });
       if (rep.mg || rep.soldiers) {
+        // ⚠ 先把淡出還原再丟快取：換模時如果這個單位正在淡出（使用者在資產到位前就跳到
+        //   火力點被摧毀之後的章節），新的快取會把「淡到一半」的 opacity／顏色當成原始值，
+        //   之後怎麼倒帶都救不回來（識別環會永遠留在半透明的褐色）。
+        restoreLook(o);
         o.mats = null;          // 淡出用的材質快取要重建（模型已經換過）
         o.troopers = o.group.userData.troopers ?? [];
         assetReport.units.push({ id: o.spec.id, ...rep });
@@ -570,8 +627,18 @@ if (import.meta.env && import.meta.env.DEV) {
       o.group.visible = true;
       restoreLook(o);
     }
+    // R1:骨架動畫也要跟著跳到該時刻的狀態(拖曳/跳轉後截圖才不會拍到上一段的姿態)
+    for (const [, o] of unitObjs) {
+      const st = unitStateAt(o.spec, t);
+      const animator = o.group.userData.animator;
+      if (!animator) continue;
+      const isDown = st.status === 'destroyed' && o.downT != null;
+      animator.update(0.05, { speed: 0, battleT: t, destroyed: isDown, snap: true });
+      for (let i = 0; i < 12; i++) animator.update(0.05, { speed: 0, battleT: t, destroyed: isDown });
+    }
     environment.update(0, t);
     terrain.update(0, t);
+    environment.updateShadows();
     renderFrame(0.016);
     return t;
   };
@@ -580,6 +647,7 @@ if (import.meta.env && import.meta.env.DEV) {
     camera.position.set(px, py, pz);
     camera.lookAt(tx, ty, tz);
     camera.updateMatrixWorld();
+    environment.updateShadows();   // cascade 框是跟著鏡頭算的,換機位要重算才有影子
     renderFrame(0.016);
   };
   // R4-6 效能量測:固定 1600×1000、dpr 1.5,同步量單幀渲染時間。
@@ -610,7 +678,12 @@ if (import.meta.env && import.meta.env.DEV) {
     return Math.round(ms * 100) / 100;
   };
   window.__dbg = {
-    post, dbgPerf,
+    post, dbgPerf, quality: Q,
+    // ⚠ QA 用手動推幀:分頁若沒有在 composite(遠端 QA、背景分頁),瀏覽器根本不呼叫
+    //   requestAnimationFrame,整個模擬會停在第一幀。這支就是「手動跑一幀」。
+    tick,
+    // 直接切等級(會 reload);要量同機位三級就用 ?q=high|medium|low
+    setQuality: (t) => setQuality(t),
     // A/B 對照:__dbg.pipeline('legacy') 回到升級前的後製,('modern') 全開
     pipeline: (mode) => { if (post) post.setPipeline(mode); renderFrame(0.016); return mode; },
     // 截圖前凍結畫質(擋掉動態解析度／GTAO 自動降級,否則慢機器上拍到的是降級後的畫面)

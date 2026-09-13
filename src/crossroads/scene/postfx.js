@@ -124,6 +124,9 @@ export function createComposer(renderer, scene, camera, opts = {}) {
     screenSpaceRadius: false, blend: 0.6, ...(opts.gtao ?? {}),
   };
   const bloomCfg = { strength: 0.25, radius: 0.6, threshold: 0.85, ...(opts.bloom ?? {}) };
+  // R5 畫質分級:哪幾關要進 composer(medium 關 GTAO、low 只留 OutputPass ＋ 調色)
+  const use = { gtao: true, bloom: true, smaa: true, bokeh: true, ...(opts.passes ?? {}) };
+  const bloomScale = opts.bloomScale ?? 1;   // medium:bloom 半解析度
   const bokehCfg = { aperture: 0.00008, maxblur: 0.006, ...(opts.bokeh ?? {}) };
   const grade = { ...NEUTRAL_GRADE, ...(opts.grade ?? {}) };
 
@@ -135,59 +138,60 @@ export function createComposer(renderer, scene, camera, opts = {}) {
   composer.addPass(new RenderPass(scene, camera));
 
   // ── GTAO(半解析度):接地感的關鍵 — 士兵腳下、牆腳、艦島根部 ──
-  const gtao = new GTAOPass(scene, camera, Math.round(size.x * 0.5), Math.round(size.y * 0.5));
-  // ⚠ 深度精度:GTAOPass 的 G-buffer 是 DEPTH24_STENCIL8,而本專案的 camera 是
-  //   near 0.5 / far 40000(天空圓頂半徑 16000,far 收不了)。實測把深度換成
-  //   DEPTH_COMPONENT32F 反而讓 GTAO 整片變成「無遮蔽」(AO 恆為 1),所以維持 24_8;
-  //   代價是 AO 的有效距離有限,遠景幾乎沒有 AO —— 這正好也是我們要的(接地感只需要近景)。
-  gtao.output = GTAOPass.OUTPUT.Default;
-  gtao.blendIntensity = gtaoCfg.blend;
-  gtao.updateGtaoMaterial({
-    radius: gtaoCfg.radius,
-    distanceExponent: gtaoCfg.distanceExponent,
-    thickness: gtaoCfg.thickness,
-    scale: gtaoCfg.scale,
-    samples: gtaoCfg.samples,
-    screenSpaceRadius: gtaoCfg.screenSpaceRadius,
-  });
-  // 去噪半徑跟著 AO 半徑走,否則半解析度的 AO 會在邊緣結塊、出現黑邊光暈
-  gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, radiusExponent: 1, rings: 2, samples: 16 });
-  // ⚠ GTAO 的 G-buffer 是用 scene.overrideMaterial 重畫一次場景 —— **override 材質的
-  //   depthWrite 是 true**,所以原本 depthWrite:false 的東西(天空圓頂、雲、寒霧、太陽、
-  //   所有 Sprite 標籤)全都會把深度寫進去,變成「天上有幾塊幾百公尺寬的板子擋著」,
-  //   AO 算出來就是滿天的黑色方塊。內建的 _overrideVisibility 只擋 Points／Line,
-  //   這裡擴充成也擋 Sprite 與 userData.noAO(environment.js 幫天空掛的旗標)。
-  gtao._overrideVisibility = function () {
-    const cache = this._visibilityCache;
-    this.scene.traverse((o) => {
-      if (!o.visible) return;
-      if (o.isPoints || o.isLine || o.isLine2 || o.isSprite || o.userData.noAO) {
-        o.visible = false;
-        cache.push(o);
-      }
+  const gtao = use.gtao ? new GTAOPass(scene, camera, Math.round(size.x * 0.5), Math.round(size.y * 0.5)) : null;
+  if (gtao) {
+    // ⚠ 深度精度:GTAOPass 的 G-buffer 是 DEPTH24_STENCIL8,而本專案的 camera 是
+    //   near 0.5 / far 40000(天空圓頂半徑 16000,far 收不了)。實測把深度換成
+    //   DEPTH_COMPONENT32F 反而讓 GTAO 整片變成「無遮蔽」(AO 恆為 1),所以維持 24_8;
+    //   代價是 AO 的有效距離有限,遠景幾乎沒有 AO —— 這正好也是我們要的(接地感只需要近景)。
+    gtao.output = GTAOPass.OUTPUT.Default;
+    gtao.blendIntensity = gtaoCfg.blend;
+    gtao.updateGtaoMaterial({
+      radius: gtaoCfg.radius,
+      distanceExponent: gtaoCfg.distanceExponent,
+      thickness: gtaoCfg.thickness,
+      scale: gtaoCfg.scale,
+      samples: gtaoCfg.samples,
+      screenSpaceRadius: gtaoCfg.screenSpaceRadius,
     });
-  };
-  composer.addPass(gtao);
+    // 去噪半徑跟著 AO 半徑走,否則半解析度的 AO 會在邊緣結塊、出現黑邊光暈
+    gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, radiusExponent: 1, rings: 2, samples: 16 });
+    // ⚠ GTAO 的 G-buffer 是用 scene.overrideMaterial 重畫一次場景 —— **override 材質的
+    //   depthWrite 是 true**,所以原本 depthWrite:false 的東西(天空圓頂、雲、寒霧、太陽、
+    //   所有 Sprite 標籤)全都會把深度寫進去,變成「天上有幾塊幾百公尺寬的板子擋著」,
+    //   AO 算出來就是滿天的黑色方塊。內建的 _overrideVisibility 只擋 Points／Line,
+    //   這裡擴充成也擋 Sprite 與 userData.noAO(environment.js 幫天空掛的旗標)。
+    gtao._overrideVisibility = function () {
+      const cache = this._visibilityCache;
+      this.scene.traverse((o) => {
+        if (!o.visible) return;
+        if (o.isPoints || o.isLine || o.isLine2 || o.isSprite || o.userData.noAO) {
+          o.visible = false;
+          cache.push(o);
+        }
+      });
+    };
+    composer.addPass(gtao);
+  }
 
   // ── 景深:只在導演模式跟拍時開(§R4.3),目標是「遠景略柔」 ──
-  const bokeh = new BokehPass(scene, camera, {
+  const bokeh = use.bokeh ? new BokehPass(scene, camera, {
     focus: 200, aperture: bokehCfg.aperture, maxblur: bokehCfg.maxblur,
-  });
-  bokeh.enabled = false;
-  composer.addPass(bokeh);
+  }) : null;
+  if (bokeh) { bokeh.enabled = false; composer.addPass(bokeh); }
 
-  const bloom = new UnrealBloomPass(
+  const bloom = use.bloom ? new UnrealBloomPass(
     new THREE.Vector2(size.x, size.y), bloomCfg.strength, bloomCfg.radius, bloomCfg.threshold
-  );
-  composer.addPass(bloom);
+  ) : null;
+  if (bloom) composer.addPass(bloom);
 
   composer.addPass(new OutputPass());     // ACES ＋ sRGB(見檔頭註)
 
   const gradePass = new ShaderPass(GradeShader);
   composer.addPass(gradePass);
 
-  const smaa = new SMAAPass();
-  composer.addPass(smaa);
+  const smaa = use.smaa ? new SMAAPass() : null;
+  if (smaa) composer.addPass(smaa);
 
   // ── 尺寸管理 ──────────────────────────────────────────
   let curW = size.x, curH = size.y, curRatio = renderer.getPixelRatio();
@@ -197,9 +201,9 @@ export function createComposer(renderer, scene, camera, opts = {}) {
     composer.renderTarget2.samples = MSAA;
     const ew = Math.max(1, Math.round(curW * curRatio));
     const eh = Math.max(1, Math.round(curH * curRatio));
-    bloom.setSize(ew, eh);
+    if (bloom) bloom.setSize(Math.max(1, Math.round(ew * bloomScale)), Math.max(1, Math.round(eh * bloomScale)));
     // EffectComposer 已經把全解析度塞給每個 pass,GTAO 要再壓回來
-    gtao.setSize(Math.max(1, Math.round(ew * gtaoScale)), Math.max(1, Math.round(eh * gtaoScale)));
+    if (gtao) gtao.setSize(Math.max(1, Math.round(ew * gtaoScale)), Math.max(1, Math.round(eh * gtaoScale)));
   }
   applySizes();
 
@@ -240,18 +244,18 @@ export function createComposer(renderer, scene, camera, opts = {}) {
     },
     // §R4.6 降級:先降 GTAO 解析度 → 再關 GTAO → 最後才由 main.js 降 pixelRatio
     setGtaoScale: (s) => { gtaoScale = s; applySizes(); },
-    setGTAO: (on) => { gtao.enabled = !!on && modern; },
-    gtaoEnabled: () => gtao.enabled,
+    setGTAO: (on) => { if (gtao) gtao.enabled = !!on && modern; },
+    gtaoEnabled: () => !!gtao?.enabled,
     // 景深:導演跟拍時開,每幀把 focus 設為跟拍目標距離
-    setBokeh: (on) => { bokeh.enabled = !!on && modern; },
-    setFocus: (dist) => { bokeh.uniforms.focus.value = Math.max(1, dist); },
-    bokehEnabled: () => bokeh.enabled,
+    setBokeh: (on) => { if (bokeh) bokeh.enabled = !!on && modern; },
+    setFocus: (dist) => { if (bokeh) bokeh.uniforms.focus.value = Math.max(1, dist); },
+    bokehEnabled: () => !!bokeh?.enabled,
     // A/B 對照:'modern' = 全開,'legacy' = 升級前的管線
     setPipeline: (mode) => {
       modern = mode !== 'legacy';
-      gtao.enabled = modern;
-      smaa.enabled = modern;
-      bokeh.enabled = false;
+      if (gtao) gtao.enabled = modern;
+      if (smaa) smaa.enabled = modern;
+      if (bokeh) bokeh.enabled = false;
       applyGrade(modern ? grade : legacyGrade);
     },
     render: (dt) => { u.uTime.value += dt; composer.render(); },

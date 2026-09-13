@@ -14,7 +14,14 @@
 //     否則 main.js 的 applyDestroyedLook 會一淡全淡（原本「每單位一份材質」的約定要守住）。
 //   * `userData.troopers` 仍是「每個小兵一個 Object3D」，M-3 微動作照舊。
 //   * 載不到就完全維持程序化小人（createUnit 的對外 API 不變）。
+//
+// R1 骨架動畫（docs/realism-spec.md §R1.5）：士兵優先換 `soldier_rig_<variant>.glb`
+//   （20 骨、七個 clip）。每兵一個 SkeletonUtils.clone ＋ 一個 AnimationMixer，
+//   `userData.troopers` 改為指向每個兵的 SkinnedMesh、`userData.animator` 是這個單位的動畫器
+//   （main.js 每幀餵「實際移動速度」進去選 clip 與播放倍率），原本的正弦起伏微動作由 clip 取代。
+//   rig 載不到才退回上面那套靜態姿態 glb，再載不到才是程序化小人。
 import * as THREE from 'three';
+import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
 import { fitToHeight, fitToWidth, normalizeMaterial } from './assets.js';
 
 const SIDE_COLOR = { red: 0xd9442e, blue: 0x2e7bd9 };
@@ -360,6 +367,131 @@ function poseModelId(side, pose, kind) {
 // 程序化武器名 → 武器 glb（掛在 glb 士兵的 hand_r 空節點上）
 const WEAPON_MODEL = { thompson: 'thompson', bar: 'bar', garand: 'garand', kar98: 'kar98k' };
 
+// ══ R1 骨架動畫（docs/realism-spec.md §R1.5）══════════════════
+// 每兵一個 SkeletonUtils.clone 的 SkinnedMesh（幾何與 clip 共用、骨架與材質各自一份）、
+// 每兵一個 AnimationMixer；clip 依「單位這一幀的實際移動速度」選，播放倍率 = 速度 ÷ clip 的
+// extras.speed（腳不滑）。同班各兵用既有的 userData.phase 當起始相位，避免整班齊步。
+const RIG_MODEL = { blue: 'soldier_rig_us', red: 'soldier_rig_de_coat' };
+
+// rig glb 的身高（盔頂，公尺）—— 實際縮放仍由 fitToHeight 量，這裡只用於速度換算的預設值。
+const RIG_HEIGHT_M = 1.752;
+
+// 場景尺度 → 士兵自己的公尺。這場 1 場景單位 = 10 公尺，但小人是「放大的立體透視模型」
+// （3.29 × 1.15 單位高 ≈ 真人的 20 倍），所以「腳會不會滑」要用小人自己的比例換算：
+//   apparent m/s = 群組速度（場景單位／秒） ÷ （場景單位／模型公尺）
+const UNITS_PER_METER = (PROC_SOLDIER_H * 1.15) / RIG_HEIGHT_M;   // ≈ 2.16
+export function apparentSpeed(unitsPerSecond) {
+  return Math.abs(unitsPerSecond || 0) / UNITS_PER_METER;
+}
+
+// 上刺刀衝鋒段（戰役分鐘）。這是全役的戲眼，一律 run ——
+// diorama 尺度下單位在場上的「實際 m/s」本來就偏低（見 UNITS_PER_METER），
+// 光靠 2.2 m/s 的速度門檻，正常播放速度下永遠跨不過去。
+export const CHARGE_WINDOW = [320, 340];
+
+const LOCOMOTION = new Set(['walk', 'run', 'crouch_walk']);
+const DEFAULT_CLIP_SPEED = { walk: 1.4, run: 3.5, crouch_walk: 1.0 };
+
+/**
+ * 依單位狀態選 clip（純函式，單元測試打這支）。
+ * @param {{kind?:string, pose?:string, speed?:number, battleT?:number, destroyed?:boolean}} s
+ *        speed 是「換算到小人自己尺度」的 m/s（見 apparentSpeed）
+ */
+export function pickClip({ kind = 'infantry', pose = 'stand', speed = 0, battleT = 0, destroyed = false } = {}) {
+  if (destroyed) return 'hit_fall';
+  const charging = kind === 'assault' && battleT >= CHARGE_WINDOW[0] && battleT < CHARGE_WINDOW[1];
+  if (charging) return 'run';
+  if (speed > 2.2) return 'run';
+  if (speed > 0.2) {
+    // 接敵前的突擊隊是沿溝渠低姿接近（這場的地形邏輯），不是大步走
+    return (kind === 'assault' && battleT < CHARGE_WINDOW[0]) ? 'crouch_walk' : 'walk';
+  }
+  if (pose === 'prone') return 'prone_fire';
+  if (pose === 'kneel') return 'kneel_fire';
+  if (kind === 'support') return 'prone_fire';   // 基底火力組的 .30 機槍手趴著打
+  return 'idle';
+}
+
+/** 播放倍率 = 實際速度 ÷ clip 的 extras.speed；夾住上下限免得慢速時像定格 */
+export function clipRate(clipName, speed, clipSpeed) {
+  if (!LOCOMOTION.has(clipName)) return 1;
+  const base = clipSpeed || DEFAULT_CLIP_SPEED[clipName] || 1.4;
+  const r = speed / base;
+  return Math.min(1.9, Math.max(0.6, r));
+}
+
+// 一個小兵的動畫狀態機
+function makeTrooperAnim(root, clips, { phase = 0, pose = 'stand' } = {}) {
+  const mixer = new THREE.AnimationMixer(root);
+  const actions = new Map();
+  for (const clip of clips) {
+    const a = mixer.clipAction(clip);
+    a.setLoop(clip.name === 'hit_fall' ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
+    if (clip.name === 'hit_fall') a.clampWhenFinished = true;
+    actions.set(clip.name, a);
+  }
+  const frac = ((phase % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) / (Math.PI * 2);
+  const rec = {
+    root, mixer, actions, pose, phase: frac, current: null,
+    clipSpeed(name) { return actions.get(name)?.getClip()?.userData?.speed ?? 0; },
+    play(name, rate, snap = false) {
+      const next = actions.get(name);
+      if (!next) return;
+      const prev = rec.current ? actions.get(rec.current) : null;
+      if (prev === next) { next.setEffectiveTimeScale(rate); return; }
+      next.reset();
+      next.setEffectiveTimeScale(rate);
+      next.setEffectiveWeight(1);
+      // 同班隨機相位（走路不齊步）；倒地是一次性的，一律從頭播
+      next.time = name === 'hit_fall' ? 0 : frac * next.getClip().duration;
+      next.play();
+      if (prev) {
+        if (snap) prev.stop();                    // 拖曳跳轉：直接切，不要淡入淡出的殘影
+        else next.crossFadeFrom(prev, 0.22, true);
+      }
+      rec.current = name;
+    },
+    setRate(rate) {
+      const a = rec.current ? actions.get(rec.current) : null;
+      if (a) a.setEffectiveTimeScale(rate);
+    },
+    dispose() { mixer.stopAllAction(); mixer.uncacheRoot(root); },
+  };
+  return rec;
+}
+
+/**
+ * 一個單位（班／組）的動畫器。main.js 每幀呼叫 update()。
+ * mixer 更新頻率依畫質等級（high 每幀、medium 每 2 幀、low／手機 每 3 幀）。
+ */
+function createUnitAnimator(records, kind) {
+  let stride = 1, frames = 0, acc = 0;
+  return {
+    records,
+    kind,
+    setStride(n) { stride = Math.max(1, Math.round(n) || 1); },
+    /**
+     * @param {number} dt 真實秒數
+     * @param {{speed?:number, battleT?:number, destroyed?:boolean, snap?:boolean}} ctx
+     *        speed：換算後的 m/s；snap：拖曳／跳轉後的第一幀（狀態直接對齊、不做淡入）
+     */
+    update(dt, { speed = 0, battleT = 0, destroyed = false, snap = false } = {}) {
+      for (const r of records) {
+        const want = pickClip({ kind, pose: r.pose, speed, battleT, destroyed });
+        const rate = clipRate(want, speed, r.clipSpeed(want));
+        if (want !== r.current) r.play(want, rate, snap);
+        else r.setRate(rate);
+      }
+      acc += dt; frames++;
+      if (snap || frames % stride === 0) {
+        for (const r of records) r.mixer.update(acc);
+        acc = 0;
+      }
+    },
+    dispose() { for (const r of records) r.dispose(); records.length = 0; },
+  };
+}
+
 // 每單位一份材質：clone 整棵樹的材質（幾何仍共用），維持「一起淡出、互不影響」的約定
 function cloneWithOwnMaterials(root, cache) {
   const inst = root.clone(true);
@@ -377,10 +509,15 @@ function cloneWithOwnMaterials(root, cache) {
 
 /**
  * 把一個已建好的單位 Group 就地換成 glb 版本。載不到就什麼都不做（畫面維持程序化）。
- * @returns {Promise<{mg:boolean, soldiers:boolean, missing:string[]}>}
+ * 士兵優先走 R1 骨架動畫版（soldier_rig_*.glb）；rig 載不到才退回既有的靜態姿態 glb。
+ * @param {object} opts
+ * @param {boolean} opts.shadows
+ * @param {object} [opts.quality] R5 參數（只用 mixerStride）
+ * @param {(o:THREE.Object3D)=>void} [opts.register] CSM 材質註冊（R6：clone 後的材質一定要註冊）
+ * @returns {Promise<{mg:boolean, soldiers:boolean, rig:boolean, missing:string[]}>}
  */
-export async function applyUnitAssets(group, spec, assets, { shadows = false } = {}) {
-  const out = { mg: false, soldiers: false, missing: [] };
+export async function applyUnitAssets(group, spec, assets, { shadows = false, quality = null, register = null } = {}) {
+  const out = { mg: false, soldiers: false, rig: false, missing: [] };
   if (!assets) return out;
   const matCache = new Map();   // 這個單位自己的材質副本
 
@@ -400,6 +537,7 @@ export async function applyUnitAssets(group, spec, assets, { shadows = false } =
       hw.traverse((m) => { if (m.isMesh) m.geometry.dispose(); });
       hw.parent.remove(hw);
       group.userData.mgHardware = inst;
+      register?.(inst);
       out.mg = true;
     }
   }
@@ -407,37 +545,114 @@ export async function applyUnitAssets(group, spec, assets, { shadows = false } =
   // ── 單兵 ────────────────────────────────────────────
   const troopers = group.userData.troopers ?? [];
   if (troopers.length) {
-    const poseIds = [...new Set(troopers.map((t) => poseModelId(t.userData.side, t.userData.pose, spec.kind)))];
     const wpnIds = [...new Set(troopers.map((t) => WEAPON_MODEL[t.userData.weapon]).filter(Boolean))];
-    const ids = [...poseIds, ...wpnIds];
-    const loaded = await Promise.all(ids.map((id) => assets.model(id)));
-    const byId = new Map(ids.map((id, i) => [id, loaded[i]]));
-    const missing = poseIds.filter((id) => !byId.get(id));
-    if (missing.length) {
-      out.missing.push(...missing);      // 有任何一個姿態缺就整單位維持程序化（免得一半 glb 一半積木）
+    const rigId = RIG_MODEL[spec.side] ?? RIG_MODEL.blue;
+    const [rigRoot, ...wpnRoots] = await Promise.all([
+      assets.model(rigId), ...wpnIds.map((id) => assets.model(id)),
+    ]);
+    const weapons = new Map(wpnIds.map((id, i) => [id, wpnRoots[i]]));
+
+    if (rigRoot && (rigRoot.animations?.length ?? 0) > 0) {
+      applyRigSoldiers(group, spec, troopers, rigRoot, weapons, matCache, { shadows, quality, register, out });
     } else {
-      const fitCache = new Map();
-      for (const tr of troopers) {
-        const id = poseModelId(tr.userData.side, tr.userData.pose, spec.kind);
-        const root = byId.get(id);
-        if (!fitCache.has(id)) fitCache.set(id, fitToHeight(root, PROC_SOLDIER_H).scale);
-        const inst = cloneWithOwnMaterials(root, matCache);
-        inst.scale.setScalar(fitCache.get(id));
-        inst.rotation.y = Math.PI;       // 程序化小人面朝 +z、glb 慣例 −Z 為正面
-        // 武器掛右手（hand_r 空節點與武器同為公尺單位，直接當子節點即可）
-        const hand = inst.getObjectByName('hand_r');
-        const wpn = byId.get(WEAPON_MODEL[tr.userData.weapon]);
-        if (hand && wpn) hand.add(cloneWithOwnMaterials(wpn, matCache));
-        else if (!wpn && WEAPON_MODEL[tr.userData.weapon]) out.missing.push(WEAPON_MODEL[tr.userData.weapon]);
-        if (shadows) inst.traverse((m) => { if (m.isMesh) m.castShadow = true; });
-        for (const c of [...tr.children]) {
-          c.traverse((m) => { if (m.isMesh) m.geometry.dispose(); });
-          tr.remove(c);
-        }
-        tr.add(inst);
-      }
-      out.soldiers = true;
+      if (rigRoot) out.missing.push(`${rigId}（無 clip）`); else out.missing.push(rigId);
+      await applyStaticSoldiers(group, spec, troopers, assets, weapons, matCache, { shadows, register, out });
     }
   }
   return out;
+}
+
+// ── R1：骨架動畫版（每兵一個 SkinnedMesh ＋ 一個 AnimationMixer） ────────
+function applyRigSoldiers(group, spec, troopers, rigRoot, weapons, matCache, { shadows, quality, register, out }) {
+  const fit = fitToHeight(rigRoot, PROC_SOLDIER_H).scale;
+  const clips = rigRoot.animations;
+  const records = [];
+  const skinned = [];
+  for (const tr of troopers) {
+    const inst = skeletonClone(rigRoot);   // 骨架與 node 各一份，幾何與 clip 共用
+    inst.scale.setScalar(fit);
+    inst.rotation.y = Math.PI;             // 程序化小人面朝 +z、glb 慣例 −Z 為正面
+    inst.traverse((o) => {
+      if (!o.isMesh) return;
+      // 材質每單位一份（淡出不外溢）
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      const next = mats.map((m) => {
+        if (!matCache.has(m)) matCache.set(m, normalizeMaterial(m.clone()));
+        return matCache.get(m);
+      });
+      o.material = next.length === 1 ? next[0] : next;
+      // 骨架動畫會走出 bind pose 的包圍盒（趴射、倒地），關掉 frustum culling 免得整具消失
+      o.frustumCulled = false;
+      if (shadows) o.castShadow = true;
+    });
+    // userData.troopers 是「每個小兵一個物件」的約定：一具 rig 有五個 SkinnedMesh
+    // （制服／皮膚／盔／背具／靴各一個 primitive），只收第一個當這個兵的代表。
+    const skin = [];
+    inst.traverse((o) => { if (o.isSkinnedMesh) skin.push(o); });
+    if (skin.length) skinned.push(skin[0]);
+    // 武器掛右手骨頭（rig 的 hand_R 已經對好朝向，local transform 歸零即可）
+    const hand = inst.getObjectByName('hand_R') ?? inst.getObjectByName('hand_r');
+    const wpnId = WEAPON_MODEL[tr.userData.weapon];
+    const wpn = wpnId ? weapons.get(wpnId) : null;
+    if (hand && wpn) {
+      const w = cloneWithOwnMaterials(wpn, matCache);
+      w.position.set(0, 0, 0); w.rotation.set(0, 0, 0); w.scale.setScalar(1);
+      if (shadows) w.traverse((m) => { if (m.isMesh) m.castShadow = true; });
+      hand.add(w);
+    } else if (wpnId && !wpn) out.missing.push(wpnId);
+
+    for (const c of [...tr.children]) {
+      c.traverse((m) => { if (m.isMesh) m.geometry.dispose(); });
+      tr.remove(c);
+    }
+    // 原本的正弦起伏微動作由 clip 取代：把殘留的位移／傾角歸零
+    tr.position.y = tr.userData.baseY ?? 0;
+    tr.rotation.z = 0;
+    tr.add(inst);
+    records.push(makeTrooperAnim(inst, clips, { phase: tr.userData.phase ?? 0, pose: tr.userData.pose }));
+  }
+  const animator = createUnitAnimator(records, spec.kind);
+  animator.setStride(quality?.mixerStride ?? 1);
+  group.userData.animator = animator;
+  // 規格 §R1.5：userData.troopers 改指向 SkinnedMesh
+  group.userData.troopers = skinned;
+  group.userData.trooperHosts = troopers;   // 外層 Object3D（位置／朝向仍掛在這一層）
+  register?.(group);                        // R6：clone 出來的材質一定要註冊給 CSM
+  out.soldiers = true;
+  out.rig = true;
+}
+
+// ── 後備：既有的靜態姿態 glb（rig 載不到時） ─────────────────
+async function applyStaticSoldiers(group, spec, troopers, assets, weapons, matCache, { shadows, register, out }) {
+  const poseIds = [...new Set(troopers.map((t) => poseModelId(t.userData.side, t.userData.pose, spec.kind)))];
+  const loaded = await Promise.all(poseIds.map((id) => assets.model(id)));
+  const byId = new Map(poseIds.map((id, i) => [id, loaded[i]]));
+  const missing = poseIds.filter((id) => !byId.get(id));
+  if (missing.length) {
+    out.missing.push(...missing);      // 有任何一個姿態缺就整單位維持程序化（免得一半 glb 一半積木）
+    return;
+  }
+  const fitCache = new Map();
+  for (const tr of troopers) {
+    const id = poseModelId(tr.userData.side, tr.userData.pose, spec.kind);
+    const root = byId.get(id);
+    if (!fitCache.has(id)) fitCache.set(id, fitToHeight(root, PROC_SOLDIER_H).scale);
+    const inst = cloneWithOwnMaterials(root, matCache);
+    inst.scale.setScalar(fitCache.get(id));
+    inst.rotation.y = Math.PI;       // 程序化小人面朝 +z、glb 慣例 −Z 為正面
+    // 武器掛右手（hand_r 空節點與武器同為公尺單位，直接當子節點即可）
+    const hand = inst.getObjectByName('hand_r');
+    const wpnId = WEAPON_MODEL[tr.userData.weapon];
+    const wpn = wpnId ? weapons.get(wpnId) : null;
+    if (hand && wpn) hand.add(cloneWithOwnMaterials(wpn, matCache));
+    else if (wpnId && !wpn) out.missing.push(wpnId);
+    if (shadows) inst.traverse((m) => { if (m.isMesh) m.castShadow = true; });
+    for (const c of [...tr.children]) {
+      c.traverse((m) => { if (m.isMesh) m.geometry.dispose(); });
+      tr.remove(c);
+    }
+    tr.add(inst);
+  }
+  register?.(group);
+  out.soldiers = true;
 }

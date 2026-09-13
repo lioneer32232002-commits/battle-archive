@@ -46,9 +46,11 @@ const SCORCH_MAX = 28;
 const _FWD = new THREE.Vector3(0, 0, 1);
 
 export class Effects {
-  constructor(scene, { mobile = false } = {}) {
+  constructor(scene, { mobile = false, particleFactor = null } = {}) {
     this.scene = scene;
     this.mobile = mobile;
+    // R5 畫質分級：粒子量的係數（high 1／medium 0.6／low 0.4／手機 0.5）
+    this.particleFactor = particleFactor ?? (mobile ? 0.5 : 1);
     this.transients = [];
     this.fires = new Map();
     this.tex = {
@@ -260,7 +262,7 @@ export class Effects {
       },
       dispose: () => this.scene.remove(group),
     });
-    const half = this.mobile ? 0.5 : 1;
+    const half = this.particleFactor;
     if (smoke) this._lingeringSmoke(pos, Math.max(2, Math.round((3 + Math.random() * 2) * half)), scale);
     if (debris) this._debris(pos, Math.max(6, Math.round((12 + Math.random() * 8) * half)), scale);
   }

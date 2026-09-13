@@ -61,7 +61,15 @@ function lerpColor(a, b, f) {
 }
 function lerpNum(a, b, f) { return a + (b - a) * f; }
 
-export function createEnvironment(scene, { shadows = false, mobile = false, camera = null } = {}) {
+// R5 畫質分級：陰影模式（csm／ortho／none）、cascade 層數與 shadow map 尺寸、雲霧 sprite 數量
+// 全部由 quality.js 的參數表決定，這裡不再自己讀 isMobile。
+const DEFAULT_Q = {
+  shadowMode: 'csm', csm: { cascades: 3, mapSize: 2048 }, shadowMapSize: 2048,
+  cloudFactor: 1, mistFactor: 1,
+};
+
+export function createEnvironment(scene, { shadows = false, mobile = false, camera = null, quality = null } = {}) {
+  const Q = { ...DEFAULT_Q, ...(quality ?? {}) };
   // ── 天空圓頂（P-6：地平線再疊一層霧帶） ─────────────────────
   const skyUniforms = {
     uTop: { value: new THREE.Color(PALETTES.night.top) },
@@ -138,7 +146,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false, came
   // 光與影由 CSM 的三盞 cascade 燈負責。刻意留在 scene 裡而不移除:three 會把
   // castShadow 的燈排在前面,一盞 intensity 0 的非投影平行光排在後面,對 cascade
   // 索引與亮度都沒有影響。
-  const useCSM = shadows && !!camera;
+  const useCSM = shadows && !!camera && Q.shadowMode === 'csm';
   const _lightDir = new THREE.Vector3();
   let csm = null;
   if (useCSM) {
@@ -146,10 +154,10 @@ export function createEnvironment(scene, { shadows = false, mobile = false, came
     csm = new CSM({
       parent: scene,
       camera,
-      cascades: 3,
+      cascades: Q.csm?.cascades ?? 3,
       maxFar: 900,
       mode: 'practical',
-      shadowMapSize: 2048,
+      shadowMapSize: Q.csm?.mapSize ?? 2048,
       shadowBias: -0.0006,
       lightDirection: _lightDir.clone(),
       lightIntensity: PALETTES.night.sunInt,
@@ -165,8 +173,10 @@ export function createEnvironment(scene, { shadows = false, mobile = false, came
     sun.castShadow = false;
   } else if (shadows) {
     // 後備:沒有傳 camera 進來就退回原本的單張正交陰影(手機不會走到這裡)
+    // R5 low：單張正交陰影（1024）就是這條 legacy 路徑
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    const ms = Q.shadowMapSize || 2048;
+    sun.shadow.mapSize.set(ms, ms);
     const cam = sun.shadow.camera;
     cam.left = -300; cam.right = 300; cam.top = 300; cam.bottom = -300;
     cam.near = 200; cam.far = 4200;
@@ -254,7 +264,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false, came
   const cloudTex = makeCloudTexture();
   const clouds = new THREE.Group();
   const rand = mulberry(42);
-  const CLOUD_N = mobile ? 36 : 72;
+  const CLOUD_N = Math.max(8, Math.round(72 * (Q.cloudFactor ?? 1)));
   for (let i = 0; i < CLOUD_N; i++) {
     const c = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: cloudTex, color: 0x9aa3a0, transparent: true, opacity: 0.28 + rand() * 0.22, depthWrite: false, fog: false })
@@ -277,7 +287,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false, came
   // ⚠️ 單片不透明度刻意壓得很低：這些 sprite 會互相重疊，若每片 0.3 以上，
   //    幾十片疊起來會整片飽和成一道近白色的硬帶（實測像素可到 224,224,222），
   //    看起來不是霧、是一塊白板，還會擋住單位。要的是「薄紗疊出的深度」。
-  const MIST_N = mobile ? 14 : 28;
+  const MIST_N = Math.max(6, Math.round(28 * (Q.mistFactor ?? 1)));
   for (let i = 0; i < MIST_N; i++) {
     const tall = i % 5 === 0;
     const m = new THREE.Sprite(
