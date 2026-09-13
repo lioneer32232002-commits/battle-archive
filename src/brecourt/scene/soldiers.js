@@ -14,9 +14,22 @@
 //       vertexColors 材質,主迴圈的 applyDestroyedLook 一行都不用改。
 //   程序化模型整套保留:先用它把場面建起來(首屏不等下載),glb 到了才換幾何;
 //       任何一件載不到就維持程序化。
+//
+//   R1 骨架動畫(docs/realism-spec.md §R1,2026-09-13):姿態 glb 再升級成
+//       `soldier_rig_<us|de>.glb`(20 骨、7 個循環 clip)。每兵一個 SkinnedMesh
+//       (SkeletonUtils.clone,幾何共用)、一個 AnimationMixer,clip 依實際移動速度選。
+//   ⚠ 「draw call 不增」怎麼守:rig 的 glb 有 5 個 primitive(制服/皮膚/盔/背具/靴),
+//       照抄 A-8 的做法把五段**連同蒙皮權重**合併成一份帶頂點色的幾何,再沿用
+//       原本「每單位一份」的 vertexColors 材質 → 一個小兵仍然只有一個 draw call,
+//       而且 applyDestroyedLook 的淡出一行都不用改。
+//       武器不掛在骨頭下(那會多一個 draw call),而是把武器幾何搬到 hand_R 的
+//       **bind pose 世界位置**、權重全部指給 hand_R 那根骨頭後併進同一份幾何 ——
+//       蒙皮的結果跟掛在骨頭下完全一樣,但少一次 draw call。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { loadModel, bakeModel, alignMatrix, modelBox, afterFirstFrame } from './assets.js';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { loadModel, loadRig, bakeModel, alignMatrix, modelBox, afterFirstFrame } from './assets.js';
+import { getQuality } from './quality.js';
 
 const SIDE_COLOR = { red: 0xd9442e, blue: 0x2e7bd9 };
 const UNIFORM = { blue: 0x6f7049, red: 0x565a4e };   // 美軍橄欖綠 / 德軍灰綠
@@ -254,6 +267,50 @@ function soldierGeometry(side, pose, weapon) {
   return p;
 }
 
+// ── R2 Cycles 舊化烘焙版(`<id>_baked.glb`) ───────────────
+// 烘焙版是「單一材質 ＋ 貼圖」,所以**不烘頂點色**、也不套單位那份 vertexColors 材質,
+// 直接用 glb 自己的材質(roughness 下限 0.35 由 assets.loadModel 守)。材質仍然每單位
+// clone 一份,否則炸一門砲會把四門一起淡出。
+const texturedGeoCache = new Map();
+function texturedModel(modelId, rotY, refGeometry) {
+  const key = `${modelId}|${rotY.toFixed(3)}`;
+  let p = texturedGeoCache.get(key);
+  if (p) return p;
+  refGeometry.computeBoundingBox();
+  const ref = refGeometry.boundingBox.getSize(new THREE.Vector3());
+  p = loadModel(modelId).then((tmpl) => {
+    if (!tmpl) return null;
+    const t = modelBox(tmpl).getSize(new THREE.Vector3());
+    const span = Math.max(t.x, t.z);
+    const sc = span > 1e-6 ? Math.max(ref.x, ref.z) / span : 1;
+    const mtx = alignMatrix({ scale: sc, rotY });
+    tmpl.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(tmpl.matrixWorld).invert();
+    const geos = [];
+    let material = null;
+    tmpl.traverse((o) => {
+      if (!o.isMesh) return;
+      const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+      for (const name of Object.keys(g.attributes)) {
+        if (!['position', 'normal', 'uv'].includes(name)) g.deleteAttribute(name);
+      }
+      g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
+      g.applyMatrix4(mtx);
+      geos.push(g);
+      material ??= o.material;      // 烘焙版整模單一材質
+    });
+    if (!geos.length || !material) return null;
+    const merged = geos.length > 1 ? mergeGeometries(geos, false) : geos[0];
+    if (!merged) return null;
+    if (merged.attributes.uv && !merged.attributes.uv1) merged.setAttribute('uv1', merged.attributes.uv);
+    merged.computeBoundingBox();
+    merged.computeBoundingSphere();
+    return { geometry: merged, material };
+  });
+  texturedGeoCache.set(key, p);
+  return p;
+}
+
 // 火砲／MG 巢:同樣烘成單一幾何,縮放依「現有程序化量體的水平最長邊」對齊
 const bakedGeoCache = new Map();
 function bakedGeometry(modelId, rotY, refGeometry) {
@@ -271,6 +328,250 @@ function bakedGeometry(modelId, rotY, refGeometry) {
   });
   bakedGeoCache.set(key, p);
   return p;
+}
+
+// ── R1 骨架小兵 ───────────────────────────────────────
+const RIG_ID = { blue: 'soldier_rig_us', red: 'soldier_rig_de' };
+// clip 選擇門檻(公尺/秒,§R1.5)
+const RUN_MPS = 2.2;
+const MOVE_MPS = 0.2;
+// extras.speed 缺漏時的後備(Blender 那邊寫進 glTF 的位移速度)
+const CLIP_SPEED = { walk: 1.4, run: 3.5, crouch_walk: 1.0 };
+// 靜止時依既有姿態設定(SQUAD_CFG 的 poses)挑站樁動作
+const STATIC_CLIP = { kneel: 'kneel_fire', prone: 'prone_fire', advance: 'idle', stand: 'idle', run: 'idle' };
+
+const rigCache = new Map();     // side → Promise<{ template, clips, scale, skin }|null>
+function rigFor(side) {
+  const id = RIG_ID[side] ?? RIG_ID.blue;
+  let p = rigCache.get(id);
+  if (p) return p;
+  p = (async () => {
+    const rig = await loadRig(id);
+    if (!rig?.animations?.length) return null;
+    const size = modelBox(rig.scene).getSize(new THREE.Vector3());
+    if (!(size.y > 1e-6)) return null;
+    const clips = new Map(rig.animations.map((c) => [c.name, c]));
+    return { template: rig.scene, clips, scale: procStandHeight() / size.y };
+  })();
+  rigCache.set(id, p);
+  return p;
+}
+
+/**
+ * 把武器幾何併進蒙皮網格:頂點先搬到 hand_R 的 bind pose 世界位置,
+ * 再把權重整根指給 hand_R —— 蒙皮公式是 boneMatrix · inverseBindMatrix · v,
+ * 所以「bind pose 的位置 ＋ 權重 1」等價於把模型掛在那根骨頭底下。
+ */
+function weaponGeometryForHand(wpnRoot, handBone, ref) {
+  const geos = [];
+  handBone.updateMatrixWorld(true);
+  const toHand = handBone.matrixWorld;      // 範本沒播動畫 → 就是 bind pose
+  wpnRoot.updateMatrixWorld(true);
+  wpnRoot.traverse((o) => {
+    if (!o.isMesh) return;
+    const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    for (const name of Object.keys(g.attributes)) {
+      if (!['position', 'normal', 'uv'].includes(name)) g.deleteAttribute(name);
+    }
+    if (!g.attributes.uv) {
+      g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+    }
+    if (!g.attributes.normal) g.computeVertexNormals();
+    g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(toHand, o.matrixWorld));
+    paintGeo(g, o.material?.color ?? new THREE.Color(0xffffff));
+    geos.push(g);
+  });
+  if (!geos.length) return null;
+  const merged = geos.length > 1 ? mergeGeometries(geos, false) : geos[0];
+  if (!merged) return null;
+  // 蒙皮屬性:全部綁在 hand_R(型別跟著本體那份走,才能一起 merge)
+  const n = merged.attributes.position.count;
+  const IdxArr = ref.index.array.constructor;
+  const WArr = ref.weight.array.constructor;
+  const si = new IdxArr(n * 4);
+  const sw = new WArr(n * 4);
+  const one = ref.weight.normalized ? (WArr === Uint8Array ? 255 : 65535) : 1;
+  for (let i = 0; i < n; i++) { si[i * 4] = ref.handIndex; sw[i * 4] = one; }
+  merged.setAttribute('skinIndex', new THREE.BufferAttribute(si, 4, ref.index.normalized));
+  merged.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4, ref.weight.normalized));
+  return merged;
+}
+
+// (side|weapon) → 合併好的單一蒙皮幾何(所有同款小兵共用一份)
+const rigGeoCache = new Map();
+function rigGeometry(side, weapon) {
+  const key = `${side}|${weapon}`;
+  let p = rigGeoCache.get(key);
+  if (p) return p;
+  p = (async () => {
+    const rig = await rigFor(side);
+    if (!rig) return null;
+    const parts = [];
+    let ref = null;
+    rig.template.traverse((o) => {
+      if (!o.isSkinnedMesh) return;
+      const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+      for (const name of Object.keys(g.attributes)) {
+        if (!['position', 'normal', 'uv', 'skinIndex', 'skinWeight'].includes(name)) g.deleteAttribute(name);
+      }
+      paintGeo(g, o.material?.color ?? new THREE.Color(0xffffff));
+      if (!ref) {
+        const bones = o.skeleton?.bones ?? [];
+        ref = {
+          index: g.attributes.skinIndex, weight: g.attributes.skinWeight,
+          handIndex: Math.max(0, bones.findIndex((b) => b.name === 'hand_R')),
+        };
+      }
+      parts.push(g);
+    });
+    if (!parts.length || !ref) return null;
+    const hand = rig.template.getObjectByName('hand_R');
+    const wpn = await loadModel(WEAPON_GLB[weapon] ?? 'garand');
+    if (wpn && hand) {
+      const wg = weaponGeometryForHand(wpn, hand, ref);
+      if (wg) parts.push(wg);
+    }
+    const merged = mergeGeometries(parts, false);
+    if (!merged) return null;
+    merged.computeBoundingBox();
+    merged.computeBoundingSphere();
+    return merged;
+  })();
+  rigGeoCache.set(key, p);
+  return p;
+}
+
+// 全場的 mixer 清單(main.js 每幀呼叫一次 updateSoldierAnimations)
+const mixers = [];
+let mixerFrame = 0;
+let mixerAcc = 0;
+
+/** 每幀更新所有士兵的 AnimationMixer;頻率依畫質等級(§R5.2:1／2／3 幀一次) */
+export function updateSoldierAnimations(dt) {
+  if (!mixers.length) return;
+  const every = Math.max(1, getQuality().mixerEvery | 0);
+  mixerAcc += dt;
+  mixerFrame++;
+  if (mixerFrame % every) return;
+  const step = mixerAcc;
+  mixerAcc = 0;
+  for (const m of mixers) m.update(step);
+}
+
+function clipSpeed(clips, name) {
+  const c = clips.get(name);
+  const s = c?.userData?.speed;
+  return s > 0 ? s : (CLIP_SPEED[name] ?? 1);
+}
+
+/** 切 clip:同一具小兵在動作之間做 0.25 秒 crossfade,相位保留(同班不會齊步) */
+function playClip(tr, name, timeScale = 1) {
+  const a = tr.userData.anim;
+  if (!a) return;
+  const clip = a.clips.get(name);
+  if (!clip) return;
+  let act = a.actions.get(name);
+  if (!act) {
+    act = a.mixer.clipAction(clip, tr);
+    if (name === 'hit_fall') { act.setLoop(THREE.LoopOnce, 1); act.clampWhenFinished = true; }
+    else act.time = (a.phase / (Math.PI * 2)) * clip.duration;   // §R1.5:同班各兵隨機相位
+    a.actions.set(name, act);
+  }
+  act.timeScale = THREE.MathUtils.clamp(timeScale, 0.35, 3);
+  if (a.cur === act) return;
+  if (a.cur) a.cur.fadeOut(0.25);
+  if (name === 'hit_fall') { act.reset(); act.time = 0; }
+  act.enabled = true;
+  act.setEffectiveWeight(1);
+  act.fadeIn(0.25).play();
+  a.cur = act;
+}
+
+/**
+ * 依單位這一幀的狀態挑 clip(§R1.5)。
+ * @param {THREE.Group} group  createUnit 回傳的單位
+ * @param {object} o { speed 場景單位/秒、kind 兵種、down 是否已被摧毀 }
+ *   speed 用「螢幕上真的走了多遠」而不是戰役時間的位移:播放倍率調到 4× 時人就該用跑的,
+ *   腳步頻率也跟著乘上去,腳才不會在地上滑。單位換算用 rig 的對位係數(units per meter)。
+ */
+export function setUnitMotion(group, { speed = 0, kind = 'infantry', down = false } = {}) {
+  const troopers = group.userData.troopers;
+  if (!troopers?.length) return;
+  for (const tr of troopers) {
+    const a = tr.userData.anim;
+    if (!a) continue;
+    if (down) { playClip(tr, 'hit_fall', 1); continue; }
+    const mps = a.upm > 1e-6 ? speed / a.upm : speed;
+    if (mps > RUN_MPS) {
+      playClip(tr, 'run', mps / clipSpeed(a.clips, 'run'));
+    } else if (mps > MOVE_MPS) {
+      // 突擊隊的接近段壓低身體(溫特斯那班沿樹籬摸上去的那一段)
+      const name = kind === 'assault' ? 'crouch_walk' : 'walk';
+      playClip(tr, name, mps / clipSpeed(a.clips, name));
+    } else {
+      playClip(tr, STATIC_CLIP[tr.userData.pose] ?? 'idle', 1);
+    }
+  }
+}
+
+/** 把一具程序化小兵換成骨架小兵(位置/朝向/縮放照抄,材質沿用該單位那一份) */
+function buildRigSoldier(rig, geo, material, old, shadows) {
+  const inst = cloneSkinned(rig.template);
+  const skinned = [];
+  inst.traverse((o) => { if (o.isSkinnedMesh) skinned.push(o); });
+  if (!skinned.length) return null;
+  const keep = skinned[0];
+  for (let i = 1; i < skinned.length; i++) skinned[i].removeFromParent();   // 五段已合併成一份
+  keep.geometry = geo;              // 共用:同 side 同武器的小兵指向同一份
+  keep.material = material;         // 每單位一份(淡出不外溢)
+  keep.castShadow = !!shadows;
+  keep.receiveShadow = false;
+  keep.frustumCulled = false;       // 蒙皮變形後包圍盒不準,會在鏡頭邊緣整隻消失
+  // glb 面朝 −Z、場景小兵面朝 +z → 疊一個 180°;縮放 = 對位係數 × 該兵的個體差異
+  inst.position.copy(old.position);
+  inst.rotation.set(old.rotation.x, old.rotation.y + Math.PI, old.rotation.z);
+  inst.scale.copy(old.scale).multiplyScalar(rig.scale);
+  const mixer = new THREE.AnimationMixer(inst);
+  mixers.push(mixer);
+  inst.userData = {
+    ...old.userData,
+    baseY: 0,
+    skinned: keep,                  // §R1.5:userData.troopers 指到的就是這具蒙皮小兵
+    pose: old.userData.glb?.pose ?? 'stand',
+    anim: { mixer, clips: rig.clips, actions: new Map(), cur: null, phase: old.userData.phase ?? 0, upm: rig.scale * (old.scale?.x ?? 1) },
+  };
+  return inst;
+}
+
+async function upgradeTroopersToRig(u) {
+  if (!u.troopers.length) return false;
+  const rig = await rigFor(u.side);
+  if (!rig) return false;
+  const wanted = new Map();
+  for (const tr of u.troopers) {
+    const w = tr.userData.glb?.weapon ?? 'garand';
+    if (!wanted.has(w)) wanted.set(w, rigGeometry(u.side, w));
+  }
+  const geos = new Map();
+  for (const [w, p] of wanted) geos.set(w, await p);
+  if (![...geos.values()].some(Boolean)) return false;
+
+  let n = 0;
+  for (let i = 0; i < u.troopers.length; i++) {
+    const old = u.troopers[i];
+    const geo = geos.get(old.userData.glb?.weapon ?? 'garand');
+    if (!geo) continue;
+    const inst = buildRigSoldier(rig, geo, u.material, old, u.shadows);
+    if (!inst) continue;
+    const parent = old.parent;
+    if (parent) { parent.add(inst); parent.remove(old); }
+    old.geometry?.dispose?.();
+    u.troopers[i] = inst;           // 與 group.userData.troopers／main.js 的 o.troopers 同一個陣列
+    n++;
+  }
+  if (!n) return false;
+  u.group.userData.matsDirty = true;
+  return true;
 }
 
 // ── 升級排程:首屏畫完之後一次處理所有單位 ─────────────
@@ -294,20 +595,43 @@ function swapGeometry(mesh, geo, group) {
   return true;
 }
 
+/** R2:整塊換成烘焙版(材質換掉、每單位 clone 一份);失敗時回 false 讓呼叫端走平塗版 */
+async function swapTextured(s, u) {
+  const res = await texturedModel(s.baked, s.rotY, s.mesh.geometry);
+  if (!res) return false;
+  s.mesh.geometry.dispose();
+  s.mesh.geometry = res.geometry;         // 共用(四門砲同一份)
+  const mat = res.material.clone();       // 但材質每單位一份:炸一門不會四門一起淡
+  mat.roughness = Math.max(mat.roughness ?? 1, 0.35);
+  mat.envMapIntensity = 1;
+  s.mesh.material = mat;
+  u.group.userData.matsDirty = true;
+  return true;
+}
+
 async function upgradeUnit(u) {
   const jobs = [];
-  for (const tr of u.troopers) {
-    const info = tr.userData.glb;
-    if (!info) continue;
-    jobs.push(soldierGeometry(info.side, info.pose, info.weapon)
-      .then((geo) => swapGeometry(tr, geo, u.group)));
+  // R1:整班換骨架小兵;rig 載不到就退回 A-8 的姿態 glb(再不行留程序化)
+  const rigged = await upgradeTroopersToRig(u);
+  if (!rigged) {
+    for (const tr of u.troopers) {
+      const info = tr.userData.glb;
+      if (!info) continue;
+      jobs.push(soldierGeometry(info.side, info.pose, info.weapon)
+        .then((geo) => swapGeometry(tr, geo, u.group)));
+    }
   }
   for (const s of u.swaps) {
-    jobs.push(bakedGeometry(s.model, s.rotY, s.mesh.geometry)
-      .then((geo) => swapGeometry(s.mesh, geo, u.group)));
+    // R2:桌機 high／medium 先試烘焙版,沒有(或 low／手機)才用平塗版烘頂點色
+    jobs.push((async () => {
+      if (u.baked && s.baked && await swapTextured(s, u).catch(() => false)) return true;
+      return swapGeometry(s.mesh, await bakedGeometry(s.model, s.rotY, s.mesh.geometry), u.group);
+    })());
   }
   const done = await Promise.all(jobs);
-  return done.some(Boolean);
+  const ok = rigged || done.some(Boolean);
+  if (ok) u.register?.(u.group);          // R6:換模／clone 材質之後一定要註冊給 CSM
+  return ok;
 }
 
 // ── 班/組:一叢小人(依設定分姿態/武器/朝向) ────────────
@@ -454,7 +778,12 @@ const SQUAD_CFG = {
   default:  { poses: ['stand'],                       weapons: ['garand'],                       face: 0 },
 };
 
-export function createUnit(spec, { shadows = false } = {}) {
+/**
+ * @param {object} spec  data/battle.js 的單位
+ * @param {object} opts  { shadows, quality(§R5 參數), register(§R6 CSM 註冊) }
+ */
+export function createUnit(spec, { shadows = false, quality = null, register = null } = {}) {
+  const q = { baked: true, ...(quality ?? getQuality()) };
   const g = new THREE.Group();
   const mat = makeMats(spec.side);
   const troopers = [];
@@ -465,7 +794,7 @@ export function createUnit(spec, { shadows = false } = {}) {
     const how = makeHowitzer(mat);
     g.add(how);
     // glb 面朝 −Z、程序化砲口朝 +x → 轉 −90°
-    swaps.push({ mesh: how, model: 'howitzer_105', rotY: -Math.PI / 2 });
+    swaps.push({ mesh: how, model: 'howitzer_105', baked: 'howitzer_105_baked', rotY: -Math.PI / 2 });
     g.add(makeRing(7, SIDE_COLOR[spec.side]));
     blobR = 6;
   } else if (spec.kind === 'mg') {
@@ -493,8 +822,13 @@ export function createUnit(spec, { shadows = false } = {}) {
     g.add(makeGroundBlob(blobR));
   }
 
-  g.userData.troopers = troopers;   // M-3：主迴圈直接走訪做行進微動作
-  pendingUnits.push({ group: g, troopers, swaps });
+  // R1:主迴圈不再做正弦起伏(動畫已含),改成依速度選 clip(setUnitMotion)
+  g.userData.troopers = troopers;
+  pendingUnits.push({
+    group: g, troopers, swaps,
+    side: spec.side, kind: spec.kind, material: mat.body,
+    shadows, register, baked: q.baked !== false,
+  });
   scheduleUpgrade();
   return g;
 }

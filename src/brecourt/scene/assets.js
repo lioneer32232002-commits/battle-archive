@@ -261,6 +261,40 @@ export function loadModel(id, { kind = 'glb' } = {}) {
   return p;
 }
 
+// ── R1 骨架動畫模型 ──────────────────────────────────────
+// loadModel 只回 gltf.scene(動畫被丟掉),骨架小兵需要 clips,所以另開一條。
+// 回傳的是「範本」:用 SkeletonUtils.clone 複製,不要直接加進場景。
+const rigCache = new Map();   // id → Promise<{ scene, animations }|null>
+
+export function loadRig(id) {
+  let p = rigCache.get(id);
+  if (p) return p;
+  p = (async () => {
+    const m = await getManifest();
+    const path = manifestPath(m, id, 'glb') ?? `/models/${id}.glb`;
+    try {
+      const gltf = await loader().loadAsync(path);
+      const root = gltf.scene;
+      root.updateMatrixWorld(true);
+      root.traverse((o) => {
+        if (!o.isMesh && !o.isSkinnedMesh) return;
+        o.frustumCulled = false;   // 骨架變形後包圍盒不準,會在鏡頭邊緣整隻消失
+        for (const mat of Array.isArray(o.material) ? o.material : [o.material]) {
+          if (!mat) continue;
+          if (mat.roughness != null) mat.roughness = Math.max(mat.roughness, 0.35);
+          mat.envMapIntensity = cfg.envMapIntensity;
+        }
+      });
+      return { scene: root, animations: gltf.animations ?? [] };
+    } catch (err) {
+      warnMissing(`rig:${id}`, err);
+      return null;
+    }
+  })();
+  rigCache.set(id, p);
+  return p;
+}
+
 /**
  * 以「整張 quad(2 個三角形)」為單位抽稀 alpha 卡片幾何 —— 葉片是一片片的卡片,
  * 逐三角形丟會留下半片葉子。位置／法線／UV 直接沿用原幾何的 buffer(GPU 上不複製),

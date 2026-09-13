@@ -79,9 +79,12 @@ const _look = new THREE.Vector3();
 const _from = new THREE.Vector3();   // 主迴圈內不 new:射擊起點暫存(呼叫端都會 copy)
 
 export class Effects {
-  constructor(scene, { mobile = false } = {}) {
+  constructor(scene, { mobile = false, particles = 1 } = {}) {
     this.scene = scene;
     this.mobile = mobile;
+    // §R5:粒子量依畫質等級縮(medium 60%、low 40%)。Sprite 是填充率大戶,
+    // 內顯上一次爆炸的十幾張半透明大 sprite 疊起來比幾何還貴。
+    this.pScale = particles;
     this.transients = [];
     this.fires = new Map();
     this.decals = [];
@@ -114,6 +117,11 @@ export class Effects {
     // 碎屑共用幾何
     this.debrisGeo = new THREE.BoxGeometry(0.34, 0.34, 0.34);
     this.debrisMat = new THREE.MeshLambertMaterial({ color: 0x5b5146 });
+  }
+
+  /** §R5:依畫質等級縮放粒子數(至少留 1 顆,否則特效會整個不見) */
+  pn(n) {
+    return Math.max(1, Math.round(n * this.pScale));
   }
 
   update(dt) {
@@ -199,7 +207,7 @@ export class Effects {
     // 留下來的煙(3–5 顆,上升放大,8–12 秒淡出)
     const puffs = [];
     if (smoke) {
-      const n = this.mobile ? 3 : 5;
+      const n = this.pn(this.mobile ? 3 : 5);
       for (let i = 0; i < n; i++) {
         const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.tex.smoke, transparent: true, depthWrite: false, opacity: 0 }));
         s.position.set((Math.random() - 0.5) * 4 * scale, 1 + Math.random() * 2, (Math.random() - 0.5) * 4 * scale);
@@ -217,7 +225,7 @@ export class Effects {
     // 碎屑(拋物線落地)
     const bits = [];
     if (debris) {
-      const n = this.mobile ? 8 : 16;
+      const n = this.pn(this.mobile ? 8 : 16);
       for (let i = 0; i < n; i++) {
         const b = new THREE.Mesh(this.debrisGeo, this.debrisMat);
         const ks = Math.sqrt(scale);
@@ -365,7 +373,7 @@ export class Effects {
     group.position.copy(pos);
     this.scene.add(group);
     const puffs = [];
-    const n = this.mobile ? 6 : 12;
+    const n = this.pn(this.mobile ? 6 : 12);
     for (let i = 0; i < n; i++) {
       const s = new THREE.Sprite(
         new THREE.SpriteMaterial({ map: this.tex.smoke, transparent: true, depthWrite: false })
@@ -397,7 +405,7 @@ export class Effects {
     group.position.copy(pos);
     this.scene.add(group);
     const parts = [];
-    const n = this.mobile ? 7 : 14;
+    const n = this.pn(this.mobile ? 7 : 14);
     for (let i = 0; i < n; i++) {
       const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.tex.smoke, color: 0xb9b6ae, transparent: true, depthWrite: false, opacity: 0 }));
       s.position.set((Math.random() - 0.5) * 22, 1 + Math.random() * 4, (Math.random() - 0.5) * 22);
@@ -533,7 +541,7 @@ export class Effects {
     const group = new THREE.Group();
     this.scene.add(group);
     const parts = [];
-    const total = this.mobile ? 10 : 18;
+    const total = this.pn(this.mobile ? 10 : 18);
     const fireCount = Math.round(total * 0.45);
     for (let i = 0; i < total; i++) {
       const isSmoke = i >= fireCount;

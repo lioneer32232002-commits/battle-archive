@@ -93,7 +93,16 @@ function lerpNum(a, b, f) { return a + (b - a) * f; }
 // toneMapSky:天空是自寫 ShaderMaterial,不吃 three 的 tonemapping/colorspace chunk。
 //   桌機走 composer,最後有 OutputPass 統一處理,天空不必自己來;手機直接 renderer.render,
 //   受光材質會自己 ACES＋sRGB,天空就得在片元裡補同一條曲線,否則天地兩套響應曲線對不齊。
-export function createEnvironment(scene, { shadows = false, mobile = false, toneMapSky = false, renderer = null, camera = null } = {}) {
+export function createEnvironment(scene, {
+  shadows = false, mobile = false, toneMapSky = false, renderer = null, camera = null,
+  // §R5 畫質分級:high = CSM 3 層 2048、medium = CSM 2 層 1536、low = 單張正交 1024。
+  // spriteScale 同步縮雲層與晨霧的 sprite 數(填充率在內顯上跟幾何一樣貴)。
+  quality = null,
+} = {}) {
+  const q = {
+    csm: true, cascades: 3, shadowMapSize: 2048, legacyShadowSize: 2048, spriteScale: 1,
+    ...(quality ?? {}),
+  };
   // ── 天空圓頂(P-6:地平線霧帶) ─────────────────────────
   const skyUniforms = {
     uTop: { value: new THREE.Color(PALETTES.night.top) },
@@ -179,7 +188,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false, tone
   // 光與影由 CSM 的三盞 cascade 燈負責。刻意留在 scene 裡而不移除:three 會把
   // castShadow 的燈排在前面,一盞 intensity 0 的非投影平行光排在後面,對 cascade
   // 索引與亮度都沒有影響。
-  const useCSM = shadows && !!camera;
+  const useCSM = shadows && !!camera && q.csm !== false;
   const _lightDir = new THREE.Vector3();
   let csm = null;
   if (useCSM) {
@@ -187,10 +196,10 @@ export function createEnvironment(scene, { shadows = false, mobile = false, tone
     csm = new CSM({
       parent: scene,
       camera,
-      cascades: 3,
+      cascades: q.cascades,
       maxFar: 900,
       mode: 'practical',
-      shadowMapSize: 2048,
+      shadowMapSize: q.shadowMapSize,
       shadowBias: -0.0006,
       lightDirection: _lightDir.clone(),
       lightIntensity: PALETTES.night.sunInt,
@@ -205,9 +214,9 @@ export function createEnvironment(scene, { shadows = false, mobile = false, tone
     sun.intensity = 0;
     sun.castShadow = false;
   } else if (shadows) {
-    // 後備:沒有傳 camera 進來就退回原本的單張正交陰影(手機不會走到這裡)
+    // 後備:沒有傳 camera 進來、或畫質等級是 low(§R5.2)就退回原本的單張正交陰影
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(q.legacyShadowSize, q.legacyShadowSize);
     const cam = sun.shadow.camera;
     cam.left = -380; cam.right = 380; cam.top = 380; cam.bottom = -380;
     cam.near = 400; cam.far = 5600;
@@ -288,7 +297,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false, tone
   const cloudTex = makeCloudTexture(3);
   const clouds = new THREE.Group();
   const rand = mulberry(42);
-  const cloudN = mobile ? 34 : 62;
+  const cloudN = Math.max(8, Math.round((mobile ? 34 : 62) * q.spriteScale));
   for (let i = 0; i < cloudN; i++) {
     const c = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: cloudTex, transparent: true, opacity: 0.2 + rand() * 0.18, depthWrite: false })
@@ -306,7 +315,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false, tone
   const mistTex = makeCloudTexture(4);
   const mist = new THREE.Group();
   const rm = mulberry(311);
-  const mistN = mobile ? 12 : 26;
+  const mistN = Math.max(4, Math.round((mobile ? 12 : 26) * q.spriteScale));
   for (let i = 0; i < mistN; i++) {
     const m = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: mistTex, color: 0xdcd7c6, transparent: true, opacity: 0, depthWrite: false })

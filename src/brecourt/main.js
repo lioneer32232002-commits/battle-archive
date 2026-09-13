@@ -9,7 +9,7 @@ import {
 import { unitStateAt, interpolateTrack, newEvents } from './engine/timeline.js';
 import { createEnvironment } from './scene/environment.js';
 import { createBrecourtTerrain } from './scene/terrain.js';
-import { createUnit } from './scene/soldiers.js';
+import { createUnit, setUnitMotion, updateSoldierAnimations } from './scene/soldiers.js';
 import { createAirGroup, updateAirGroup, createParatroopers, updateParatroopers } from './scene/aircraft.js';
 import { Effects } from './scene/effects.js';
 import { makeLabel } from './scene/labels.js';
@@ -18,6 +18,10 @@ import { createHUD } from './ui/hud.js';
 import { AudioEngine } from './scene/audio.js';
 import { createComposer } from './scene/postfx.js';
 import { configureAssets, missingAssets } from './scene/assets.js';
+import {
+  initQuality, getTier, applyTier, cycleTier, onQualityChange,
+  sampleFrame as qualitySample, setFrozen as freezeQualityTier, qualityInfo, TIER_LABEL,
+} from './scene/quality.js';
 
 // 開發時可用 ?mobile 強制走手機路徑(512 貼圖、tonemapped HDRI、程序化植被)做驗收;
 // 正式 build 會把 import.meta.env.DEV 那段整個移除。
@@ -29,8 +33,15 @@ const POSTFX = !isMobile;    // P-3：後製桌機限定
 
 // ── 基本場景 ─────────────────────────────────────────
 const container = document.getElementById('scene-container');
-const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, powerPreference: 'high-performance', preserveDrawingBuffer: true });
-const DPR_CAP = Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2);
+// ⚠ antialias:桌機走 composer,最後一關是一張全螢幕四邊形 —— 預設 framebuffer 的 MSAA
+//   對它一點作用都沒有(MSAA 只處理幾何邊緣),卻要付整張畫面的多重取樣頻寬。
+//   所以只有「直接 renderer.render」的手機路徑才開。桌機的邊緣交給 SMAAPass(low 級沒有)。
+const renderer = new THREE.WebGLRenderer({ antialias: !POSTFX, powerPreference: 'high-performance', preserveDrawingBuffer: true });
+
+// R5 畫質分級:建場景之前判定一次(?q= → localStorage → UNMASKED_RENDERER),
+// 之後所有建構函式都吃 QUALITY 的欄位,不再各自讀 isMobile。
+const QUALITY = initQuality({ mobile: isMobile, renderer });
+let DPR_CAP = Math.min(window.devicePixelRatio, QUALITY.pixelRatio);
 renderer.setPixelRatio(DPR_CAP);
 renderer.setSize(window.innerWidth, window.innerHeight);
 // P-1:ACES 色調映射(手機桌機都開;environment.js 調色盤已據此重校)
@@ -61,9 +72,15 @@ configureAssets({ mobile: isMobile, renderer, envMapIntensity: 1 });
 // R4 驗收用:dev server 加 ?legacy=1 就整條回到升級前(單張正交陰影＋舊後製),
 // 同機位拍開／關對照。import.meta.env.DEV 在正式 build 是常數 false,整段會被搖掉。
 const QA_LEGACY = !!(import.meta.env && import.meta.env.DEV) && location.search.includes('legacy=1');
-const environment = createEnvironment(scene, { shadows: SHADOWS, mobile: isMobile, toneMapSky: !POSTFX, renderer, camera: QA_LEGACY ? null : camera });
-const terrain = createBrecourtTerrain(scene, { shadows: SHADOWS, mobile: isMobile });
-const effects = new Effects(scene, { mobile: isMobile });
+const environment = createEnvironment(scene, {
+  shadows: SHADOWS, mobile: isMobile, toneMapSky: !POSTFX, renderer,
+  camera: QA_LEGACY ? null : camera, quality: QUALITY,
+});
+const registerCSM = (o) => environment.registerObject(o);
+const terrain = createBrecourtTerrain(scene, {
+  shadows: SHADOWS, mobile: isMobile, quality: QUALITY, register: registerCSM,
+});
+const effects = new Effects(scene, { mobile: isMobile, particles: QUALITY.spriteScale });
 const director = new Director(camera, controls);
 const audio = new AudioEngine();
 
@@ -82,6 +99,8 @@ const post = POSTFX ? createComposer(renderer, scene, camera, {
   },
   gtao: { radius: 4, distanceExponent: 1, thickness: 1, scale: 1.5, blend: 0.7 },
   bokeh: { aperture: 0.00008, maxblur: 0.006 },
+  // §R5.2:high 全開、medium 關 GTAO(bloom 半解析度)、low 只留 OutputPass ＋ 調色
+  quality: QUALITY,
 }) : null;
 if (QA_LEGACY && post) post.setPipeline('legacy');
 function renderFrame(dt) {
@@ -108,7 +127,7 @@ for (const p of terrain.places) {
 // ── 單位 ─────────────────────────────────────────────
 const unitObjs = new Map();
 for (const u of units) {
-  const group = createUnit(u, { shadows: SHADOWS });
+  const group = createUnit(u, { shadows: SHADOWS, quality: QUALITY, register: registerCSM });
   scene.add(group);
   if (u.kind !== 'gun') {
     const label = makeLabel(u.name, { side: u.side });
@@ -121,7 +140,6 @@ for (const u of units) {
     group, spec: u, downT: destroyed ? destroyed.t : null,
     troopers: group.userData.troopers ?? [],
     curRot: u.facing != null ? u.facing : 0,
-    prevX: u.track[0].x, prevZ: u.track[0].z,
   });
   group.rotation.y = u.facing != null ? u.facing : 0;
 }
@@ -214,7 +232,7 @@ const hud = createHUD({
     triggerEventsBetween(TIME_START - 1, battleT);
   },
   onPlayToggle: () => { if (!started) return; playing = !playing; hud.setPlaying(playing); },
-  onSpeedChange: (s) => (speed = s),
+  onSpeedChange: (s) => { speed = s; playRate = s; },
   onScrub: (t) => {
     battleT = t; prevT = t; summaryShown = false; snapRot = true;
     effects.clearTransients(); hud.hideEvent(); hud.hideSummary(); hud.hideIntel();
@@ -234,6 +252,9 @@ const hud = createHUD({
   },
   onVolume: (v) => audio.setVolume(v),
   onAudioToggle: (on) => audio.setEnabled(on),
+  // §R5.3 HUD 右上的畫質按鈕:高 → 中 → 低 循環(寫 localStorage 後重載,植被要重建)
+  quality: isMobile ? null : { tier: getTier(), label: TIER_LABEL[getTier()] },
+  onQualityCycle: () => applyTier(cycleTier(getTier())),
 });
 
 // 點擊 3D 中的人物標記 → 開啟小卡
@@ -335,6 +356,7 @@ const DESTROY_DUR = 9; // 戰役分鐘：火砲退場時長
 let lastNow = performance.now();
 let elapsed = 0;
 let panelAcc = 0;
+let playRate = 2;        // 目前每秒推進幾個戰役分鐘(暫停時沿用速度設定,見 trackSpeed 的用法)
 
 const FADE_PALE = new THREE.Color(0xd8d8d8);
 function prepMats(o) {
@@ -371,6 +393,18 @@ function restoreLook(o) {
   o.faded = false;
 }
 
+// 航跡在該時刻的速率(場景單位 / 戰役分鐘)。中央差分,對拖曳與暫停都成立。
+const _spA = { x: 0, z: 0 };
+function trackSpeed(spec, t) {
+  const track = spec.track;
+  if (!track || track.length < 2) return 0;
+  const h = 0.25;
+  const a = interpolateTrack(track, t - h);
+  _spA.x = a.x; _spA.z = a.z;
+  const b = interpolateTrack(track, t + h);
+  return Math.hypot(b.x - _spA.x, b.z - _spA.z) / (2 * h);
+}
+
 // M-2:最短角差(處理 ±π 環繞)
 function shortestAngleDiff(target, current) {
   let d = (target - current) % (Math.PI * 2);
@@ -387,6 +421,7 @@ function tick() {
   elapsed += dt;
   const time = elapsed;
   fpsSample(dt);
+  qualitySample(dt);   // §R5.1:連續 3 秒平均幀時間 > 40 ms 就降一級
 
   if (playing && started) {
     prevT = battleT;
@@ -396,6 +431,7 @@ function tick() {
     const gap = nextEv ? nextEv.t - battleT : 999;
     const inDrop = battleT > 82 && battleT < 162;
     if (!inDrop && gap > 30) adv = speed * Math.min(3.5, 1 + (gap - 30) / 40);
+    playRate = adv;            // R1:士兵的步頻要跟著「螢幕上的速度」走,腳才不會滑
     battleT = Math.min(battleT + dt * adv, TIME_END);
     if (battleT >= TIME_END) {
       playing = false;
@@ -419,16 +455,15 @@ function tick() {
     else o.curRot += shortestAngleDiff(targetRot, o.curRot) * rotK;
     o.group.rotation.y = o.curRot;
 
-    // M-3:行進微動作
-    const moved = Math.hypot(st.pos.x - o.prevX, st.pos.z - o.prevZ);
-    o.prevX = st.pos.x; o.prevZ = st.pos.z;
-    if (o.troopers.length && !(st.status === 'destroyed' && o.downT != null)) {
-      const movingAmp = moved > 0.03 ? 1 : 0.22;   // 靜止單位保留 ~1/4 呼吸感
-      for (const tr of o.troopers) {
-        const ph = tr.userData.phase;
-        tr.position.y = (tr.userData.baseY ?? 0) + Math.sin(time * 7 + ph) * 0.14 * movingAmp;
-        tr.rotation.z = Math.sin(time * 7 + ph) * 0.03 * movingAmp;
-      }
+    // R1:骨架動畫取代原本的正弦起伏微動作 —— 依「螢幕上的實際速度」選 clip。
+    //   速度取自航跡的時間導數 × 當下播放倍率,而不是逐幀位移差:拖曳時間軸、暫停、
+    //   跳章節之後不會出現一個假的超大位移,定格截圖也看得到正在邁步的姿態。
+    if (o.troopers.length) {
+      setUnitMotion(o.group, {
+        speed: trackSpeed(o.spec, battleT) * playRate,
+        kind: o.spec.kind,
+        down: st.status === 'destroyed' && o.downT != null,
+      });
     }
 
     if (st.status === 'destroyed' && o.downT != null) {
@@ -484,6 +519,7 @@ function tick() {
   tacticsOverlay.visible = battleT >= 476 && battleT <= 616;
 
   animateScene(time);
+  updateSoldierAnimations(dt);   // R1:士兵 mixer(更新頻率依畫質等級)
   environment.update(dt, battleT);
   terrain.update(dt);
   effects.update(dt);
@@ -516,6 +552,22 @@ function tick() {
 
   renderFrame(dt);
 }
+
+// §R5.1:執行期降級的第一階段 —— 只動「可即時切換」的旋鈕(GTAO／景深／SMAA／
+// pixelRatio／mixer 頻率)。植被與 CSM 層數要重建,由 quality.js 寫 localStorage 後 reload。
+onQualityChange((p, tier) => {
+  DPR_CAP = Math.min(window.devicePixelRatio, p.pixelRatio);
+  curRatio = Math.min(curRatio, DPR_CAP);
+  renderer.setPixelRatio(curRatio);
+  if (post) {
+    post.setPixelRatio(curRatio);
+    post.setGTAO(p.gtao);
+    post.setSMAA(p.smaa);
+    post.setBloom(p.bloom);
+    if (!p.gtao) aoLevel = 2;
+  }
+  hud.setQualityLabel(TIER_LABEL[tier] ?? tier);
+});
 
 // ── 動態解析度(P-4):滾動平均 FPS,每 2 秒結算 ─────────────
 // R4-6:降級順序是「先砍 GTAO 再降解析度」(GTAO 內部要重跑一次幾何,是最貴的一關)。
@@ -585,7 +637,13 @@ if (import.meta.env && import.meta.env.DEV) {
       o.group.rotation.z = 0;
       o.group.visible = true;
       restoreLook(o);
+      setUnitMotion(o.group, {   // R1:定格截圖也要有正確的動作(邁步/跪射)
+        speed: trackSpeed(o.spec, t) * playRate,
+        kind: o.spec.kind,
+        down: st.status === 'destroyed' && o.downT != null,
+      });
     }
+    updateSoldierAnimations(0.016);
     for (const a of airObjs) {
       const { spawnT, despawnT } = a.spec;
       if (t >= spawnT && t <= despawnT) {
@@ -612,14 +670,16 @@ if (import.meta.env && import.meta.env.DEV) {
   // ⚠ gl.finish() 在 ANGLE/D3D11 上不會真的擋住 CPU(同一幀量得出 5 ms 與 123 ms),
   //   要用 readPixels 讀預設 framebuffer 才會逼出真正的同步點。
   const _px = new Uint8Array(4);
-  const dbgPerf = (n = 10) => {
+  // ratio:量測用的 pixelRatio。預設 1.5 是為了跟 R4 那批數字可比;
+  //   傳 DPR_CAP 進來就是「這一級實際看到的畫面」的幀時間(low 的上限是 1)。
+  const dbgPerf = (n = 10, ratio = 1.5) => {
     const gl = renderer.getContext();
     const sync = () => { renderer.setRenderTarget(null); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, _px); };
     const prevRatio = renderer.getPixelRatio();
     const prevSize = renderer.getSize(new THREE.Vector2());
     const prevAspect = camera.aspect;
     perfLock = true;
-    renderer.setPixelRatio(1.5);
+    renderer.setPixelRatio(ratio);
     renderer.setSize(1600, 1000, false);
     if (post) post.setSize(1600, 1000);
     camera.aspect = 1.6; camera.updateProjectionMatrix();
@@ -635,13 +695,25 @@ if (import.meta.env && import.meta.env.DEV) {
     perfLock = false;
     return Math.round(ms * 100) / 100;
   };
+  // 真實 rAF 幀時間(量測用 dbgPerf 是同步 readPixels 的單幀成本,這個是實際感受)
+  const liveFrameMs = (ms = 2000) => new Promise((resolve) => {
+    let frames = 0;
+    const t0 = performance.now();
+    const step = () => {
+      frames++;
+      if (performance.now() - t0 < ms) requestAnimationFrame(step);
+      else resolve(Math.round(((performance.now() - t0) / frames) * 100) / 100);
+    };
+    requestAnimationFrame(step);
+  });
   window.__dbg = {
-    post, dbgPerf,
+    post, dbgPerf, liveFrameMs, dprCap: () => DPR_CAP,
     // A/B 對照:__dbg.pipeline('legacy') 回到升級前的後製,('modern') 全開
     pipeline: (mode) => { if (post) post.setPipeline(mode); renderFrame(0.016); return mode; },
     // 截圖前凍結畫質(擋掉動態解析度／GTAO 自動降級,否則慢機器上拍到的是降級後的畫面)
     freezeQuality: (on = true) => {
       perfLock = !!on;
+      freezeQualityTier(!!on);   // §R5:量測期間連畫質等級的自動降級一起凍結
       if (on) {   // 回到全畫質:GTAO 全開、pixelRatio 回到上限
         setAoLevel(0);
         curRatio = DPR_CAP;
@@ -652,6 +724,11 @@ if (import.meta.env && import.meta.env.DEV) {
     },
     THREE, scene, camera, controls, renderer, director, dbgSeek, dbgLook,
     terrain, environment, missingAssets,
+    quality: qualityInfo,
+    setQuality: (t) => applyTier(t),
+    // 驗收用:手動餵幀時間給 §R5.1 的降級監看(dt 秒)。分頁在背景時 rAF 會停,
+    // 沒有這個掛勾就驗不到「連續 3 秒 > 40 ms 會降級」這條。
+    sampleQuality: (dt = 0.1, n = 1) => { let hit = 0; for (let i = 0; i < n; i++) if (qualitySample(dt)) hit++; return hit; },
     setPlaying: (v) => { playing = v; hud.setPlaying(v); },
     render: () => renderFrame(0.016),
   };

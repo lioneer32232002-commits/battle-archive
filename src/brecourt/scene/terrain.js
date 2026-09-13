@@ -457,7 +457,21 @@ function makeGrassTexture() {
   return t;
 }
 
-export function createBrecourtTerrain(scene, { shadows = false, mobile = false } = {}) {
+export function createBrecourtTerrain(scene, {
+  shadows = false, mobile = false,
+  // §R5 畫質分級(docs/realism-spec.md):植被層級、草叢數量都從這裡吃,不再各自讀 isMobile。
+  quality = null,
+  // R6:glb 換模／材質 clone 之後要把材質註冊給 CSM,否則會被三盞 cascade 燈各照一次。
+  register = null,
+} = {}) {
+  const q = {
+    heroVeg: 'hi', heroLeafKeep: 1, heroDensify: true,
+    midVeg: true, midLeafKeep: 0.45,
+    bushVeg: true, bushLeafKeep: 0.28,
+    grassCount: 2600, baked: true,
+    ...(quality ?? {}),
+  };
+  const reg = (o) => { try { register?.(o); } catch (e) { console.warn('[brecourt/terrain] CSM 註冊失敗', e); } };
   const g = new THREE.Group();
   const R = mulberry(20240612);
 
@@ -717,7 +731,65 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
   if (shadows) { stoneWall.castShadow = stoneWall.receiveShadow = true; }
   g.add(stoneWall);
 
+  // 三棟建物的擺放矩陣(平塗版與烘焙版共用)
+  function manorMatrix(s, mdl, size) {
+    modelBox(mdl).getSize(size);
+    const sc = s.span / Math.max(size.x, size.z);
+    return new THREE.Matrix4().makeTranslation(s.x, 0, s.z)
+      .multiply(new THREE.Matrix4().makeRotationY(s.rot))
+      .multiply(new THREE.Matrix4().makeScale(sc, sc, sc));
+  }
+
+  // R2:桌機 high／medium 優先吃 Cycles 舊化烘焙版(<id>_baked.glb)。
+  //   烘焙版已經是「單一材質 ＋ 四張貼圖」,所以**不再疊 Poly Haven 的牆面／屋頂貼圖**
+  //   (疊上去等於把烘好的磨損、鏽痕、牆腳泥汙再乘一層平鋪石牆,前面那道工就白做了),
+  //   也不烘頂點色。一棟一個 draw call,roughness 下限 0.35 由 assets.loadModel 統一守。
+  async function upgradeManorBaked() {
+    const models = await Promise.all(MANOR.map((s) => loadModel(`${s.id}_baked`)));
+    if (!models.every(Boolean)) return false;
+    const out = new THREE.Group();
+    const size = new THREE.Vector3();
+    models.forEach((mdl, i) => {
+      const mtx = manorMatrix(MANOR[i], mdl, size);
+      const byMat = new Map();
+      for (const p of collectPrimitives(mdl, { matrix: mtx })) {
+        const key = p.material.uuid;
+        if (!byMat.has(key)) byMat.set(key, { mat: p.material, geos: [] });
+        byMat.get(key).geos.push(p.geometry);
+      }
+      for (const rec of byMat.values()) {
+        const geo = rec.geos.length > 1 ? mergeGeometries(rec.geos, false) : rec.geos[0];
+        if (!geo) continue;
+        ensureUV1(geo);                      // aoMap 吃 uv1
+        const mat = rec.mat.clone();         // 範本是共用快取,不要就地改
+        mat.roughness = Math.max(mat.roughness ?? 1, 0.35);
+        mat.envMapIntensity = 1;
+        const mesh = new THREE.Mesh(geo, mat);
+        if (shadows) { mesh.castShadow = true; mesh.receiveShadow = true; }
+        out.add(mesh);
+      }
+    });
+    if (!out.children.length) return false;
+    g.add(out);
+    reg(out);                                 // R6:CSM 註冊(漏了會亮三倍)
+    disposeObject(manorProc);
+    await dressStoneWall();
+    return true;
+  }
+
+  // 矮石牆沒有烘焙版,兩條路徑共用同一張 Poly Haven 石砌貼圖
+  async function dressStoneWall() {
+    const wallSet = await loadPBR('rustic_stone_wall_02', { repeat: [8, 0.6], tier: 'mobile', maps: ['diff', 'nor'] });
+    if (!wallSet.map) return;
+    const sw = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 });
+    applyPBR(sw, wallSet, { aoIntensity: 0.7 });
+    ensureUV1(stoneWall.geometry);
+    stoneWall.material = sw;
+    reg(stoneWall);
+  }
+
   async function upgradeManor() {
+    if (q.baked && !mobile && await upgradeManorBaked()) return true;
     const models = await Promise.all(MANOR.map((s) => loadModel(s.id)));
     if (!models.every(Boolean)) return false;
     // 牆面與屋頂省掉 arm(AO/rough/metal 那張):512 也要 100–130 KB,而建物在畫面上不大,
@@ -729,12 +801,7 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
     const byMat = new Map();
     const size = new THREE.Vector3();
     models.forEach((mdl, i) => {
-      const s = MANOR[i];
-      modelBox(mdl).getSize(size);
-      const sc = s.span / Math.max(size.x, size.z);
-      const mtx = new THREE.Matrix4().makeTranslation(s.x, 0, s.z)
-        .multiply(new THREE.Matrix4().makeRotationY(s.rot))
-        .multiply(new THREE.Matrix4().makeScale(sc, sc, sc));
+      const mtx = manorMatrix(MANOR[i], mdl, size);
       for (const p of collectPrimitives(mdl, { matrix: mtx })) {
         const key = p.material.name || 'default';
         if (!byMat.has(key)) byMat.set(key, { mat: p.material, geos: [] });
@@ -758,14 +825,9 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
     }
     if (!out.children.length) return false;
     g.add(out);
+    reg(out);
     disposeObject(manorProc);
-    // 矮石牆沿用同一張石砌貼圖
-    if (wallSet.map) {
-      const sw = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 });
-      applyPBR(sw, await loadPBR('rustic_stone_wall_02', { repeat: [8, 0.6], tier: 'mobile', maps: ['diff', 'nor'] }), { aoIntensity: 0.7 });
-      ensureUV1(stoneWall.geometry);
-      stoneWall.material = sw;
-    }
+    if (wallSet.map) await dressStoneWall();   // 矮石牆沿用同一張石砌貼圖
     return true;
   }
   // 莊園旁的果樹叢
@@ -910,8 +972,7 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
   // 樹籬灌木是縮小版的樹,單株在畫面上只有高樹的 1/3,抽稀到 30% 看不出來但省最多面。
   // hero 範圍 = 砲線田那圈 lush 樹籬(x −20..60、z −14..86)再外擴一點
   const inHero = (it) => Math.abs(it.x) < 105 && it.z > -55 && it.z < 115;
-  const LEAF_KEEP_MID = 0.45;
-  const LEAF_KEEP_BUSH = 0.28;
+  // 葉片保留率(hero／mid／灌木)現在由 §R5 的畫質等級給:q.heroLeafKeep／q.midLeafKeep／q.bushLeafKeep
   // 實測:`_branches`(枝條,13–15k 面)沒被抽稀時比抽稀後的葉片還貴 —— 灌木叢一整排
   //   光枝條就 172 萬面。枝條是管狀幾何,逐三角形抽稀會破洞,所以 mid 與灌木直接整支不畫:
   //   灌木只有 1/3 大、mid 在 150 單位外,枝條本來就被葉團蓋住。
@@ -967,7 +1028,8 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
   const BUSH_BASE_H = 5.0;
   async function upgradeBushes() {
     if (mobile) return false;   // 手機維持程序化
-    const mdl = await loadModel('island_tree_02', { kind: 'glb_hi' });
+    if (!q.bushVeg) return false;   // §R5 low:樹籬灌木維持程序化
+    const mdl = await loadModel('island_tree_02', { kind: q.heroVeg === 'hi' ? 'glb_hi' : 'glb' });
     if (!mdl) return false;
     const core = bushM.filter((b) => b.lush);
     const rest = bushM.filter((b) => !b.lush);
@@ -977,7 +1039,7 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
     const prims = collectPrimitives(mdl, { matrix: alignMatrix({ scale: BUSH_BASE_H / size.y }) });
     if (!prims.length) return false;
     buildProcBushes(rest);           // 核心區外仍是程序化灌木叢
-    addVegInstances(prims, core, LEAF_KEEP_BUSH, { shadow: false, branches: false });
+    addVegInstances(prims, core, q.bushLeafKeep, { shadow: false, branches: false });
     return true;
   }
 
@@ -1005,7 +1067,10 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
   const TREE_GLB = ['tree_small_02', 'island_tree_02'];
   async function upgradeTrees() {
     if (mobile) return false;   // 手機維持程序化
-    const models = await Promise.all(TREE_GLB.map((id) => loadModel(id, { kind: 'glb_hi' })));
+    if (q.heroVeg === 'proc') return false;   // §R5 low:核心區也維持程序化(這場最重的一項)
+    // medium 改吃一般版 glb(葉量只有高規版的 1/5),high 才付高規幾何的全額
+    const kind = q.heroVeg === 'hi' ? 'glb_hi' : 'glb';
+    const models = await Promise.all(TREE_GLB.map((id) => loadModel(id, { kind })));
     if (!models.every(Boolean)) return false;
     const size = new THREE.Vector3();
     let replaced = 0;
@@ -1024,13 +1089,15 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
       if (!prims.length) continue;
       // 先換掉:遠景那份重建,核心那份分 hero／mid 兩層
       if (treeIM[v]) { g.remove(treeIM[v]); treeIM[v].dispose(); }
-      buildProcTrees(v, far);
-      addVegInstances(prims, hero, 1);
+      // §R5 降級時 mid 退回程序化樹(剪影還在,面數只剩千分之一),跟遠景合成同一個 InstancedMesh
+      buildProcTrees(v, q.midVeg ? far : far.concat(mid));
+      addVegInstances(prims, hero, q.heroLeafKeep);
       // 補密的第二株:不投影、不畫枝條(枝條疊兩份會變成一團亂枝),葉片留 70%
-      addVegInstances(prims, densify(hero), 0.7, { shadow: false, branches: false });
+      // medium 起不補密(等於少一整層 hero 幾何)
+      if (q.heroDensify) addVegInstances(prims, densify(hero), 0.7, { shadow: false, branches: false });
       // mid 不投影:陰影 pass 是整份幾何再跑一次,而這些樹離砲線田鏡頭都在 150 單位外,
       // 地上那團影子有沒有它們看不出來
-      addVegInstances(prims, mid, LEAF_KEEP_MID, { shadow: false, branches: false });
+      if (q.midVeg) addVegInstances(prims, mid, q.midLeafKeep, { shadow: false, branches: false });
       replaced += core.length;
     }
     return replaced > 0;
@@ -1105,7 +1172,7 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
   // ── 草叢(桌機限定,核心區 ±160):交叉雙面 quad,vertex shader 隨風輕搖 ──
   const wind = { value: 0 };
   let grassMesh = null;
-  if (!mobile) {
+  if (!mobile && q.grassCount > 0) {
     const qa = new THREE.PlaneGeometry(1.7, 1.15); qa.translate(0, 0.575, 0);
     const qb = qa.clone(); qb.rotateY(Math.PI / 2);
     const grassGeo = mergeGeometries([qa, qb], false);
@@ -1130,7 +1197,7 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
          #endif`
       );
     };
-    const N = 2600;
+    const N = q.grassCount;
     grassMesh = new THREE.InstancedMesh(grassGeo, grassMat, N);
     for (let i = 0; i < N; i++) {
       const x = -160 + R() * 320, z = -140 + R() * 300;
@@ -1160,6 +1227,7 @@ export function createBrecourtTerrain(scene, { shadows = false, mobile = false }
         try { applied[name] = await fn(); }
         catch (e) { applied[name] = false; console.warn(`[brecourt/terrain] ${name} 升級失敗`, e); }
       }));
+      reg(g);   // R6:升級後新建的材質一次註冊給 CSM(冪等)
       resolve(applied);
     });
   });

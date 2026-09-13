@@ -48,6 +48,7 @@ export function createHUD(callbacks) {
         <input id="vol" class="vol-slider" type="range" min="0" max="100" value="50" title="音量" />
         <button id="btn-panel-red" class="hud-btn panel-toggle"><i class="dot red"></i>德軍</button>
         <button id="btn-panel-blue" class="hud-btn panel-toggle"><i class="dot blue"></i>美軍</button>
+        <button id="btn-quality" class="hud-btn" title="畫質等級(切換後會重新載入)">畫質：高</button>
         <button id="btn-mode" class="hud-btn active">🎬 導演模式</button>
       </div>
     </div>
@@ -219,6 +220,19 @@ export function createHUD(callbacks) {
     btnSpeed.textContent = `${speeds[speedIdx]}×`;
     callbacks.onSpeedChange(speeds[speedIdx]);
   });
+  // §R5.3 畫質:高 → 中 → 低 循環(切換寫進 localStorage 後重載,植被與陰影層數要重建)
+  const btnQuality = document.getElementById('btn-quality');
+  function setQualityLabel(label) {
+    if (!btnQuality) return;
+    btnQuality.textContent = `畫質：${label}`;
+  }
+  if (callbacks.quality) {
+    setQualityLabel(callbacks.quality.label);
+    btnQuality.addEventListener('click', () => callbacks.onQualityCycle?.());
+  } else {
+    btnQuality?.remove();     // 手機維持既有分流,不給這顆按鈕
+  }
+
   btnMode.addEventListener('click', () => {
     const free = btnMode.classList.toggle('active');
     btnMode.textContent = free ? '🎬 導演模式' : '🔓 自由視角';
@@ -422,6 +436,7 @@ export function createHUD(callbacks) {
 
   return {
     setPlaying(playing) { btnPlay.textContent = playing ? '❚❚' : '▶'; },
+    setQualityLabel,
     setTime(t) { document.getElementById('clock').textContent = formatClock(t); slider.value = t; setActiveChapter(t); },
     setHeading(camBearing) {
       if (compassRose) compassRose.setAttribute('transform', `rotate(${-camBearing} 50 50)`);
