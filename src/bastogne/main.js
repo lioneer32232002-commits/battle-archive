@@ -13,7 +13,7 @@ import { createUnit, upgradeUnit, animateUnit } from './scene/soldiers.js';
 import { getQuality, cycleQuality, TIER_LABEL } from './scene/quality.js';
 import { createAssets } from './scene/assets.js';
 import { Effects } from './scene/effects.js';
-import { makeLabel } from './scene/labels.js';
+import { makeLabel, LABEL_LAYER } from './scene/labels.js';
 import { Director } from './camera/director.js';
 import { createHUD } from './ui/hud.js';
 import { AudioEngine } from './scene/audio.js';
@@ -95,8 +95,20 @@ const post = POSTFX ? createComposer(renderer, scene, camera, {
 }) : null;
 if (QA_LEGACY && post) post.setPipeline('legacy');
 function renderFrame(dt) {
-  if (post) post.render(dt);
-  else renderer.render(scene, camera);
+  if (post) {
+    // 主場景走後製(相機只看第 0 層);標籤(LABEL_LAYER)在後製之後獨立疊上去,
+    // 不吃 bloom／景深／SMAA／顆粒,鏡頭拉近文字仍銳利。
+    camera.layers.set(0);
+    post.render(dt);
+    camera.layers.set(LABEL_LAYER);
+    renderer.autoClear = false;
+    renderer.render(scene, camera);
+    renderer.autoClear = true;
+    camera.layers.set(0);
+  } else {
+    camera.layers.enable(LABEL_LAYER);
+    renderer.render(scene, camera);
+  }
 }
 
 window.addEventListener('resize', () => {
@@ -271,6 +283,7 @@ const hud = createHUD({
 
 // 點擊 3D 人物標記 → 開啟小卡
 const raycaster = new THREE.Raycaster();
+raycaster.layers.enableAll();
 const ndc = new THREE.Vector2();
 const _fwd = new THREE.Vector3();
 const _camPos = new THREE.Vector3();
