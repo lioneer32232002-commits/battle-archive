@@ -68,3 +68,36 @@
 5. 整合者（Fable）：截圖 QA、commit、build、push。
 
 *本規格由 Claude（Fable 5.1）於 2026-09-13 撰寫。*
+
+---
+
+## R5 畫質分級（2026-09-13 補記；六場 `main.js`、`environment.js`、`terrain*.js`、`postfx.js`）
+
+背景：實測（`__dbg.dbgPerf`，readPixels 同步，1600×1000）本機 Intel UHD 內顯上巴斯通單幀約 50 ms、R4 新管線只多約 5 ms，重的是場景幾何（2–8M 三角形、三層 cascade 重畫三次）。R4 保留，但桌機必須依顯示卡等級分三級，並在執行期自動降級。
+
+1. **等級判定（啟動時，建場景之前）**：
+   - `?q=high|medium|low` 覆寫 → `localStorage['battle-quality']` → 自動判定。
+   - 自動：`WEBGL_debug_renderer_info` 的 UNMASKED_RENDERER 命中 `/Intel|Iris|UHD|Apple GPU|Mali|Adreno|SwiftShader|llvmpipe/i` → `medium`，其餘 → `high`；手機路徑（`isMobile`）不在此列，維持既有。
+   - 執行期：滾動平均幀時間連續 3 秒 > 40 ms → 降一級（最多降到 low）；降級順序先動可即時切換的旋鈕，再重建需重建的（見 3）。不自動升級（避免振盪），只在下次載入依 localStorage 記憶。
+2. **三級內容**：
+
+   | 項目 | high | medium | low |
+   |---|---|---|---|
+   | GTAO | 半解析度 | 關 | 關 |
+   | 陰影 | CSM 3 層 2048 | CSM 2 層 1536 | 單張正交 1024（既有 legacy 路徑） |
+   | 景深、SMAA、調色、bloom | 全開 | 開（bloom 半解析度） | 只留 OutputPass＋調色 |
+   | pixelRatio 上限 | 2 | 1.25 | 1 |
+   | hero 植被 | `_hi` 全幾何 | `_hi` 抽稀 50% 或一般版 | 程序化 |
+   | mid 植被、草叢 | 全量 | 半量 | 無 |
+   | 雪、粒子、雲 sprite | 全量 | 60% | 40% |
+   | 士兵 SkinnedMesh | 每幀 mixer | mixer 每 2 幀 | 每 3 幀 |
+3. **實作要求**：`src/<id>/scene/quality.js` 匯出 `getQuality()`（回傳 tier 與參數物件）與 `onQualityChange(cb)`；所有建構函式吃參數而不是各自讀 `isMobile`。植被數量與 CSM 層數屬「需重建」，降級時允許直接 `location.reload()` 並寫入 localStorage（簡單可靠），其他旋鈕即時切。HUD 右上加一顆小按鈕「畫質：高／中／低」循環切換（同樣寫 localStorage 後 reload）。
+4. **驗收**：三級各一張同機位截圖與 `dbgPerf` 數字寫進回報；`?q=low` 在本機 Intel 內顯上巴斯通 ≤ 25 ms；console 無錯；vitest 全綠。
+
+## R6 整合備忘（R4 施工後新增的介面，整合代理必讀）
+
+- **CSM 註冊**：`environment.registerObject(group)`／`registerMaterial(mat)`／`refreshShadowMaterials()`，冪等、手機 no-op。**glb 換模、`SkeletonUtils.clone`、材質 clone 之後必須呼叫**，沒註冊的 Standard／Lambert 材質會被三盞 cascade 燈各照一次、亮度變三倍。`createAssets` 有 `onMaterial` 選項可在載入時直接註冊。
+- **GTAO 可見性**：`depthWrite:false` 的物件（天空、雲、霧、太陽、標籤）與所有 Sprite 已由 postfx 自動跳過；新加的透明大面積物件掛 `userData.noAO = true`。
+- **量測**：`__dbg.freezeQuality(true)` 後 `__dbg.dbgPerf(n)`（readPixels 同步，`gl.finish()` 在 ANGLE 上不擋 CPU、數字不可信）；`__dbg.pipeline('legacy'|'modern')` 做同機位對照。
+- **巴斯通已知問題**：核心區雪面 overlay（`terrain-upgrade.js`）`receiveShadow=false` 加 hemi 0.98，導致雪地看不到投影；整合時 overlay 改 `receiveShadow=true`（或改成把細節混進底層材質）並把 hemi 降到約 0.75 後重校。
+- **烘焙版模型**：桌機 high／medium 優先載 `<id>_baked.glb`（單一材質＋四張貼圖，不再烘頂點色，roughness ≥ 0.35），low 與手機用平塗版；`_baked` 檔還在陸續產出，開工先 `ls public/models/*_baked.glb`，沒有的維持現況並回報。
