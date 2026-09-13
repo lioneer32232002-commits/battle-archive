@@ -23,7 +23,8 @@
 // glb 缺席（例如士兵還在建模）時什麼都不做 —— 程序化版本就是 fallback。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { bakeToVertexColors, fitScale } from './assets.js';
+import { bakeToVertexColors, fitScale, collectByMaterial } from './assets.js';
+import { SOLDIER_SCALE } from './rig.js';
 
 const SIDE_COLOR = { red: 0xd9442e, blue: 0x2e7bd9 };
 const UNIFORM = { blue: 0x6f7049, red: 0x565a4e };   // 美軍橄欖綠 / 德軍灰綠
@@ -138,6 +139,8 @@ function makeWeapon(type, mat) {
 const POSE_MODEL = { advance: 'advance_rifle', kneel: 'kneel_fire', stand: 'stand_rifle' };
 // 程序化武器種類 → 武器 glb（原點在握把）
 const WEAPON_MODEL = { garand: 'garand', thompson: 'thompson', bar: 'bar', kar98: 'kar98k' };
+// 程序化姿態 → 骨架動畫的「靜止姿態」（R1：靜止守軍 kneel_fire／prone_fire／idle）
+const RIG_POSTURE = { advance: 'stand', kneel: 'kneel', stand: 'stand' };
 
 // ── 單兵(放大的程序化小人,分姿態) ─────────────────────
 function makeSoldier(side, pose, weapon, mat, phase = 0) {
@@ -199,7 +202,9 @@ function makeSoldier(side, pose, weapon, mat, phase = 0) {
   }
 
   s.scale.setScalar(1.15);
-  s.userData.phase = phase;            // M-3：行進微動作相位
+  s.userData.phase = phase;            // 同班隨機相位（骨架動畫用，避免齊步）
+  // R1 骨架動畫換件用：side／姿態／武器 → soldier_rig_<us|de>.glb ＋ hand_R 掛的武器
+  s.userData.rig = { side, pose, weapon: WEAPON_MODEL[weapon] ?? null, posture: RIG_POSTURE[pose] ?? 'stand' };
   // glb 換件用：姿態 → Blender 士兵模型 ＋ 掛在 hand_r 的武器。
   // refMeters：所有姿態共用「站姿 1.75 公尺」換算出來的同一個縮放倍率。
   //   不可以逐姿態用 bounding box 對齊 —— 跪射的 glb 只有 1.36 公尺高，
@@ -474,12 +479,105 @@ function bakedGeometry(assets, slot) {
   return p;
 }
 
-export async function applyUnitModels(group, assets, { toStandard = true } = {}) {
+// ── R2 烘焙版（`<id>_baked.glb`）：單一材質＋貼圖，**不烘頂點色** ──────────────
+// 幾何依 slot 快取（同型號的車輛共用）；材質每單位一份（clone），淡出才不會外溢。
+const BAKED_CACHE = new Map();
+function bakedModelGeometry(assets, slot) {
+  const key = `baked|${slot.id}|${slot.fit}|${slot.axis}|${slot.rotY}`;
+  if (BAKED_CACHE.has(key)) return BAKED_CACHE.get(key);
+  const p = (async () => {
+    const got = await assets.modelBaked(slot.id);
+    if (!got || !got.baked) return null;
+    const s = fitScale(got.src, slot.fit, slot.axis);
+    const mx = new THREE.Matrix4().makeRotationY(slot.rotY).multiply(new THREE.Matrix4().makeScale(s, s, s));
+    const groups = collectByMaterial(got.src, { matrix: mx });
+    // 烘焙版整模一顆材質 → 所有 prim 併成一份幾何（1 draw call），uv 保留（貼圖要用）
+    const geos = [];
+    let material = null;
+    for (const [, item] of groups) {
+      geos.push(...item.geos);
+      material = material ?? item.material;
+    }
+    if (!geos.length || !material) return null;
+    return { geo: geos.length === 1 ? geos[0] : mergeGeometries(geos, false), material, id: got.id };
+  })().catch((e) => {
+    console.warn('[carentan] 烘焙版模型載入失敗，退回平塗版：', slot.id, e?.message ?? e);
+    return null;
+  });
+  BAKED_CACHE.set(key, p);
+  return p;
+}
+
+/**
+ * @param {THREE.Group} group          createUnit 產出的單位
+ * @param {object} assets              createAssetHub
+ * @param {object} [o]
+ * @param {object} [o.rigs]            createRigHub（R1 骨架士兵）；沒給就維持靜態 glb
+ * @param {boolean} [o.baked]          桌機 high／medium：優先用 `<id>_baked.glb`
+ * @param {(obj) => void} [o.register] CSM 材質註冊（environment.registerObject）
+ * @param {boolean} [o.shadows]
+ */
+export async function applyUnitModels(group, assets, {
+  toStandard = true, rigs = null, baked = false, register = null, shadows = false,
+} = {}) {
   const slots = [];
   group.traverse((o) => { if (o.isMesh && o.userData?.modelSlot) slots.push(o); });
   if (!slots.length) return 0;
   let swapped = 0;
+
+  // R1：士兵先換成 SkinnedMesh（材質每單位一份）
+  const troopers = group.userData.troopers ?? [];
+  if (rigs && troopers.length) {
+    const skinMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0.06 });
+    const next = [];
+    for (const mesh of troopers) {
+      const info = mesh.userData?.rig;
+      if (!info) { next.push(mesh); continue; }
+      const unit = await rigs.spawn({
+        side: info.side, weapon: info.weapon, material: skinMat, phase: mesh.userData.phase ?? 0,
+      });
+      if (!unit) { next.push(mesh); continue; }
+      const root = unit.root;
+      root.position.copy(mesh.position);
+      root.rotation.set(0, mesh.rotation.y + Math.PI, 0);   // 骨架 glb 正面是 −Z
+      root.scale.copy(mesh.scale).multiplyScalar(SOLDIER_SCALE);
+      root.userData.phase = mesh.userData.phase ?? 0;
+      unit.mesh.userData.phase = mesh.userData.phase ?? 0;
+      unit.mesh.userData.posture = info.posture ?? 'stand';
+      unit.mesh.userData.rigUnit = unit;
+      if (shadows) unit.mesh.castShadow = true;
+      const parent = mesh.parent ?? group;
+      parent.add(root);
+      parent.remove(mesh);
+      mesh.geometry.dispose();
+      next.push(unit.mesh);          // userData.troopers 改指向 SkinnedMesh
+      swapped++;
+    }
+    group.userData.troopers = next;
+    group.userData.rigged = next.some((m) => m.isSkinnedMesh);
+    register?.(group);
+  }
+
   for (const mesh of slots) {
+    // 已經被骨架版換掉的小兵：parent 被拔掉了；沒換成功的仍然走靜態 glb（fallback）
+    if (!mesh.parent) continue;
+    // ① 烘焙版（單一材質＋貼圖）優先
+    if (baked && !mesh.userData.rig) {
+      const hit = await bakedModelGeometry(assets, mesh.userData.modelSlot);
+      if (hit) {
+        const old = mesh.geometry;
+        mesh.geometry = hit.geo;
+        mesh.material = hit.material.clone();      // 材質每單位一份（淡出不外溢）
+        if (mesh.material.roughness != null) mesh.material.roughness = Math.max(0.35, mesh.material.roughness);
+        mesh.material.envMapIntensity = 0.9;
+        mesh.material.vertexColors = false;
+        old.dispose();
+        mesh.userData.modelApplied = hit.id;
+        swapped++;
+        continue;
+      }
+    }
+    // ② 平塗版：烘成頂點色幾何後換掉（原有路徑）
     const geo = await bakedGeometry(assets, mesh.userData.modelSlot);
     if (!geo) continue;
     const old = mesh.geometry;

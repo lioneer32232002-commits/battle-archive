@@ -59,14 +59,30 @@ export const BLENDER_MODELS = {
   soldier_de_crouch_run: true, soldier_de_prone_mg: true,
   // 武器（原點在握把，掛到士兵的 hand_r 底下、local transform 歸零）
   garand: true, thompson: true, bar: true, kar98k: true, mp40: true, mg42: true,
+  // R1 骨架士兵（2026-09-13）：20 骨蒙皮＋7 個 clip，掛點是骨頭 hand_R
+  soldier_rig_us: true, soldier_rig_de: true, soldier_rig_de_coat: true,
+  // R2 Cycles 舊化烘焙版（單一材質＋四張貼圖；桌機 high／medium 優先載，low／手機用平塗版）
+  sherman_baked: true, stug_baked: true,
+  house_normandy_s_baked: true, house_normandy_l_baked: true,
+  church_baked: true, barn_baked: true,
 };
+
+// 有烘焙版的模型（§R2.4）：`<id>_baked.glb` 存在才列在這裡
+export const BAKED_MODELS = new Set([
+  'sherman', 'stug', 'house_normandy_s', 'house_normandy_l', 'church', 'barn',
+]);
+
+/** 桌機 high／medium 才用烘焙版；low、手機、戰損變體維持平塗版。 */
+export function bakedIdFor(id, { baked = false } = {}) {
+  return baked && BAKED_MODELS.has(id) && hasBlenderModel(`${id}_baked`) ? `${id}_baked` : null;
+}
 
 export function hasBlenderModel(id) {
   return BLENDER_MODELS[id] === true;
 }
 
 // ══════════════════════════════════════════════════════════════
-export function createAssetHub({ mobile = false, renderer = null } = {}) {
+export function createAssetHub({ mobile = false, renderer = null, baked = false } = {}) {
   const profile = mobile ? 'mobile' : 'desktop';
   const texCache = new Map();     // `${id}:${map}:${tier}` → Texture
   const modelCache = new Map();   // id → Promise<Object3D|null>
@@ -187,6 +203,11 @@ export function createAssetHub({ mobile = false, renderer = null } = {}) {
         const gltf = await loader().loadAsync(path, (ev) => { if (ev?.total) seen = ev.total; });
         noteBytes(path, seen);
         prepareModel(gltf.scene);
+        // 骨架模型的 clip 掛回 scene（GLTFLoader 只放在 gltf.animations，clone 不會帶走）
+        if (gltf.animations?.length) {
+          gltf.scene.animations = gltf.animations;
+          gltf.scene.userData.gltfAnimations = gltf.animations;
+        }
         return gltf.scene;
       } catch (err) {
         console.warn('[assets] 模型載入失敗，保留程序化版本：', id, err?.message ?? err);
@@ -195,6 +216,18 @@ export function createAssetHub({ mobile = false, renderer = null } = {}) {
     })();
     modelCache.set(key, p);
     return p;
+  }
+
+  // 烘焙版優先（§R2.4）：桌機 high／medium 先試 `<id>_baked`，沒有就退回平塗版。
+  // 回傳 { src, id, baked }：baked = true 代表「單一材質＋貼圖，不要再烘頂點色、不要疊牆面貼圖」。
+  async function modelBaked(id, { allow = baked } = {}) {
+    const bid = bakedIdFor(id, { baked: allow && !mobile });
+    if (bid) {
+      const src = await model(bid);
+      if (src) return { src, id: bid, baked: true };
+    }
+    const src = await model(id);
+    return src ? { src, id, baked: false } : null;
   }
 
   async function models(ids) {
@@ -243,7 +276,10 @@ export function createAssetHub({ mobile = false, renderer = null } = {}) {
     return { files: requested.size, bytes, mb: +(bytes / 1048576).toFixed(2), list: [...requested.entries()] };
   }
 
-  return { profile, mobile, manifest, texture, pbr, model, models, envMap, stats, hasModel: hasBlenderModel };
+  return {
+    profile, mobile, baked, manifest, texture, pbr, model, models, modelBaked, envMap, stats,
+    hasModel: hasBlenderModel,
+  };
 }
 
 // ══════════════════════════════════════════════════════════════

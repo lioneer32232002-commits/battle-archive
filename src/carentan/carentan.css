@@ -122,6 +122,9 @@ body {
 .hud-btn:hover { border-color: #c9a227; }
 .hud-btn.active { border-color: #c9a227; color: #ffd97a; }
 .hud-btn.big { font-size: 1.1rem; padding: 8px 18px; }
+/* 畫質分級小按鈕（R5-3）：右上角，比其他按鈕再低調一階 */
+.hud-btn.quality-btn { font-size: 0.78rem; padding: 5px 9px; color: #9aa7bd; letter-spacing: 0.02em; }
+.hud-btn.quality-btn:hover { color: #ffd97a; }
 
 /* ── 側面板 ── */
 .side-panel {

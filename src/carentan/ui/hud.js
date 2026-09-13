@@ -3,6 +3,8 @@ import { TIME_START, TIME_END, formatClock, sides, units, events, outcome, aces 
 import { figures, figureById, leaderOf } from '../data/figures.js';
 
 const STATUS_ICON = { normal: '', destroyed: ' ✕ 摧毀' };
+// §R5.3：畫質分級小按鈕
+const QUALITY_LABEL = { high: '高', medium: '中', low: '低' };
 const gunIds = units.filter((u) => u.kind === 'gun').map((u) => u.id);
 
 export function createHUD(callbacks) {
@@ -48,6 +50,7 @@ export function createHUD(callbacks) {
         <input id="vol" class="vol-slider" type="range" min="0" max="100" value="50" title="音量" />
         <button id="btn-panel-red" class="hud-btn panel-toggle"><i class="dot red"></i>德軍</button>
         <button id="btn-panel-blue" class="hud-btn panel-toggle"><i class="dot blue"></i>美軍</button>
+        <button id="btn-quality" class="hud-btn quality-btn" title="畫質分級（高／中／低，切換後重新載入）">畫質：${QUALITY_LABEL[callbacks.quality?.tier] ?? '高'}</button>
         <button id="btn-mode" class="hud-btn active">🎬 導演模式</button>
       </div>
     </div>
@@ -223,6 +226,17 @@ export function createHUD(callbacks) {
     btnMode.textContent = free ? '🎬 導演模式' : '🔓 自由視角';
     callbacks.onModeToggle(free ? 'director' : 'free');
   });
+  // 畫質分級（§R5.3）：高 → 中 → 低 → 高，切換後重新載入（層數／植被等級要重建）
+  const btnQuality = document.getElementById('btn-quality');
+  if (btnQuality && callbacks.onQuality) {
+    btnQuality.addEventListener('click', () => {
+      const t = callbacks.onQuality();
+      if (t) btnQuality.textContent = `畫質：${QUALITY_LABEL[t] ?? t}`;
+    });
+  } else if (btnQuality) {
+    btnQuality.remove();
+  }
+
   slider.addEventListener('input', () => {
     const t = parseFloat(slider.value);
     callbacks.onScrub(t); setActiveChapter(t);

@@ -47,9 +47,12 @@ function scorchTexture() {
 }
 
 export class Effects {
-  constructor(scene, { mobile = false } = {}) {
+  constructor(scene, { mobile = false, density = 1 } = {}) {
     this.scene = scene;
     this.mobile = mobile;
+    // §R5.2：粒子密度吃畫質參數（high 全量／medium 60%／low 40%）
+    this.density = Math.min(1, Math.max(0.2, density));
+    this.n = (k) => Math.max(1, Math.round(k * this.density));
     this.transients = [];
     this.fires = new Map();
     this.tex = {
@@ -262,10 +265,10 @@ export class Effects {
     this.scene.add(group);
 
     if (linger) {
-      const n = this.mobile ? 2 : (scale > 1 ? 5 : 3);
+      const n = this.n(this.mobile ? 2 : (scale > 1 ? 5 : 3));
       for (let i = 0; i < n; i++) this.lingerSmoke(pos, 5 * scale, 8 + Math.random() * 4);
     }
-    this.debris(pos, Math.round((this.mobile ? 6 : 12) * Math.min(2, scale)), Math.min(1.6, scale));
+    this.debris(pos, this.n(Math.round((this.mobile ? 6 : 12) * Math.min(2, scale))), Math.min(1.6, scale));
     if (ground && Math.random() > 0.42) this.scorch(pos, 4.6 * scale);
 
     let age = 0;
@@ -385,12 +388,12 @@ export class Effects {
   // ── 火砲／車輛被摧毀：爆炸 + 上升黑煙柱 ───────────────
   destroy(pos, scale = 1.5) {
     this.explosion(pos.clone().setY(4), scale, { ground: true });
-    this.debris(pos, this.mobile ? 8 : 18, 1.4);
+    this.debris(pos, this.n(this.mobile ? 8 : 18), 1.4);
     const group = new THREE.Group();
     group.position.copy(pos);
     this.scene.add(group);
     const puffs = [];
-    for (let i = 0; i < (this.mobile ? 6 : 10); i++) {
+    for (let i = 0; i < this.n(this.mobile ? 6 : 10); i++) {
       const s = new THREE.Sprite(
         new THREE.SpriteMaterial({ map: this.tex.smoke, transparent: true, depthWrite: false })
       );
@@ -536,7 +539,7 @@ export class Effects {
     group.position.copy(pos);
     this.scene.add(group);
     const puffs = [];
-    for (let i = 0; i < (this.mobile ? 5 : 10); i++) {
+    for (let i = 0; i < this.n(this.mobile ? 5 : 10); i++) {
       const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.tex.smoke, color: 0xcfd2cc, transparent: true, depthWrite: false }));
       s.userData = { life: -i * 0.55, x: (Math.random() - 0.5) * 9, z: (Math.random() - 0.5) * 9 };
       group.add(s); puffs.push(s);
@@ -577,7 +580,7 @@ export class Effects {
     const group = new THREE.Group();
     this.scene.add(group);
     const parts = [];
-    const n = this.mobile ? 10 : 18;
+    const n = this.n(this.mobile ? 10 : 18);
     for (let i = 0; i < n; i++) {
       const isSmoke = i >= Math.round(n * 0.45);
       const s = new THREE.Sprite(

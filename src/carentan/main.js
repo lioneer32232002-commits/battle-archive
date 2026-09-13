@@ -17,16 +17,21 @@ import { Director } from './camera/director.js';
 import { createHUD } from './ui/hud.js';
 import { AudioEngine } from './scene/audio.js';
 import { createComposer } from './scene/postfx.js';
+import { getQuality, setQuality, cycleQuality, createAutoDowngrade } from './scene/quality.js';
+import { createRigHub, SOLDIER_SCALE } from './scene/rig.js';
 
 const isMobile = window.matchMedia('(max-width: 640px)').matches;
 const LABEL_SCALE = isMobile ? 0.6 : 1;
 const SHADOWS = !isMobile;   // P-2：陰影桌機限定
 const POSTFX = !isMobile;    // P-3：後製桌機限定
 
+// ── R5 畫質分級：建場景「之前」定案（?q= → localStorage → UNMASKED_RENDERER）──
+const quality = getQuality({ mobile: isMobile });
+
 // ── 基本場景 ─────────────────────────────────────────
 const container = document.getElementById('scene-container');
 const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, powerPreference: 'high-performance', preserveDrawingBuffer: true });
-const DPR_CAP = Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2);
+const DPR_CAP = Math.min(window.devicePixelRatio, isMobile ? 1.5 : quality.pixelRatio);
 renderer.setPixelRatio(DPR_CAP);
 renderer.setSize(window.innerWidth, window.innerHeight);
 // P-1：ACES 色調映射（手機桌機都開；environment.js 調色盤已據此重校）
@@ -55,9 +60,11 @@ controls.enableDamping = true;
 // R4 驗收用:dev server 加 ?legacy=1 就整條回到升級前(單張正交陰影＋舊後製),
 // 同機位拍開／關對照。import.meta.env.DEV 在正式 build 是常數 false,整段會被搖掉。
 const QA_LEGACY = !!(import.meta.env && import.meta.env.DEV) && location.search.includes('legacy=1');
-const environment = createEnvironment(scene, { shadows: SHADOWS, mobile: isMobile, camera: QA_LEGACY ? null : camera });
-const terrain = createCarentanTerrain(scene, { shadows: SHADOWS, mobile: isMobile });
-const effects = new Effects(scene, { mobile: isMobile });
+const environment = createEnvironment(scene, {
+  shadows: SHADOWS, mobile: isMobile, camera: QA_LEGACY ? null : camera, quality,
+});
+const terrain = createCarentanTerrain(scene, { shadows: SHADOWS, mobile: isMobile, quality });
+const effects = new Effects(scene, { mobile: isMobile, density: quality.particleDensity });
 const director = new Director(camera, controls);
 const audio = new AudioEngine();
 
@@ -76,6 +83,12 @@ const post = POSTFX ? createComposer(renderer, scene, camera, {
   },
   gtao: { radius: 4, distanceExponent: 1, thickness: 1, scale: 1.5, blend: 0.7 },
   bokeh: { aperture: 0.00008, maxblur: 0.006 },
+  // §R5.2：high 全開／medium 關 GTAO＋bloom 半解析度／low 只留 OutputPass＋調色
+  features: {
+    gtao: quality.gtao, gtaoScale: quality.gtaoScale,
+    bloom: quality.bloom, bloomScale: quality.bloomScale,
+    bokeh: quality.bokeh, smaa: quality.smaa,
+  },
 }) : null;
 if (QA_LEGACY && post) post.setPipeline('legacy');
 function renderFrame(dt) {
@@ -116,6 +129,7 @@ for (const u of units) {
     troopers: group.userData.troopers ?? [],
     curRot: u.facing != null ? u.facing : 0,
     prevX: u.track[0].x, prevZ: u.track[0].z,
+    spd: 0,   // R1：平滑過的移動速度（公尺／秒），拿來選 walk／run
   });
   group.rotation.y = u.facing != null ? u.facing : 0;
 }
@@ -197,10 +211,12 @@ const hud = createHUD({
   onSpeedChange: (s) => (speed = s),
   onScrub: (t) => {
     battleT = t; prevT = t; summaryShown = false; snapRot = true;
+    rigs.snapAll();   // R1：拖曳後動畫狀態重選，不要留著上一段的交叉淡入
     effects.clearTransients(); hud.hideEvent(); hud.hideSummary(); hud.hideIntel();
   },
   onJump: (t) => {
     battleT = t; prevT = t; summaryShown = false; snapRot = true;
+    rigs.snapAll();
     effects.clearTransients(); hud.hideSummary();
     const e = events.find((ev) => ev.t === t);
     if (e) fireEvent(e);
@@ -209,11 +225,15 @@ const hud = createHUD({
   onModeToggle: (mode) => director.setMode(mode),
   onReplay: () => {
     battleT = TIME_START; prevT = TIME_START; summaryShown = false; playing = true; snapRot = true;
+    rigs.snapAll();
     effects.clearTransients(); hud.hideSummary(); hud.hideIntel(); hud.setPlaying(true);
     triggerEventsBetween(TIME_START - 1, battleT);
   },
   onVolume: (v) => audio.setVolume(v),
   onAudioToggle: (on) => audio.setEnabled(on),
+  // §R5.3 HUD 右上「畫質：高／中／低」小按鈕（寫 localStorage 後 reload）
+  quality,
+  onQuality: () => cycleQuality(),
 });
 
 // 點擊 3D 中的人物標記 → 開啟小卡
@@ -308,6 +328,19 @@ function runFx(fx) {
   }
 }
 
+// ── R1 骨架動畫的情境提示（§R1.5：街戰逐屋肅清 crouch_walk、路堤守軍 kneel／prone_fire）──
+//   'clear'  6/12 突入市鎮到市鎮陷落之間，E 連壓低身形逐屋推進
+//   'defend' 6/13 背靠鐵路路堤死守（靜止時跪射／臥射）；德軍市鎮守軍與 MG42 火力點恆為守勢
+const CLEAR_UNITS = new Set(['easy-assault', 'welsh-platoon']);
+const GULCH_UNITS = new Set(['easy-assault', 'welsh-platoon', 'base-mg']);
+const HOLD_UNITS = new Set(['fjr6-town', 'mg42-cafe']);
+function clipHint(id, t) {
+  if (CLEAR_UNITS.has(id) && t >= 396 && t <= 455) return 'clear';
+  if (GULCH_UNITS.has(id) && t >= 600) return 'defend';
+  if (HOLD_UNITS.has(id)) return 'defend';
+  return null;
+}
+
 // ── 每幀更新 ─────────────────────────────────────────
 const DESTROY_DUR = 9; // 戰役分鐘：火力點退場時長
 let lastNow = performance.now();
@@ -394,16 +427,30 @@ function tick() {
     else o.curRot += shortestAngleDiff(targetRot, o.curRot) * rotK;
     o.group.rotation.y = o.curRot;
 
-    // M-3：行進微動作（士兵起伏＋輕搖；靜止時保留呼吸感）
+    // R1：士兵骨架動畫 —— clip 依「實際移動速度」選，倍率 = 速度 ÷ extras.speed（腳不滑）
     const moved = Math.hypot(st.pos.x - o.prevX, st.pos.z - o.prevZ);
     o.prevX = st.pos.x; o.prevZ = st.pos.z;
     const isDown = st.status === 'destroyed' && o.downT != null;
-    if (o.troopers.length && !isDown) {
-      const movingAmp = moved > 0.03 ? 1 : 0.22;
+    // 場景單位 → 公尺（士兵是「1.75 公尺 = 3.25 單位」的 diorama 尺度）
+    const rawSpd = snapRot || dt <= 0 ? 0 : (moved / dt) / SOLDIER_SCALE;
+    o.spd = snapRot ? 0 : o.spd + (rawSpd - o.spd) * Math.min(1, dt * 8);
+    if (o.troopers.length) {
+      const hint = clipHint(id, battleT);
       for (const tr of o.troopers) {
-        const ph = tr.userData.phase;
-        tr.position.y = (tr.userData.baseY ?? 0) + Math.sin(time * 7 + ph) * 0.14 * movingAmp;
-        tr.rotation.z = Math.sin(time * 7 + ph) * 0.03 * movingAmp;
+        const rig = tr.userData.rigUnit;
+        if (rig) {
+          const ph = tr.userData.phase ?? 0;
+          // 守勢段：原本就跪姿的（MG42 射手、火力組）維持跪射，站姿的依相位分一部分去臥射
+          const base = tr.userData.posture ?? 'stand';
+          const posture = hint === 'defend' && base === 'stand' && (ph % 1) > 0.62 ? 'prone' : base;
+          rig.apply(isDown ? 0 : o.spd, { posture, hint, downed: isDown });
+        } else if (!isDown) {
+          // fallback（骨架 glb 還沒到／載入失敗）：維持原本的行進微動作
+          const ph = tr.userData.phase ?? 0;
+          const movingAmp = moved > 0.03 ? 1 : 0.22;
+          tr.position.y = (tr.userData.baseY ?? 0) + Math.sin(time * 7 + ph) * 0.14 * movingAmp;
+          tr.rotation.z = Math.sin(time * 7 + ph) * 0.03 * movingAmp;
+        }
       }
     }
 
@@ -441,6 +488,7 @@ function tick() {
   tacticsOverlay.visible = battleT >= 380 && battleT <= 455;
 
   animateScene(time);
+  rigs.update(dt);            // R1：38 具 SkinnedMesh 的 mixer（頻率依畫質等級）
   terrain.update?.(dt);
   environment.update(dt, battleT);
   effects.update(dt);
@@ -495,7 +543,23 @@ function setAoLevel(n) {
 let fpsAcc = 0, fpsFrames = 0, fpsTimer = 0, goodStreak = 0;
 let curRatio = DPR_CAP;
 const FLOOR = isMobile ? 1.0 : DPR_CAP * 0.75;
+
+// ── R5-1 執行期自動降級：滾動平均幀時間連續 3 秒 > 40 ms → 降一級 ────────────
+// 先動可即時切換的旋鈕（pixelRatio、GTAO、mixer 頻率、草叢），需重建的（cascade 層數、
+// composer 組成、植被等級）寫 localStorage 後 reload。不自動升級，避免振盪。
+const autoQuality = createAutoDowngrade({
+  paused: () => perfLock || !started,
+  onInstant: (q) => {
+    curRatio = Math.min(DPR_CAP, q.pixelRatio);
+    renderer.setPixelRatio(curRatio);
+    if (post) { post.setPixelRatio(curRatio); post.setGTAO(q.gtao); }
+    rigs.setStride(q.mixerStride);
+    terrain.setDetail?.(q.grassDetail);
+  },
+});
+
 function fpsSample(dt) {
+  autoQuality.sample(dt);
   fpsAcc += dt; fpsFrames++; fpsTimer += dt;
   if (fpsTimer < 2) return;
   const fps = fpsFrames / fpsAcc;
@@ -527,6 +591,18 @@ function fpsSample(dt) {
 // R4-2:程序化場景建好後,把現有材質一次註冊給 CSM(資產載入後 environment 內每 0.5 秒會再掃一次)
 environment.refreshShadowMaterials();
 
+// ── 資產 hub 與 R1 骨架士兵 hub（tick() 之前要先存在：每幀會呼叫 rigs.update）──
+const assets = createAssetHub({ mobile: isMobile, renderer, baked: quality.baked });
+const rigs = createRigHub({
+  assets,
+  // low 走單張正交 1024 陰影：38 具蒙皮小兵在那張圖上只有兩三個 texel，投影看不見卻要多跑
+  // 一次蒙皮頂點著色（本場 low 最大的一筆）→ low 不讓士兵投影。
+  shadows: SHADOWS && quality.shadow !== 'legacy',
+  // §R6：SkeletonUtils.clone／材質 clone 之後一定要註冊給 CSM，否則被三盞 cascade 燈各照一次
+  register: (obj) => environment.registerObject(obj),
+});
+rigs.setStride(quality.mixerStride);
+
 hud.setTime(battleT);
 tick();
 
@@ -538,7 +614,6 @@ tick();
 // 任何一項失敗都只是那一項留在程序化版本（見各 applyAssets 的 try/catch）。
 // ?noassets=1 → 完全不載真實資產，整場停在程序化版本（QA 用的 A／B 開關，也是最後一道 fallback）
 const ASSETS_OFF = new URLSearchParams(location.search).has('noassets');
-const assets = createAssetHub({ mobile: isMobile, renderer });
 function afterFirstFrame(fn) {
   let fired = false;
   const go = () => { if (!fired) { fired = true; fn(); } };
@@ -557,7 +632,11 @@ if (!ASSETS_OFF) afterFirstFrame(async () => {
     (async () => {
       let swapped = 0;
       for (const [, o] of unitObjs) {
-        swapped += await applyUnitModels(o.group, assets);
+        swapped += await applyUnitModels(o.group, assets, {
+          rigs, baked: quality.baked, shadows: SHADOWS && quality.shadow !== 'legacy',
+          register: (obj) => environment.registerObject(obj),
+        });
+        o.troopers = o.group.userData.troopers ?? o.troopers;   // 已換成 SkinnedMesh
         // 單位材質可能被換成 Standard：先把舊材質的淡出還原掉（避免資產到位前
         // 已經拖到某單位陣亡、材質停在半透明／褪色），再清掉快取讓下次淡出重抓。
         restoreLook(o);
@@ -631,6 +710,14 @@ if (import.meta.env && import.meta.env.DEV) {
   };
   window.__dbg = {
     post, dbgPerf,
+    // R5:目前畫質等級與判定來源;__dbg.setQuality('low') 會寫 localStorage 後 reload
+    quality: () => ({
+      tier: quality.tier, source: quality.source, gpu: quality.gpu,
+      pixelRatio: renderer.getPixelRatio(), gtao: !!post?.gtaoEnabled(),
+      cascades: quality.cascades, mixerStride: quality.mixerStride, baked: quality.baked,
+      rigs: rigs.count(),
+    }),
+    setQuality: (t) => setQuality(t),
     // A/B 對照:__dbg.pipeline('legacy') 回到升級前的後製,('modern') 全開
     pipeline: (mode) => { if (post) post.setPipeline(mode); renderFrame(0.016); return mode; },
     // 截圖前凍結畫質(擋掉動態解析度／GTAO 自動降級,否則慢機器上拍到的是降級後的畫面)

@@ -866,7 +866,16 @@ const BUILDING_TEX = {
 };
 
 // ══════════════════════════════════════════════════════════════════
-export function createCarentanTerrain(scene, { shadows = false, mobile = false } = {}) {
+export function createCarentanTerrain(scene, { shadows = false, mobile = false, quality = null } = {}) {
+  // §R5：所有數量／等級旋鈕一律吃 quality 參數，不再各自讀 isMobile
+  const Q = {
+    heroVegetation: mobile ? 'none' : 'hi',
+    vegetationDetail: 1,
+    grassDetail: mobile ? 0 : 1,
+    baked: false,
+    buildingPBR: true,
+    ...(quality ?? {}),
+  };
   const g = new THREE.Group();
   const rng = mulberry(777);
   const TEX = mobile ? 1024 : 2048;
@@ -1052,7 +1061,7 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
   // ── 草叢（桌機限定）：戰鬥核心區的交叉雙面 quad，隨風輕搖 ────────
   let grassIM = null, grassTotal = 0;
   const windUniform = { value: 0 };
-  if (!mobile) {
+  if (!mobile && Q.grassDetail > 0) {
     const quad = [];
     for (const ry of [0, Math.PI / 2]) {
       // 草叢尺寸：原本 2.6×2.4 單位在真實資產進場後顯得像蘆葦（比樹高的 1/4），
@@ -1081,7 +1090,8 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
     const spots = [];
     const inTown = (x, z) => x > -34 && x < 26 && z > -50 && z < 20;
     const inMarsh = (z) => z < -62;
-    for (let i = 0; i < 3000; i++) {
+    const GRASS_N = Math.round(3000 * Math.min(1, Math.max(0, Q.grassDetail)));
+    for (let i = 0; i < GRASS_N; i++) {
       const x = -200 + rng() * 300;
       const z = -70 + rng() * 240;
       if (inTown(x, z) || inMarsh(z)) continue;
@@ -1340,14 +1350,36 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
   }
 
   async function applyBuildings(assets) {
-    const ids = new Set(TOWN_HOUSES.map(modelIdFor));
-    ids.add(TOWN_CHURCH.model);
-    const loaded = await assets.models([...ids]);
+    const ids = [...new Set([...TOWN_HOUSES.map(modelIdFor), TOWN_CHURCH.model])];
+    // §R2：桌機 high／medium 優先載 `<id>_baked.glb`（已含牆面貼圖，不再疊 Poly Haven 牆面、
+    //   不再烘頂點色）；戰損變體沒有烘焙版 → 自動退回平塗版走原本的 PBR 路徑。
+    const loaded = {};
+    await Promise.all(ids.map(async (id) => {
+      const got = await assets.modelBaked(id, { allow: Q.baked });
+      if (got) loaded[id] = got;
+    }));
     if (!Object.keys(loaded).length) return;
 
     // 牆面／屋頂 PBR（glb 的 uv 以公尺平鋪 → repeat = 1 / 貼圖涵蓋公尺數）
+    // 只載「真的還需要平塗版」的那幾組：烘焙版已含牆面貼圖（§R2），桌機 high／medium 下
+    // 多半只剩兩棟戰損屋要用，灰泥牆那組 1k（約 0.58 MB）就不必進首屏了。
+    // §R5.2 low：完全不載牆面 PBR，改用單色 Lambert（省三張貼圖與一整條 Standard shader）
+    const wantTex = new Set();
+    if (Q.buildingPBR) {
+      for (const hp of TOWN_HOUSES) {
+        const got = loaded[modelIdFor(hp)];
+        if (!got || got.baked) continue;
+        wantTex.add(hp.wall === 'stone' || hp.wall === 'charred' ? 'stone_dark' : 'stone');
+        wantTex.add(hp.roof === 'slate' ? 'roof_slate' : 'roof_tile');
+      }
+      if (loaded[TOWN_CHURCH.model] && !loaded[TOWN_CHURCH.model].baked) {
+        wantTex.add('stone_dark'); wantTex.add('roof_slate');
+      }
+    }
     const texes = {};
-    for (const [name, spec] of Object.entries(BUILDING_TEX)) {
+    for (const name of wantTex) {
+      const spec = BUILDING_TEX[name];
+      if (!spec) continue;
       const r = 1 / spec.meters;
       texes[name] = await assets.pbr(spec.id, { repeat: [r, r], normalScale: 0.9, aoIntensity: 0.85 });
     }
@@ -1356,11 +1388,24 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
       const key = `${texKey}|${tint}|${vertexColors ? 'vc' : ''}`;
       if (matCache.has(key)) return matCache.get(key);
       const p = texes[texKey];
-      const m = new THREE.MeshStandardMaterial({
-        ...(p ?? {}), color: new THREE.Color(tint), roughness: 0.92, metalness: 0.0, vertexColors,
-      });
+      const m = Q.buildingPBR
+        ? new THREE.MeshStandardMaterial({
+          ...(p ?? {}), color: new THREE.Color(tint), roughness: 0.92, metalness: 0.0, vertexColors,
+        })
+        : new THREE.MeshLambertMaterial({ color: new THREE.Color(tint), vertexColors });
       if (m.aoMap) m.aoMap.channel = 0;
       matCache.set(key, m);
+      return m;
+    }
+    // 烘焙版：整模一顆材質，直接用 glb 的（roughness ≥ 0.35）
+    const bakedMats = new Map();
+    function bakedMaterial(id, src) {
+      if (bakedMats.has(id)) return bakedMats.get(id);
+      const m = src ? src.clone() : new THREE.MeshStandardMaterial({ roughness: 0.9 });
+      if (m.roughness != null) m.roughness = Math.max(0.35, m.roughness);
+      m.envMapIntensity = 0.9;
+      if (m.aoMap) m.aoMap.channel = 0;
+      bakedMats.set(id, m);
       return m;
     }
 
@@ -1388,12 +1433,19 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
     let placed = 0;
     for (const hp of TOWN_HOUSES) {
       const id = modelIdFor(hp);
-      const src = loaded[id];
-      if (!src) continue;
-      const size = sizeOf(id, src);
+      const got = loaded[id];
+      if (!got) continue;
+      const src = got.src;
+      const size = sizeOf(got.id, src);
       // 與現有程序化房舍的 bbox 對齊：寬度與「屋脊高」取幾何平均，避免過扁或過瘦
       const scale = Math.sqrt((hp.w / Math.max(size.x, 0.01)) * ((hp.h * 1.5) / Math.max(size.y, 0.01)));
-      const groups = place(src, id, { x: hp.x, z: hp.z, rot: hp.rot, scale });
+      const groups = place(src, got.id, { x: hp.x, z: hp.z, rot: hp.rot, scale });
+      if (got.baked) {
+        // 烘焙版：整棟一顆材質＋貼圖，同型號的房子併成一個 mesh（1 draw call／型號）
+        for (const [, item] of groups) push(`baked|${got.id}`, item.geos, bakedMaterial(got.id, item.material));
+        placed++;
+        continue;
+      }
       for (const [name, item] of groups) {
         // cream／ochre 走灰泥，stone／charred 走粗石砌 —— 保住程序化版本的四種街屋質感；
         // 顏色烘進頂點色，四色共用兩顆材質（灰泥一顆、石砌一顆）
@@ -1413,12 +1465,15 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
     }
 
     // 教堂
-    const church = loaded[TOWN_CHURCH.model];
-    if (church) {
-      const size = sizeOf(TOWN_CHURCH.model, church);
+    const churchGot = loaded[TOWN_CHURCH.model];
+    if (churchGot) {
+      const church = churchGot.src;
+      const size = sizeOf(churchGot.id, church);
       const scale = TOWN_CHURCH.height / Math.max(size.y, 0.01);
-      const groups = place(church, TOWN_CHURCH.model, { x: TOWN_CHURCH.x, z: TOWN_CHURCH.z, rot: TOWN_CHURCH.rot, scale });
-      for (const [name, item] of groups) {
+      const groups = place(church, churchGot.id, { x: TOWN_CHURCH.x, z: TOWN_CHURCH.z, rot: TOWN_CHURCH.rot, scale });
+      if (churchGot.baked) {
+        for (const [, item] of groups) push(`baked|${churchGot.id}`, item.geos, bakedMaterial(churchGot.id, item.material));
+      } else for (const [name, item] of groups) {
         if (name === 'stone') {
           for (const g of item.geos) tintGeometry(g, 0xb9b1a0);
           push('wall|stone_dark', item.geos, pbrMaterial('stone_dark', 0xffffff, true));
@@ -1479,16 +1534,20 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
 
   async function applyVegetation(assets) {
     if (mobile) return;   // 手機維持程序化樹（省 700 KB 與三角形）
+    // §R5.2 low：hero 植被＝程序化、mid 植被與草叢＝無 → 整段不載，程序化樹就是畫面
+    if (Q.heroVegetation === 'none' || Q.vegetationDetail <= 0) return;
     // 樹種：island_tree_01（高，枝幹開展）＋ island_tree_02（圓，較密），灌木也用 02 縮小。
     // tree_small_02 實測是細瘦的小樹苗，放大到 8 單位像一根竹竿，不用（也省 304 KB）。
     // Poly Haven 的 shrub_01／shrub_04 實測是「又寬又扁的地被」（2.59 × 0.40 × 0.22 公尺），
     // 放到 bocage 土堤上是一張趴著的葉片墊，撐不起樹籬剪影，故不用。
     // 高規版只載 island_tree_01_hi 一種（1.02 MB）：hero 區的高樹、圓樹、灌木共用它，
     // 換到第二種 _hi 就會把桌機 6 MB 的預算吃穿。
+    // §R5.2：high 才載 _hi 全幾何；medium 的 hero 群改用一般版（省 1.02 MB 與約 4 萬面／株）
+    const wantHi = Q.heroVegetation === 'hi';
     const [tall, round, hero] = await Promise.all([
       assets.model('island_tree_01'),
       assets.model('island_tree_02'),
-      assets.model('island_tree_01', { hi: true }),
+      wantHi ? assets.model('island_tree_01', { hi: true }) : Promise.resolve(null),
     ]);
     const add = (src, placements, target, axis, { cast = true, receive = true, leavesOnly = false, hi = false } = {}) => {
       if (!src || !placements.length) return false;
@@ -1523,9 +1582,13 @@ export function createCarentanTerrain(scene, { shadows = false, mobile = false }
 
     // 樹籬灌木：沿線取 1/4 的位置（土堤本體已經撐住連續剪影）
     const shrubSpots = bushPlacements.filter((_, i) => i % 4 === 0);
-    const [heroTall, farTall] = heroSplit(treePlacements[0], HERO_CAP.tree);
-    const [heroRound, farRound] = heroSplit(treePlacements[1], HERO_CAP.round);
-    const [heroBush, farBush] = heroSplit(shrubSpots, HERO_CAP.bush);
+    // §R5.2 medium：mid 植被半量 —— far 群抽稀（hero 群不動，主鏡頭不會變空）
+    const thin = (list) => (Q.vegetationDetail >= 1 ? list
+      : list.filter((_, i) => (i * Q.vegetationDetail) % 1 < Q.vegetationDetail));
+    const [heroTall, farTall0] = heroSplit(treePlacements[0], HERO_CAP.tree);
+    const [heroRound, farRound0] = heroSplit(treePlacements[1], HERO_CAP.round);
+    const [heroBush, farBush0] = heroSplit(shrubSpots, HERO_CAP.bush);
+    const farTall = thin(farTall0), farRound = thin(farRound0), farBush = thin(farBush0);
 
     let any = false;
     // 尺度回到原設定：闊葉高樹 11.5 單位、圓樹 8 單位、樹籬灌木 4.2 單位

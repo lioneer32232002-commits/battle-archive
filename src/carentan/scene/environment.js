@@ -97,8 +97,13 @@ function phaseAt(t) {
 function lerpColor(a, b, f) { return new THREE.Color(a).lerp(new THREE.Color(b), f); }
 function lerpNum(a, b, f) { return a + (b - a) * f; }
 
-export function createEnvironment(scene, { shadows = false, mobile = false, camera = null } = {}) {
+export function createEnvironment(scene, { shadows = false, mobile = false, camera = null, quality = null } = {}) {
   const P0 = PALETTES.dawn;
+  // §R5.2：陰影等級與雲量吃畫質參數（high CSM 3 層 2048／medium 2 層 1536／low 單張正交 1024）
+  const Q = {
+    shadow: 'csm', cascades: 3, shadowMapSize: 2048, cloudDensity: 1,
+    ...(quality ?? {}),
+  };
 
   // ── 天空圓頂（P-6：地平線再疊一層薄霧帶） ───────────────────
   const skyUniforms = {
@@ -179,7 +184,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false, came
   // 光與影由 CSM 的三盞 cascade 燈負責。刻意留在 scene 裡而不移除:three 會把
   // castShadow 的燈排在前面,一盞 intensity 0 的非投影平行光排在後面,對 cascade
   // 索引與亮度都沒有影響。
-  const useCSM = shadows && !!camera;
+  const useCSM = shadows && !!camera && Q.shadow === 'csm';
   const _lightDir = new THREE.Vector3();
   let csm = null;
   if (useCSM) {
@@ -187,10 +192,10 @@ export function createEnvironment(scene, { shadows = false, mobile = false, came
     csm = new CSM({
       parent: scene,
       camera,
-      cascades: 3,
+      cascades: Math.max(1, Q.cascades || 3),
       maxFar: 900,
       mode: 'practical',
-      shadowMapSize: 2048,
+      shadowMapSize: Q.shadowMapSize || 2048,
       shadowBias: -0.0004,
       lightDirection: _lightDir.clone(),
       lightIntensity: P0.sunInt,
@@ -207,7 +212,8 @@ export function createEnvironment(scene, { shadows = false, mobile = false, came
   } else if (shadows) {
     // 後備:沒有傳 camera 進來就退回原本的單張正交陰影(手機不會走到這裡)
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    const ms = Q.shadow === 'legacy' ? (Q.shadowMapSize || 1024) : 2048;
+    sun.shadow.mapSize.set(ms, ms);
     const cam = sun.shadow.camera;
     cam.left = -320; cam.right = 320; cam.top = 320; cam.bottom = -320;
     cam.near = 400; cam.far = 5200;
@@ -296,7 +302,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false, came
   const cloudTex = makeCloudTexture();
   const clouds = new THREE.Group();
   const rand = mulberry(42);
-  const cloudN = mobile ? 26 : 52;
+  const cloudN = Math.max(8, Math.round((mobile ? 26 : 52) * (Q.cloudDensity ?? 1)));
   for (let i = 0; i < cloudN; i++) {
     const c = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: cloudTex, color: 0xdde1da, transparent: true, opacity: 0.16 + rand() * 0.18, depthWrite: false })
@@ -314,7 +320,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false, came
   const mistTex = makeCloudTexture();
   const mist = new THREE.Group();
   const rm = mulberry(123);
-  const mistN = mobile ? 10 : 18;
+  const mistN = Math.max(4, Math.round((mobile ? 10 : 18) * (Q.cloudDensity ?? 1)));
   for (let i = 0; i < mistN; i++) {
     const m = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: mistTex, color: 0xc9d1cb, transparent: true, opacity: 0, depthWrite: false })
