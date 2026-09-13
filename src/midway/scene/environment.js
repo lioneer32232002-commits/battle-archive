@@ -94,6 +94,17 @@ export function createEnvironment(scene, opts = {}) {
   const camera = opts.camera ?? null;    // R4-2:CSM 的 cascade 框跟著鏡頭視錐走
   const mobile = !!opts.mobile;
   const assets = opts.assets ?? null;
+  // R5:畫質分級參數(海面細分、雲數、CSM 層數／解析度)。沒傳就用最高級的預設值,
+  // 這個模組本身不去讀 localStorage/?q=,只吃參數(§R5.3)。
+  const q = {
+    oceanSegments: mobile ? 110 : 190,
+    cloudScale: 1,
+    csm: true,
+    cascades: 3,
+    shadowMapSize: 2048,
+    shadowMaxFar: 3500,
+    ...(opts.quality ?? {}),
+  };
 
   // ── 天空圓頂(P-6:地平線霧帶) ─────────────────────────
   const skyUniforms = {
@@ -170,7 +181,7 @@ export function createEnvironment(scene, opts = {}) {
     uGlitter: { value: 1.0 },
     uFogRange: { value: new THREE.Vector2(FOG_NEAR * 1.4, FOG_FAR * 1.15) },
   };
-  const OCEAN_SEG = mobile ? 110 : 190;
+  const OCEAN_SEG = Math.max(40, Math.round(q.oceanSegments));
   oceanCell.value = 30000 / OCEAN_SEG; // 尾流要靠這個值對齊實際算繪出的海面
   const ocean = new THREE.Mesh(
     new THREE.PlaneGeometry(30000, 30000, OCEAN_SEG, OCEAN_SEG),
@@ -201,6 +212,16 @@ export function createEnvironment(scene, opts = {}) {
         uniform float uTime;
         varying vec3 vNormal; varying vec3 vWorld; varying float vH;
         float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        // 浪峰白沫的遮罩用「雙線性內插的 value noise」而不是 hash(floor(p)):
+        // ⚠ 直接 hash(floor(p)) 每格是常數,白沫會變成一片邊緣筆直的棋盤格方塊 —— 白晝
+        //   水色亮看不太出來,黎明／黃昏水色一暗就整片穿幫(2026-09-13 黎明驗收截圖)。
+        float vnoise(vec2 p) {
+          vec2 i = floor(p), f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float a = hash(i), b = hash(i + vec2(1.0, 0.0));
+          float c = hash(i + vec2(0.0, 1.0)), d = hash(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
         // 細碎漣漪:只擾動法線,不動高度(動高度會讓環礁與尾流對不上)
         vec2 ripple(vec2 p, float t) {
           vec2 r = vec2(0.0);
@@ -237,10 +258,10 @@ export function createEnvironment(scene, opts = {}) {
           float sparkle = smoothstep(0.80, 0.97, hash(floor(cell) + floor(uTime * 3.0)));
           col += uSunColor * uGlitter * (spec * 1.1 + broad * 0.17 + sparkle * broad * 0.7);
 
-          // 浪峰白沫:僅在高波峰稀疏出現
+          // 浪峰白沫:僅在高波峰稀疏出現(遮罩用 value noise,邊緣才不是直角)
           float crest = smoothstep(3.4, 5.0, vH);
-          float foamN = hash(floor(vWorld.xz * 0.28) + floor(uTime * 1.6));
-          col = mix(col, vec3(0.92, 0.95, 0.97), crest * step(0.55, foamN) * 0.55);
+          float foamN = vnoise(vWorld.xz * 0.28 + floor(uTime * 1.6));
+          col = mix(col, vec3(0.92, 0.95, 0.97), crest * smoothstep(0.46, 0.78, foamN) * 0.55);
 
           // 依距離淡出到霧色,與地平線霧帶接上
           float fogF = smoothstep(uFogRange.x, uFogRange.y, dist);
@@ -267,7 +288,8 @@ export function createEnvironment(scene, opts = {}) {
   // 光與影由 CSM 的三盞 cascade 燈負責。刻意留在 scene 裡而不移除:three 會把
   // castShadow 的燈排在前面,一盞 intensity 0 的非投影平行光排在後面,對 cascade
   // 索引與亮度都沒有影響。
-  const useCSM = shadows && !!camera;
+  // R5:low 級把 csm 關掉,退回下面的單張正交陰影(legacy 路徑)
+  const useCSM = shadows && !!camera && q.csm !== false;
   const _lightDir = new THREE.Vector3();
   let csm = null;
   if (useCSM) {
@@ -275,10 +297,10 @@ export function createEnvironment(scene, opts = {}) {
     csm = new CSM({
       parent: scene,
       camera,
-      cascades: 3,
-      maxFar: 3500,
+      cascades: Math.max(1, Math.round(q.cascades)),
+      maxFar: q.shadowMaxFar,
       mode: 'practical',
-      shadowMapSize: 2048,
+      shadowMapSize: q.shadowMapSize,
       shadowBias: -0.0006,
       lightDirection: _lightDir.clone(),
       lightIntensity: 1.6,
@@ -295,7 +317,7 @@ export function createEnvironment(scene, opts = {}) {
   } else if (shadows) {
     // 後備:沒有傳 camera 進來就退回原本的單張正交陰影(手機不會走到這裡)
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(q.shadowMapSize, q.shadowMapSize);
     const c = sun.shadow.camera;
     c.left = -420; c.right = 420; c.top = 420; c.bottom = -420;
     c.near = 200; c.far = 5200;
@@ -365,7 +387,7 @@ export function createEnvironment(scene, opts = {}) {
   scene.fog = new THREE.Fog(PALETTES.day.fog, FOG_NEAR, FOG_FAR);
 
   // ── 雲(N-6) ─────────────────────────────────────────
-  const clouds = createCloudField({ mobile });
+  const clouds = createCloudField({ mobile, scale: q.cloudScale });
   clouds.mesh.userData.noAO = true;   // R4-1:instanced billboard,override 材質畫出來是垃圾
   scene.add(clouds.mesh);
 
@@ -485,6 +507,8 @@ export function createEnvironment(scene, opts = {}) {
     csm: () => csm,
     // 驗收用:目前掛上的 HDRI 日相與強度
     envInfo: () => ({ phase: envPhase, want: envWant, level: envLevel }),
+    // R5 驗收用:這一次建出來的陰影／幾何規格
+    shadowInfo: () => ({ csm: !!csm, cascades: csm ? csm.cascades : 0, mapSize: q.shadowMapSize, oceanSeg: OCEAN_SEG }),
   };
 }
 
@@ -555,10 +579,13 @@ function makeCloudAtlas() {
   return tex;
 }
 
-function createCloudField({ mobile }) {
-  const HIGH = mobile ? 26 : 52;   // 高層:小而亮
-  const LOW = mobile ? 34 : 68;    // 低層:大而淡
-  const BAND = mobile ? 40 : 80;   // 地平線低雲帶:扁長
+function createCloudField({ mobile, scale = 1 }) {
+  // R5:scale 是「雲 sprite 數」的分級係數(high 1 / medium 0.6 / low 0.4)。
+  // 佈局用的亂數序列固定,抽稀只是把每一層的張數按比例縮小,雲的分佈樣貌不變。
+  const k = (n) => Math.max(6, Math.round(n * scale));
+  const HIGH = k(mobile ? 26 : 52);   // 高層:小而亮
+  const LOW = k(mobile ? 34 : 68);    // 低層:大而淡
+  const BAND = k(mobile ? 40 : 80);   // 地平線低雲帶:扁長
   const N = HIGH + LOW + BAND;
 
   const rand = mulberry(42);

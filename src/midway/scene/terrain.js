@@ -43,7 +43,7 @@ function mulberry(seed) {
 
 // ── 礁盤俯視貼圖 ─────────────────────────────────────
 // 涵蓋世界座標 ±DISC_R 的方形;canvas x = 世界 x、canvas y = 世界 z(皆經 px() 換算)
-function makeAtollTexture(size) {
+function makeAtollTexture(size, anisotropy = 8) {
   const S = size;
   const c = document.createElement('canvas');
   c.width = c.height = S;
@@ -176,7 +176,7 @@ function makeAtollTexture(size) {
 
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
+  tex.anisotropy = anisotropy;
   return tex;
 }
 
@@ -256,10 +256,17 @@ function makePalms(count, shadows) {
 
 export function createMidwayAtoll(scene, opts = {}) {
   const shadows = !!opts.shadows;
+  // R5 畫質分級:俯視貼圖解析度與椰子樹棵數吃參數,不再各自讀 isMobile
+  const q = {
+    atollTexture: opts.mobile ? 1024 : 2048,
+    palms: opts.mobile ? 30 : 56,
+    anisotropy: opts.mobile ? 4 : 8,
+    ...(opts.quality ?? {}),
+  };
   const atoll = new THREE.Group();
   atoll.position.y = LIFT;
 
-  const tex = makeAtollTexture(opts.mobile ? 1024 : 2048);
+  const tex = makeAtollTexture(q.atollTexture, q.anisotropy);
 
   // 水下基座:不透明,自礁盤往下延伸沒入海中,遮住島與海面之間的縫
   const base = new THREE.Mesh(
@@ -287,7 +294,7 @@ export function createMidwayAtoll(scene, opts = {}) {
   atoll.add(isleB);
 
   // 椰子樹叢
-  for (const m of makePalms(opts.mobile ? 30 : 56, shadows)) atoll.add(m);
+  for (const m of makePalms(Math.max(0, Math.round(q.palms)), shadows)) atoll.add(m);
 
   // A-4:真實沙地 PBR(非阻塞;沒到就是原本的程序化貼圖)
   if (opts.assets) applySandPBR(opts.assets, [isleA, isleB], discMat);

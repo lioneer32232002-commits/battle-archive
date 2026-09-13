@@ -364,6 +364,7 @@ export class Effects {
       m.rotation.z = Math.random() * Math.PI;
       m.position.set((Math.random() - 0.5) * 90, 1.05 + i * 0.05, (Math.random() - 0.5) * 130);
       m.userData.base = 90 + Math.random() * 110;
+      m.userData.noAO = true;   // R4-1:貼水面的油汙貼花不進 GTAO 的 G-buffer(見 postfx.js 註)
       group.add(m);
       slicks.push(m);
     }

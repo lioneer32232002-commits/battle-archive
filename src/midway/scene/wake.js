@@ -45,8 +45,9 @@ function makeFoamTexture() {
 }
 
 export class WakeField {
-  constructor(scene, { mobile = false, ships = 20 } = {}) {
-    this.perShip = mobile ? 16 : 40;
+  constructor(scene, { mobile = false, ships = 20, perShip = null, foamSeg = 2 } = {}) {
+    // R5:每艘船的尾跡顆數由畫質分級決定(high 40 / medium 26 / low・手機 16)
+    this.perShip = Math.max(4, Math.round(perShip ?? (mobile ? 16 : 40)));
     this.shipCap = ships;
     this.bowBase = 0;
     this.trailBase = ships * 2;                      // 前 2N 格是艦艏浪(常駐)
@@ -62,7 +63,9 @@ export class WakeField {
     this.w0 = new Float32Array(N);
     this.w1 = new Float32Array(N);
 
-    const base = new THREE.PlaneGeometry(1, 1, 2, 2); // 細分:大片白沫才跟得上浪面起伏
+    // 細分:大片白沫才跟得上浪面起伏(low 級砍成 1×1,頂點數少一半、遠看差別極小)
+    const seg = Math.max(1, Math.round(foamSeg));
+    const base = new THREE.PlaneGeometry(1, 1, seg, seg);
     const geo = new THREE.InstancedBufferGeometry();
     geo.index = base.index;
     geo.setAttribute('position', base.attributes.position);
@@ -115,6 +118,10 @@ export class WakeField {
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 2;
+    // ⚠ R4-1:白沫的高度是頂點著色器套到浪面上的,GTAO 的 G-buffer 用 overrideMaterial
+    //   重畫一次場景 → 白沫會變成一整片「浮在 y≈0.9 的水平方板」把深度寫進去,
+    //   AO 算出來就是船邊一整片格子狀的黑白斑塊(2026-09-13 黎明截圖踩過)。
+    this.mesh.userData.noAO = true;
     scene.add(this.mesh);
 
     this.ships = new Map();   // id -> { idx, emitAcc, cursor, lastX, lastZ, speed }

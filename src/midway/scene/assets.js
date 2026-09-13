@@ -25,6 +25,15 @@ const BLENDER_MODELS = {
   destroyer_usn: '/models/destroyer_usn.glb',
   cruiser_ijn: '/models/cruiser_ijn.glb',
   cruiser_usn: '/models/cruiser_usn.glb',
+  // R2 Cycles 程序化舊化烘焙版(單一材質 ＋ baseColor/ORM/normal 三張 webp,整艘 1 個 draw call)。
+  // 桌機 high／medium 優先載這一批;載不到就自動退回上面的平塗版(§R6)。
+  carrier_ijn_L_baked: '/models/carrier_ijn_L_baked.glb',
+  carrier_ijn_R_baked: '/models/carrier_ijn_R_baked.glb',
+  carrier_usn_baked: '/models/carrier_usn_baked.glb',
+  destroyer_ijn_baked: '/models/destroyer_ijn_baked.glb',
+  destroyer_usn_baked: '/models/destroyer_usn_baked.glb',
+  cruiser_ijn_baked: '/models/cruiser_ijn_baked.glb',
+  cruiser_usn_baked: '/models/cruiser_usn_baked.glb',
   sbd: '/models/sbd.glb',
   tbd: '/models/tbd.glb',
   f4f: '/models/f4f.glb',

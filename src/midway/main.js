@@ -27,6 +27,12 @@ const isMobile = window.matchMedia('(max-width: 640px)').matches;
 const LABEL_SCALE = isMobile ? 0.6 : 1;
 const SHADOWS = !isMobile; // P-2:陰影桌機限定
 const POSTFX = !isMobile;  // P-3:後製桌機限定
+import {
+  initQuality, getQuality, getTier, cycleQuality, sampleFrame, setAutoDowngrade, onQualityChange,
+} from './scene/quality.js';
+// R5 畫質分級(docs/realism-spec.md §R5):必須在建 renderer／場景之前就定案,
+// 因為海面細分、雲數、CSM 層數、composer 組成都是「建構時決定、之後只能重建」的。
+const Q = initQuality({ mobile: isMobile });
 import { createEnvironment } from './scene/environment.js';
 import { createMidwayAtoll } from './scene/terrain.js';
 import { createShip, animateFlags } from './scene/ships.js';
@@ -42,7 +48,7 @@ import { createHUD } from './ui/hud.js';
 // ── 基本場景 ─────────────────────────────────────────
 const container = document.getElementById('scene-container');
 const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, powerPreference: 'high-performance', preserveDrawingBuffer: true });
-const DPR_CAP = Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2);
+const DPR_CAP = Math.min(window.devicePixelRatio, Q.pixelRatioCap);
 renderer.setPixelRatio(DPR_CAP);
 renderer.setSize(window.innerWidth, window.innerHeight);
 // P-1:ACES 色調映射(手機桌機都開;environment.js 的調色盤已據此重校)
@@ -69,16 +75,26 @@ controls.enableDamping = true;
 
 // A-0:資產載入器(非阻塞;任何一項失敗都就地退回程序化版本)
 const assets = createAssets({ renderer, mobile: isMobile });
-const assetOpts = { assets, shadows: SHADOWS, mobile: isMobile };
+// R2:桌機 high／medium 載 Cycles 舊化烘焙版艦艇,low 與手機維持平塗版(§R6)
+const assetOpts = { assets, shadows: SHADOWS, mobile: isMobile, baked: Q.bakedShips && !isMobile };
 
 // R4 驗收用:dev server 加 ?legacy=1 就整條回到升級前(單張正交陰影＋舊後製),
 // 同機位拍開／關對照。import.meta.env.DEV 在正式 build 是常數 false,整段會被搖掉。
 const QA_LEGACY = !!(import.meta.env && import.meta.env.DEV) && location.search.includes('legacy=1');
-const environment = createEnvironment(scene, { shadows: SHADOWS, mobile: isMobile, assets, camera: QA_LEGACY ? null : camera });
-createMidwayAtoll(scene, { shadows: SHADOWS, mobile: isMobile, assets });
+const environment = createEnvironment(scene, {
+  shadows: SHADOWS, mobile: isMobile, assets,
+  camera: QA_LEGACY ? null : camera,
+  quality: Q,   // R5:CSM 層數／陰影解析度、海面細分、雲 sprite 數
+});
+createMidwayAtoll(scene, { shadows: SHADOWS, mobile: isMobile, assets, quality: Q });
 const effects = new Effects(scene, { mobile: isMobile });
 const director = new Director(camera, controls);
-const wake = new WakeField(scene, { mobile: isMobile, ships: units.length });
+const wake = new WakeField(scene, {
+  mobile: isMobile, ships: units.length,
+  perShip: Q.wakePerShip, foamSeg: Q.wakeFoamSeg,
+});
+// glb 換模／材質 clone 之後要重新註冊給 CSM(§R6),否則三盞 cascade 燈會各照一次
+assetOpts.onRegister = (obj) => environment.registerObject(obj);
 
 // 後製 composer(桌機);手機直接 renderer.render
 // R4-4 調色(§R4.4)＋ R4-1 GTAO ＋ R4-3 導演景深
@@ -95,6 +111,12 @@ const post = POSTFX ? createComposer(renderer, scene, camera, {
   },
   gtao: { radius: 25, distanceExponent: 1, thickness: 1, scale: 1.5, blend: 0.7 },
   bokeh: { aperture: 0.00008, maxblur: 0.006 },
+  // R5:哪幾關要建出來(high 全開 / medium 無 GTAO、bloom 半解析度 / low 只留 OutputPass ＋ 調色)
+  quality: {
+    gtao: Q.gtao, gtaoScale: Q.gtaoScale,
+    bloom: Q.bloom, bloomScale: Q.bloomScale,
+    bokeh: Q.bokeh, smaa: Q.smaa,
+  },
 }) : null;
 if (QA_LEGACY && post) post.setPipeline('legacy');
 function renderFrame(dt) {
@@ -251,6 +273,8 @@ function resetTransients() {
 }
 
 const hud = createHUD({
+  qualityLabel: Q.label,
+  onQualityCycle: () => cycleQuality(),   // 寫 localStorage 後整頁重載(§R5.3)
   onStart: () => {
     started = true;
     playing = true;
@@ -458,6 +482,8 @@ function frame(dt) {
   elapsed += dt;
   const time = elapsed;
   fpsSample(dt);
+  // R5:滾動平均幀時間連續 3 秒 > 40 ms → 降一級(可即時切的旋鈕先套,再寫 localStorage 重載)
+  if (!perfLock) sampleFrame(dt);
 
   if (playing && started) {
     prevT = battleT;
@@ -644,6 +670,21 @@ function fpsSample(dt) {
   } else goodStreak = 0;
 }
 
+// R5:等級變動(自動降級或按鈕切換)時,先把「可即時切」的旋鈕套下去 —— 整頁重載
+// 需要一兩秒,這一兩秒裡畫面已經是降級後的負載,不會繼續卡。需重建的項目(海面細分、
+// 雲數、CSM 層數、composer 組成)由 quality.js 寫 localStorage 後 reload 接手。
+onQualityChange((p) => {
+  curRatio = Math.min(window.devicePixelRatio, p.pixelRatioCap);
+  renderer.setPixelRatio(curRatio);
+  if (post) {
+    post.setPixelRatio(curRatio);
+    post.setGtaoScale(p.gtaoScale);
+    post.setGTAO(p.gtao);
+    if (!p.bokeh) post.setBokeh(false);
+  }
+  hud.setQualityLabel(p.label);
+});
+
 // R4-2:程序化場景建好後,把現有材質一次註冊給 CSM(資產載入後 environment 內每 0.5 秒會再掃一次)
 environment.refreshShadowMaterials();
 
@@ -725,6 +766,8 @@ if (import.meta.env && import.meta.env.DEV) {
     renderer.setSize(1600, 1000, false);
     if (post) post.setSize(1600, 1000);
     camera.aspect = 1.6; camera.updateProjectionMatrix();
+    environment.resizeShadows();   // aspect 變了 → CSM 切分要重算,否則量到的是「整場全黑」的假畫面
+    environment.updateShadows();   // 切分重算完還要把 cascade 燈擺到新位置
     renderFrame(0.016); sync();
     const t0 = performance.now();
     for (let i = 0; i < n; i++) renderFrame(0.016);
@@ -734,6 +777,8 @@ if (import.meta.env && import.meta.env.DEV) {
     renderer.setSize(prevSize.x, prevSize.y, false);
     if (post) post.setSize(prevSize.x, prevSize.y);
     camera.aspect = prevAspect; camera.updateProjectionMatrix();
+    environment.resizeShadows();
+    environment.updateShadows();
     perfLock = false;
     return Math.round(ms * 100) / 100;
   };
@@ -744,6 +789,7 @@ if (import.meta.env && import.meta.env.DEV) {
     // 截圖前凍結畫質(擋掉動態解析度／GTAO 自動降級,否則慢機器上拍到的是降級後的畫面)
     freezeQuality: (on = true) => {
       perfLock = !!on;
+      setAutoDowngrade(!on);   // R5:量測/截圖期間不要在中途降級重載
       if (on) {   // 回到全畫質:GTAO 全開、pixelRatio 回到上限
         setAoLevel(0);
         curRatio = DPR_CAP;
@@ -753,6 +799,10 @@ if (import.meta.env && import.meta.env.DEV) {
       return perfLock;
     },
     THREE, scene, camera, controls, renderer, director, dbgSeek, dbgLook, applyDbgHash,
+    // ⚠ 截圖工具改了 camera.aspect 之後一定要 environment.resizeShadows():CSM 的 cascade
+    //   切分是建構時依當時的視錐算的,aspect 一變就對不上,整批被 CSM 照的材質會全部落在
+    //   陰影框外變成全黑(2026-09-13 驗收截圖踩過,海面/天空是自寫 shader 所以看起來正常)。
+    environment,
     // 背景分頁 rAF 會暫停,量測時直接手動渲染一幀再讀數
     measure: () => { renderer.info.reset(); renderFrame(0.016); return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; },
     calls: () => renderer.info.render.calls,
@@ -763,7 +813,14 @@ if (import.meta.env && import.meta.env.DEV) {
     step: (n = 60, dt = 1 / 60) => { for (let i = 0; i < n; i++) frame(dt); return frameCount; },
     // 資產驗收:HDRI 日相與艦艇換裝結果
     env: () => environment.envInfo(),
+    // R5 驗收:目前等級與這一次實際建出來的規格
+    quality: () => ({
+      tier: getTier(), params: getQuality(),
+      shadow: environment.shadowInfo(),
+      post: post ? post.info() : null,
+      pixelRatio: renderer.getPixelRatio(),
+    }),
     assets,
-    swapped: () => [...shipObjs.entries()].map(([id, o]) => [id, o.group.userData.modelScale ?? null]),
+    swapped: () => [...shipObjs.entries()].map(([id, o]) => [id, o.group.userData.modelScale ?? null, o.group.userData.baked ?? null]),
   };
 }

@@ -114,6 +114,9 @@ body {
 .hud-btn:hover { border-color: #c9a227; }
 .hud-btn.active { border-color: #c9a227; color: #ffd97a; }
 .hud-btn.big { font-size: 1.1rem; padding: 8px 18px; }
+/* R5 畫質分級小按鈕（右上角；比其他控制鈕再小一號，不搶視線） */
+.hud-btn.quality { font-size: 0.74rem; padding: 4px 9px; letter-spacing: 0.04em; opacity: 0.78; }
+.hud-btn.quality:hover { opacity: 1; }
 
 /* ── 側面板 ── */
 .side-panel {
@@ -578,6 +581,7 @@ body {
   .cmp-hdg { font-size: 0.48rem; }
   .tb-right { gap: 6px; }
   #btn-mode { display: none; } /* 手機預設導演模式;觸控仍可拖曳鏡頭 */
+  #btn-quality { display: none; } /* R5:手機不在三級之列,維持既有畫質 */
   .panel-toggle { display: inline-flex; align-items: center; padding: 7px 11px; font-size: 0.8rem; }
 
   /* 面板:底部抽屜(以 .red/.blue 雙類選擇器確保覆蓋桌面定位) */

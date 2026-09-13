@@ -467,6 +467,108 @@ export function modelIdFor(spec) {
   return `cruiser_${s}`;
 }
 
+// R2:Cycles 舊化烘焙版的 id。桌機 high／medium 優先載這個,載不到就退回平塗版。
+export function bakedModelId(spec) {
+  return modelIdFor(spec) + '_baked';
+}
+
+// ── R2 甲板識別貼花 ──────────────────────────────────
+// 烘焙版是「整艘一個材質 ＋ 四張烘出來的貼圖」,沒有 `_fd_mat` 這個獨立的甲板材質可以換,
+// 所以甲板上的日之丸／片假名／舷號改成一片貼在飛行甲板上方的透明貼花 plane
+// (整艘只多 1 個 draw call;烘焙的甲板木紋、升降機框、制動索都留在底下看得到)。
+//
+// 座標:glb 是公尺制、艦艏朝 -z、y 向上;下面的數字取自
+// scripts/blender/carrier_ijn.py 與 carrier_usn.py 的甲板常數
+// (blender 的 +Y 艦艏 → glTF 的 -Z,blender 的 +Z → glTF 的 +Y)。
+const DECK_GEO = {
+  carrier_ijn_L: { top: 20.5, half: 15.2, bow: -126, stern: 119 },
+  carrier_ijn_R: { top: 20.5, half: 15.2, bow: -126, stern: 119 },
+  carrier_usn: { top: 17.8, half: 13.0, bow: -122, stern: 119 },
+};
+const DECK_LIFT = 0.30;  // 公尺:貼花浮在甲板上方多少(壓過 z-buffer 精度,又不會看出來是浮的)
+
+// 甲板貼花貼圖:全透明底,只畫識別標誌。canvas y=0 為艦艏(對應 plane 的 +y → 世界 -z)。
+function makeDeckMarkTexture(spec, geo) {
+  const W = 256;
+  const H = 1024;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, W, H);
+  const span = geo.stern - geo.bow;
+  const vy = (z) => ((z - geo.bow) / span) * H;   // 模型 z(公尺) → canvas y
+  const pw = (m) => (m / (geo.half * 2)) * W;     // 公尺 → canvas 橫向像素
+  const cx = W / 2;
+
+  if (spec.side === 'red') {
+    // 艦艏日之丸(赤城／加賀在飛行甲板前段畫一枚,是俯瞰辨識的第一眼特徵)
+    const y = vy(-100);
+    const r = pw(9.5);
+    // 史實上赤城／加賀甲板前段的日之丸是「單純一枚紅圓」,沒有白環;
+    // 白環除了不對,在受光的甲板上還會過 bloom 的 0.8 門檻糊成一團光斑(第一版踩過)。
+    g.fillStyle = '#b8372a';
+    g.beginPath(); g.arc(cx, y, r, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = 'rgba(70,30,24,0.45)';   // 極淡的深色描邊,讓紅圓不會糊進木甲板
+    g.lineWidth = Math.max(1, pw(0.5));
+    g.stroke();
+    // 艦艉片假名識別字(ア／カ／ソ／ヒ)
+    if (spec.deckMark) {
+      const fy = vy(52);
+      const size = pw(20);
+      // ⚠ 白色不能用純白:甲板是受光面,純白貼花過了 bloom 的 0.8 門檻會糊成光斑
+      g.fillStyle = 'rgba(212,210,202,0.86)';
+      g.font = `bold ${size}px "Noto Sans TC", "Yu Gothic", sans-serif`;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(spec.deckMark, cx, fy);
+    }
+  } else if (spec.deckMark) {
+    // 美軍航艦:甲板前後各一個舷號(CV-5／6／8 的白色大數字)
+    const size = pw(22);
+    g.fillStyle = 'rgba(218,216,210,0.86)';
+    g.font = `bold ${size}px "Helvetica Neue", Arial, sans-serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(spec.deckMark, cx, vy(-93));
+    g.save();
+    g.translate(cx, vy(46));
+    g.rotate(Math.PI);          // 艦艉的數字對艦艉方向
+    g.fillText(spec.deckMark, 0, 0);
+    g.restore();
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+// 把貼花掛進 model(跟著 fitLength 的縮放走,座標一律用公尺)
+function addDeckDecal(model, spec) {
+  const geo = DECK_GEO[modelIdFor(spec)];
+  if (!geo) return null;
+  const span = geo.stern - geo.bow;
+  const mat = new THREE.MeshStandardMaterial({
+    map: makeDeckMarkTexture(spec, geo),
+    transparent: true,
+    depthWrite: false,          // 同時讓 postfx 的 GTAO 自動跳過這一片(§R6)
+    roughness: 0.9,
+    metalness: 0,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(geo.half * 2, span), mat);
+  mesh.rotation.x = -Math.PI / 2;     // plane 的 +y → 世界 -z(艦艏方向)
+  mesh.position.set(0, geo.top + DECK_LIFT, (geo.bow + geo.stern) / 2);
+  mesh.castShadow = false;
+  mesh.receiveShadow = true;
+  mesh.renderOrder = 1;
+  mesh.userData.isDeckDecal = true;
+  model.add(mesh);
+  return mesh;
+}
+
 // 艦體細節貼圖:glb 的 UV 是每面 0…1,平鋪倍率拉高即成鋼板紋理。
 // metal_plate 的 diff 太暗(sRGB 平均 0.24/0.20/0.11),當 map 會把灰色艦體染成褐色,
 // 故只取 nor + arm(法線與粗糙／金屬度),顏色仍由 glb 材質的 baseColor 決定。
@@ -514,16 +616,36 @@ function applyDeckPaint(root, spec) {
   });
 }
 
+// 依畫質分級決定載哪一版:high／medium 先試烘焙版,失敗就退回平塗版(§R6)。
+function loadShipSource(assets, spec, useBaked) {
+  if (!useBaked) return assets.model(modelIdFor(spec)).then((src) => ({ src, baked: false }));
+  return assets.model(bakedModelId(spec)).then((src) => {
+    if (src) return { src, baked: true };
+    return assets.model(modelIdFor(spec)).then((s2) => ({ src: s2, baked: false }));
+  });
+}
+
 function swapInModel(g, spec, opts) {
   const assets = opts.assets;
-  return assets.model(modelIdFor(spec)).then((src) => {
+  return loadShipSource(assets, spec, !!opts.baked).then(({ src, baked }) => {
     if (!src || !g.userData.proc) return null;
     const model = cloneModel(src);
     const scale = fitLength(model, spec.length);
     // envMapIntensity 0.7:HDRI 全量會把 1942 年的灰色軍艦洗成亮面塑膠
-    normalizeMaterials(model, { envMapIntensity: 0.7, roughnessMin: 0.4, shadows: !!opts.shadows });
-    applyDeckPaint(model, spec);
-    applyHullDetail(model, assets);
+    // 烘焙版已經是單一材質 ＋ baseColor/ORM/normal 三張圖 → roughness 下限 0.35、
+    // 不再疊三平面的 metal_plate 細節、也不再換甲板材質(甲板紋路已經烘在 baseColor 裡),
+    // 甲板識別標誌改用貼花(addDeckDecal)。
+    normalizeMaterials(model, {
+      envMapIntensity: 0.7,
+      roughnessMin: baked ? 0.35 : 0.4,
+      shadows: !!opts.shadows,
+    });
+    if (baked) {
+      addDeckDecal(model, spec);
+    } else {
+      applyDeckPaint(model, spec);
+      applyHullDetail(model, assets);
+    }
 
     const box = new THREE.Box3().setFromObject(model);
     const halfBeam = Math.max(box.max.x, -box.min.x);
@@ -542,9 +664,16 @@ function swapInModel(g, spec, opts) {
     g.userData.beam = box.max.x - box.min.x;
     g.userData.len = spec.length;
     g.userData.modelScale = scale;
+    g.userData.baked = baked;
     g.userData.swapVersion = (g.userData.swapVersion ?? 0) + 1;
+    // §R6:glb 換模之後材質是全新的一批,沒註冊給 CSM 會被三盞 cascade 燈各照一次(亮度三倍)
+    if (typeof opts.onRegister === 'function') opts.onRegister(g);
     if (typeof g.userData.onSwap === 'function') g.userData.onSwap(g);
     return scale;
+  }).catch((e) => {
+    // 換裝出錯不能整條靜默:畫面會停在程序化艦而沒人知道為什麼(2026-09-13 踩過)
+    console.warn('[midway/ships] glb 換裝失敗,維持程序化艦', spec.id, e);
+    return null;
   });
 }
 
