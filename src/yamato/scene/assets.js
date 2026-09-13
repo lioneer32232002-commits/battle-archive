@@ -26,6 +26,11 @@ export function configureAssets(opts = {}) {
   Object.assign(cfg, opts);
 }
 
+/** glb 自帶的貼圖(烘焙版)不經過 loadTexture,異方向性過濾要由呼叫端自己補 */
+export function assetAnisotropy() {
+  return cfg.anisotropy;
+}
+
 // ── manifest ────────────────────────────────────────
 let manifestP = null;
 export function loadManifest() {

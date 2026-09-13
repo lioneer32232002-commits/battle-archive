@@ -20,8 +20,9 @@ import { unitStateAt, interpolateTrack, newEvents } from './engine/timeline.js';
 // 行動裝置:縮小標籤、降低 pixelRatio,改善重疊與卡頓
 const isMobile = window.matchMedia('(max-width: 640px)').matches;
 const LABEL_SCALE = isMobile ? 0.6 : 1;
-const SHADOWS = !isMobile;   // P-2:陰影桌機限定
-const POSTFX = !isMobile;    // P-3:後製桌機限定
+import {
+  initQuality, getQuality, qualityLabel, cycleQuality, setQuality, onQualityChange, createAutoDowngrade,
+} from './scene/quality.js';
 import { createEnvironment } from './scene/environment.js';
 import { createOkinawa } from './scene/terrain.js';
 import { createShip, animateFlags, aimTurrets } from './scene/ships.js';
@@ -43,7 +44,14 @@ const container = document.getElementById('scene-container');
 const renderer = new THREE.WebGLRenderer({
   antialias: !isMobile, powerPreference: 'high-performance', preserveDrawingBuffer: true,
 });
-const DPR_CAP = Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2);
+// ── R5 畫質分級(docs/realism-spec.md §R5):建場景之前先定案 ──────────
+// 判定順序:?q=high|medium|low → localStorage['battle-quality'] → UNMASKED_RENDERER 自動判定。
+// 以下所有建構函式一律吃 QUALITY 的參數,不再各自讀 isMobile。
+const QUALITY = initQuality({ mobile: isMobile, renderer });
+const SHADOWS = QUALITY.shadows;   // P-2:陰影桌機限定(low 仍有,但是單張正交)
+const POSTFX = QUALITY.postfx;     // P-3:後製桌機限定(low 只剩 OutputPass ＋ 調色)
+
+const DPR_CAP = Math.min(window.devicePixelRatio, QUALITY.pixelRatioCap);
 renderer.setPixelRatio(DPR_CAP);
 renderer.setSize(window.innerWidth, window.innerHeight);
 // P-1:ACES 色調映射(調色盤已據此重校)
@@ -73,15 +81,20 @@ configureAssets({ mobile: isMobile, anisotropy: Math.min(8, renderer.capabilitie
 // R4 驗收用:dev server 加 ?legacy=1 就整條回到升級前(單張正交陰影＋舊後製),
 // 同機位拍開／關對照。import.meta.env.DEV 在正式 build 是常數 false,整段會被搖掉。
 const QA_LEGACY = !!(import.meta.env && import.meta.env.DEV) && location.search.includes('legacy=1');
-const environment = createEnvironment(scene, { shadows: SHADOWS, mobile: isMobile, renderer, camera: QA_LEGACY ? null : camera });
+const environment = createEnvironment(scene, {
+  shadows: SHADOWS, mobile: isMobile, renderer, quality: QUALITY,
+  camera: QA_LEGACY ? null : camera,
+});
 const geo = createOkinawa(scene, { shadows: SHADOWS });
 const particles = new ParticlePool(scene, {
-  addMax: isMobile ? 260 : 760, normMax: isMobile ? 320 : 900,
+  addMax: QUALITY.particles.add, normMax: QUALITY.particles.norm,
 });
-const surface = new SurfaceSystem(scene, { mobile: isMobile });
-const contrails = new ContrailSystem(scene, { mobile: isMobile });
-const crashPlanes = new CrashPlanePool(scene, { size: isMobile ? 2 : 4 });
-const effects = new Effects(scene, { particles, surface, mobile: isMobile, crashPlanes });
+const surface = new SurfaceSystem(scene, { mobile: isMobile, ...QUALITY.wake });
+const contrails = new ContrailSystem(scene, { mobile: isMobile, max: QUALITY.contrailMax });
+const crashPlanes = new CrashPlanePool(scene, { size: QUALITY.crashPlanes });
+const effects = new Effects(scene, {
+  particles, surface, mobile: isMobile, reduced: QUALITY.reducedFx, crashPlanes,
+});
 const director = new Director(camera, controls);
 
 // 後製 composer(桌機);手機直接 renderer.render
@@ -99,6 +112,10 @@ const post = POSTFX ? createComposer(renderer, scene, camera, {
   },
   gtao: { radius: 25, distanceExponent: 1, thickness: 1, scale: 1.5, blend: 0.7 },
   bokeh: { aperture: 0.00008, maxblur: 0.006 },
+  // R5:哪些 pass 要建、bloom 是不是半解析度,全由畫質分級決定
+  passes: QUALITY.passes,
+  bloomScale: QUALITY.bloomScale,
+  gtaoScale: QUALITY.gtaoScale,
 }) : null;
 if (QA_LEGACY && post) post.setPipeline('legacy');
 function renderFrame(dt) {
@@ -134,7 +151,8 @@ const shipObjs = new Map(); // id -> { group, spec, sunkT, curRot, ... }
 let shipPhase = 0;
 for (const u of units) {
   if (u.kind === 'base') continue;
-  const group = createShip(u);
+  // §R6:glb 換模後材質整組換過,必須重新註冊給 CSM(沒註冊會被三盞 cascade 燈各照一次)
+  const group = createShip(u, { onModelReady: (g) => environment.registerObject(g) });
   scene.add(group);
   const big = u.kind === 'carrier' || u.kind === 'flagship';
   // 美軍英文在前、繁中在後;日軍繁中在前、原文在後
@@ -172,7 +190,7 @@ for (const f of formationLabels) {
 // ── 機隊 ─────────────────────────────────────────────
 const airObjs = [];
 for (const ag of airGroups) {
-  const group = createAirGroup(ag, { density: isMobile ? 1.6 : 3, mobile: isMobile });
+  const group = createAirGroup(ag, { density: QUALITY.airDensity, mobile: isMobile });
   scene.add(group);
   const label = makeLabel(ag.label, { side: ag.side });
   label.position.y = 26;
@@ -280,6 +298,8 @@ const hud = createHUD({
     hud.setTime(t);
   },
   onModeToggle: (mode) => director.setMode(mode),
+  // R5:畫質按鈕(手機不給,維持既有行為)。換級要重建海面網格／雲／CSM,寫 localStorage 後重載。
+  onQualityCycle: isMobile ? null : () => cycleQuality(),
   onReplay: () => {
     battleT = TIME_START;
     prevT = TIME_START;
@@ -469,6 +489,7 @@ function tick() {
   const dt = Math.min((now - lastNow) / 1000, 0.1);
   lastNow = now;
   fpsSample(dt);
+  autoQuality.sample(dt, canDropTier());
   frame(dt);
 }
 
@@ -681,6 +702,25 @@ function fpsSample(dt) {
   } else goodStreak = 0;
 }
 
+// ── R5 執行期自動降級 ───────────────────────────────────
+// §R5.1 的降級順序是「先動可即時切換的旋鈕,再重建需重建的」:上面的 fpsSample 階梯
+// (GTAO 半 → GTAO 關 → pixelRatio 降到下限)先跑完,還是連續 3 秒平均 > 40 ms,
+// 才輪到換級 —— 換級要重建海面網格、雲、CSM 層數,所以寫 localStorage 後直接重載。
+function canDropTier() {
+  if (perfLock || isMobile || !started) return false;        // 量測/截圖中、手機、還沒開戰不動
+  const aoDone = !post || !post.hasGTAO || aoLevel >= 2;     // 即時旋鈕用盡了嗎
+  return aoDone && curRatio <= FLOOR + 1e-6;
+}
+const autoQuality = createAutoDowngrade({
+  onDrop: (next, avgMs) => {
+    console.warn(`[quality] 平均幀時間 ${avgMs.toFixed(1)} ms 連續超標 → 畫質降為「${qualityLabel(next)}」,重新載入`);
+    setQuality(next);
+  },
+});
+// HUD 的畫質標籤(換級時 setQuality 會先通知再重載,標籤在重載前就會更新)
+hud.setQualityLabel(qualityLabel());
+onQualityChange((q) => hud.setQualityLabel(qualityLabel(q.tier)));
+
 // R4-2:程序化場景建好後,把現有材質一次註冊給 CSM(資產載入後 environment 內每 0.5 秒會再掃一次)
 environment.refreshShadowMaterials();
 
@@ -761,6 +801,8 @@ if (import.meta.env && import.meta.env.DEV) {
   };
   window.__dbg = {
     post, dbgPerf,
+    // R5:目前這一輪的畫質參數與切換(__dbg.setQuality('low') 會寫 localStorage 後重載)
+    quality: getQuality, setQuality,
     // A/B 對照:__dbg.pipeline('legacy') 回到升級前的後製,('modern') 全開
     pipeline: (mode) => { if (post) post.setPipeline(mode); renderFrame(0.016); return mode; },
     // 截圖前凍結畫質(擋掉動態解析度／GTAO 自動降級,否則慢機器上拍到的是降級後的畫面)

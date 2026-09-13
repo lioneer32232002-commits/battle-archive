@@ -21,11 +21,12 @@ const BLAST_FLASH = [7.0, 6.2, 5.0];
 const BLAST_FIRE = [3.2, 1.6, 0.55];
 
 export class Effects {
-  constructor(scene, { particles, surface, mobile = false, crashPlanes = null } = {}) {
+  // reduced:R5 的 low 也走「手機的粒子量」(this.mobile 在本檔的語意就是「少發一點」)
+  constructor(scene, { particles, surface, mobile = false, reduced = false, crashPlanes = null } = {}) {
     this.scene = scene;
     this.p = particles;
     this.surface = surface;
-    this.mobile = mobile;
+    this.mobile = mobile || reduced;
     this.crashPlanes = crashPlanes; // CrashPlanePool:墜海機的完整 glb 機體(可為 null)
     this.transients = []; // { update(dt) -> false 表結束, dispose() }
     this.fires = new Map(); // unitId -> { obj, acc, age }

@@ -228,8 +228,8 @@ export function updateAirGroup(group, pos, time, trails = null, dt = 0) {
 
 // ── 凝結尾:獨立的 InstancedBufferGeometry(1 個 draw call) ──
 export class ContrailSystem {
-  constructor(scene, { mobile = false } = {}) {
-    const max = mobile ? 90 : 260;
+  constructor(scene, { mobile = false, max: maxIn } = {}) {
+    const max = maxIn ?? (mobile ? 90 : 260);   // R5 畫質分級:容量吃參數
     const tex = makeAtlas(128, (g, i, s) => {
       radial(g, s, [[0, 'rgba(255,255,255,0.9)'], [0.5, 'rgba(248,250,255,0.4)'], [1, 'rgba(240,246,255,0)']]);
     });

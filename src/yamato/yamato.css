@@ -114,6 +114,10 @@ body {
 .hud-btn:hover { border-color: #c9a227; }
 .hud-btn.active { border-color: #c9a227; color: #ffd97a; }
 .hud-btn.big { font-size: 1.1rem; padding: 8px 18px; }
+.hud-btn.hidden { display: none; }
+/* R5 畫質分級的小按鈕:比其他 HUD 按鈕再收一號,不跟「導演模式」搶視線 */
+.hud-btn.quality { font-size: 0.78rem; padding: 6px 10px; letter-spacing: 0.02em; color: #9fb0c6; }
+.hud-btn.quality:hover { color: #ffd97a; }
 
 /* ── 側面板 ── */
 .side-panel {

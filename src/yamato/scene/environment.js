@@ -75,7 +75,17 @@ const SUN_DIR = new THREE.Vector3(-0.81, 0.56, -0.16).normalize();
 const WAVE_GLSL = OCEAN_WAVE_GLSL + `
   float waveSum(vec2 p) { return oceanHeight(p, uTime); }`;
 
-export function createEnvironment(scene, { shadows = false, mobile = false, renderer = null, camera = null } = {}) {
+export function createEnvironment(scene, {
+  shadows = false, mobile = false, renderer = null, camera = null, quality = null,
+} = {}) {
+  // ── R5 畫質分級:海面網格密度、浪峰白沫、雲片數、CSM 層數全部吃參數(scene/quality.js) ──
+  const q = quality ?? {};
+  const oceanSeg = q.ocean?.segments ?? (mobile ? 140 : 220);
+  const oceanFoam = q.ocean?.foam ?? true;
+  const cloudCfg = q.clouds ?? (mobile ? { low: 28, high: 22, band: 34 } : { low: 56, high: 46, band: 70 });
+  const csmCfg = q.csm ?? (mobile ? null : { cascades: 3, shadowMapSize: 2048, maxFar: 3500 });
+  const legacyShadowSize = q.legacyShadowMapSize ?? 2048;
+
   // ── 天空圓頂 ───────────────────────────────────────
   const skyUniforms = {
     uTop: { value: new THREE.Color(PALETTES.overcast.top) },
@@ -130,7 +140,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false, rend
     uFogFar: { value: 15000 },
   };
   const ocean = new THREE.Mesh(
-    new THREE.PlaneGeometry(30000, 30000, mobile ? 140 : 220, mobile ? 140 : 220),
+    new THREE.PlaneGeometry(30000, 30000, oceanSeg, oceanSeg),
     new THREE.ShaderMaterial({
       uniforms: oceanUniforms,
       vertexShader: `
@@ -181,11 +191,14 @@ export function createEnvironment(scene, { shadows = false, mobile = false, rend
 
           // 浪峰白沫:只在高浪峰、且稀疏出現。
           // 用平滑的低頻正弦做遮罩,不能用 hash(floor(...)) —— 那會在海面上畫出一格格方塊。
-          // 浪高在片元端重算(海面網格 136 單位一格,直接用內插的 vH 會讓白沫變成一塊塊菱形)
+          // 浪高在片元端重算(海面網格 136 單位一格,直接用內插的 vH 會讓白沫變成一塊塊菱形)。
+          // ⚠ R5:這是整支海面著色器最貴的一段(每個片元把六波浪高再算一次),low 直接拿掉。
+          ${oceanFoam ? `
           float hF = oceanHeight(vec2(vWorld.x, -vWorld.z), uTime);
           float n2 = 0.5 + 0.5 * sin(vWorld.x * 0.031 + uTime * 0.4) * sin(vWorld.z * 0.043 - uTime * 0.3);
           float capMask = smoothstep(5.0, 6.1, hF) * smoothstep(0.5, 0.95, n2);
           col = mix(col, vec3(0.92, 0.95, 0.97), clamp(capMask * 0.5, 0.0, 0.45));
+          ` : ''}
 
           // 遠距離淡出到霧色,海天不會有一條硬邊
           col = mix(col, uFog, smoothstep(uFogNear, uFogFar, dist));
@@ -210,7 +223,8 @@ export function createEnvironment(scene, { shadows = false, mobile = false, rend
   // 光與影由 CSM 的三盞 cascade 燈負責。刻意留在 scene 裡而不移除:three 會把
   // castShadow 的燈排在前面,一盞 intensity 0 的非投影平行光排在後面,對 cascade
   // 索引與亮度都沒有影響。
-  const useCSM = shadows && !!camera;
+  // R5:low 沒有 csm 設定 → 走下面的單張正交陰影 legacy 路徑(規格 §R5.2)
+  const useCSM = shadows && !!camera && !!csmCfg;
   const _lightDir = new THREE.Vector3();
   let csm = null;
   if (useCSM) {
@@ -218,10 +232,10 @@ export function createEnvironment(scene, { shadows = false, mobile = false, rend
     csm = new CSM({
       parent: scene,
       camera,
-      cascades: 3,
-      maxFar: 3500,
+      cascades: csmCfg.cascades ?? 3,
+      maxFar: csmCfg.maxFar ?? 3500,
       mode: 'practical',
-      shadowMapSize: 2048,
+      shadowMapSize: csmCfg.shadowMapSize ?? 2048,
       shadowBias: -0.0006,
       lightDirection: _lightDir.clone(),
       lightIntensity: PALETTES.overcast.sunInt,
@@ -238,7 +252,7 @@ export function createEnvironment(scene, { shadows = false, mobile = false, rend
   } else if (shadows) {
     // 後備:沒有傳 camera 進來就退回原本的單張正交陰影(手機不會走到這裡)
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(legacyShadowSize, legacyShadowSize);
     const cam = sun.shadow.camera;
     cam.left = -700; cam.right = 700; cam.top = 700; cam.bottom = -700;
     cam.near = 800; cam.far = SUN_DIST * 2.2;
@@ -325,9 +339,9 @@ export function createEnvironment(scene, { shadows = false, mobile = false, rend
   scene.add(halo);
 
   // ── 雲(N-6) ───────────────────────────────────────
-  const LOW = mobile ? 28 : 56;
-  const HIGH = mobile ? 22 : 46;
-  const BAND = mobile ? 34 : 70;
+  const LOW = cloudCfg.low;
+  const HIGH = cloudCfg.high;
+  const BAND = cloudCfg.band;
   const total = LOW + HIGH + BAND;
   const clouds = new BillboardField(makeCloudAtlas(), total, { renderOrder: 1 });
   clouds.mesh.userData.noAO = true;   // R4-1:instanced billboard,override 材質畫出來是垃圾

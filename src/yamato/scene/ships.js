@@ -17,11 +17,21 @@
 //      draw call。改成烘成一份幾何 + 頂點色 + 每頂點 aRM(粗糙度/金屬度),配 makeGlbMaterial()
 //      的 shader 注入,一艘船 1 個 draw call 就保住每種塗裝的 PBR 參數。
 //   8. 大和的 turret_A/B/C 與 barrels_A/B/C 獨立成可轉動節點:對空時砲塔轉向來襲方向、砲管抬高。
+//
+// 2026-09-13 R2 Cycles 舊化烘焙(docs/realism-spec.md §R2.4、§R6):
+//   9. 桌機 high／medium 優先載 `<id>_baked.glb` —— 單一材質 ＋ 四張貼圖(baseColor／normal／
+//      ORM,occlusion 與 metallicRoughness 共用一張),磨損在稜角、鏽往下流、板縫與鉚釘都烘進
+//      normal。烘焙版**不再烘頂點色與 aRM**、**不再疊三平面細節**(那是為了補平塗版沒有貼圖
+//      才有的;疊上去會和烘好的髒汙打架),直接用 glb 材質,只補 roughness 下限 0.35 與
+//      本場的 envMapIntensity。low 與手機維持平塗版(§R5.2)。
+//   10. 大和的 turret_A/B/C 與 barrels_A/B/C 在烘焙版仍是獨立節點(barrels 掛在 turret 底下),
+//      所以砲塔照樣能轉 —— 直接轉 glb 的節點,不必像平塗版那樣自己疊 pivot。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
-  loadModel, bakeMerged, boxOf, findByName, makeGlbMaterial, attachDetailMaps,
+  loadModel, bakeMerged, boxOf, findByName, makeGlbMaterial, attachDetailMaps, assetAnisotropy,
 } from './assets.js';
+import { getQuality } from './quality.js';
 
 const SIDE_COLOR = { red: 0xd9442e, blue: 0x2e7bd9 };
 const HULL_COLOR = { red: 0x696e75, blue: 0x737a84 };  // 補上 OutputPass 後 ACES 真的會作用,數值調回接近實際塗裝
@@ -502,11 +512,21 @@ export function createYamato(spec) {
 // ── glb 抽換 ─────────────────────────────────────────
 // 哪一艘用哪個模型。航艦刻意留程序化:glb 沒有飛行甲板的舷號與艦艏日之丸,
 // 而那兩樣是「一眼認出是哪一艘」的關鍵;TF58 又全程在 2000 單位外,換模的收益近乎零。
-function modelIdFor(spec) {
+export function modelIdFor(spec) {
   if (spec.id === 'yamato') return 'yamato';
   if (spec.kind === 'cruiser') return 'cruiser_ijn';
   if (spec.kind === 'destroyer') return 'destroyer_ijn';
   return null;
+}
+
+// 已經有 Cycles 舊化烘焙版的艦艇(public/models/<id>_baked.glb)。
+// 航艦不在此列 —— 航艦本來就刻意留程序化(飛行甲板的舷號與日之丸是辨識關鍵)。
+export const BAKED_SHIPS = new Set(['yamato', 'cruiser_ijn', 'destroyer_ijn']);
+
+/** 這一輪畫質要載的模型 id:high／medium 用烘焙版,low 與手機用平塗版(§R5.2、§R6) */
+export function bakedIdFor(modelId, quality = getQuality()) {
+  if (!modelId || !quality?.bakedModels) return null;
+  return BAKED_SHIPS.has(modelId) ? `${modelId}_baked` : null;
 }
 
 // 同型艦共用烘好的幾何(9 艘驅逐艦只烘一次)
@@ -562,10 +582,131 @@ function disposeProcedural(group) {
   }
 }
 
+// ── R2 烘焙版:單一材質 ＋ 四張貼圖,直接用 ───────────────
+// 只補兩件事:roughness 下限 0.35(§R2.4,烘出來的粗糙度貼圖低於這個值會有塑膠感)
+// 與本場的 envMapIntensity。頂點色／aRM／三平面細節全部不做 —— 那些是平塗版的補償手段。
+function tuneBakedMaterial(mat, envMapIntensity) {
+  mat.envMapIntensity = envMapIntensity;
+  mat.customProgramCacheKey = () => 'yamato-baked-v1';
+  mat.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <roughnessmap_fragment>',
+      `#include <roughnessmap_fragment>
+       roughnessFactor = clamp(roughnessFactor, 0.35, 1.0);`
+    );
+  };
+  const aniso = assetAnisotropy();
+  for (const t of [mat.map, mat.normalMap, mat.roughnessMap, mat.metalnessMap, mat.aoMap]) {
+    if (t && t.anisotropy !== aniso) { t.anisotropy = aniso; t.needsUpdate = true; }
+  }
+  mat.needsUpdate = true;
+  return mat;
+}
+
+function firstMaterial(root) {
+  let hit = null;
+  root.traverse((o) => {
+    if (hit || !o.isMesh || !o.material) return;
+    hit = Array.isArray(o.material) ? o.material[0] : o.material;
+  });
+  return hit;
+}
+
+// 烘焙版的砲塔:glb 本來就是 turret_X(含自己的網格)底下掛 barrels_X,
+// 節點原點已經在座圈中心／砲耳上,所以直接轉節點就好(平塗版要自己疊 pivot 是因為
+// 幾何被烘成一整塊,轉動的部分必須抽出來)。
+function bakedTurrets(root) {
+  const list = [];
+  for (const n of ['A', 'B', 'C']) {
+    const pivot = findByName(root, `turret_${n}`);
+    if (!pivot) continue;
+    const barrelPivot = findByName(root, `barrels_${n}`) ?? null;
+    list.push({
+      pivot,
+      barrelPivot,
+      // barrels_C 的砲管朝 +z(艦艉砲塔),抬砲與轉向的零點都要反過來
+      aft: barrelPivot ? barrelPivot.position.z > 0 : false,
+      yaw: 0, elev: 0,
+    });
+  }
+  return list;
+}
+
+/** 回傳 true 表示烘焙版套用成功;false 則由呼叫端落回平塗版流程 */
+function applyBakedModel(group, spec, root, modelId) {
+  const box = boxOf(root);
+  const modelLen = box.max.z - box.min.z;
+  if (!(modelLen > 0.01)) return false;
+  const s = spec.length / modelLen;        // §0.4:以 u.length 對齊,不在 glTF 內硬編場景尺度
+  const src = firstMaterial(root);
+  if (!src) return false;
+
+  const isYamato = spec.id === 'yamato';
+  // 材質每艘一份:沉沒淡出會改 opacity 與 color,不能讓九艘驅逐艦一起變半透明。
+  // (幾何與四張貼圖仍然共用,clone 只複製材質參數與貼圖「參照」)
+  const mat = tuneBakedMaterial(src.clone(), isYamato ? 0.75 : 0.65);
+
+  const inst = root.clone(true);
+  inst.scale.setScalar(s);
+  inst.traverse((o) => {
+    if (!o.isMesh) return;
+    o.material = mat;
+    o.castShadow = true;
+    o.receiveShadow = true;
+  });
+  inst.updateMatrixWorld(true);
+
+  disposeProcedural(group);
+  group.add(inst);
+
+  const turrets = bakedTurrets(inst);
+  if (turrets.length) group.userData.turrets = turrets;
+
+  finishShipSwap(group, spec, {
+    modelId, scale: s, topY: box.max.y * s, beam: (box.max.x - box.min.x) * s,
+  });
+  return true;
+}
+
+// 換模最後一段:依 glb 真實剪影重建索具與旗桿,並更新 userData(兩條路徑共用)
+function finishShipSwap(group, spec, { modelId, scale, topY, beam }) {
+  const L = spec.length;
+  const mastTop = new THREE.Vector3(0, topY * 0.92, -L * 0.05);
+  const rig = makeRigging([
+    mastTop.clone(), new THREE.Vector3(0, topY * 0.16, -L * 0.47),
+    mastTop.clone(), new THREE.Vector3(0, topY * 0.16, L * 0.46),
+    mastTop.clone(), new THREE.Vector3(beam * 0.42, topY * 0.34, -L * 0.05),
+    mastTop.clone(), new THREE.Vector3(-beam * 0.42, topY * 0.34, -L * 0.05),
+  ]);
+  rig.userData.proc = 'rigging';
+  group.add(rig);
+
+  // 旗幟移到新桅頂(保留:規格要求換模後旗幟、識別環、尾流掛點都要在)
+  group.traverse((o) => {
+    if (o.userData.isFlag) o.position.set(beam * 0.22, topY * 0.96, -L * 0.05);
+  });
+
+  group.userData.beam = beam;
+  group.userData.length = L;
+  group.userData.modelId = modelId;
+  group.userData.modelScale = scale;
+  // main.js 的沉沒淡出會快取材質清單,換模後必須重掃(否則淡出的是已經被丟掉的舊材質)
+  group.userData.matsVersion = (group.userData.matsVersion ?? 0) + 1;
+}
+
 // 大和以外的艦都是單一艦體;大和多三座可轉動的主砲塔。
 async function upgradeShipModel(group, spec) {
   const modelId = modelIdFor(spec);
   if (!modelId) return;
+
+  // R2:桌機 high／medium 先試烘焙版;載入或套用失敗就落回平塗版(畫面不會缺船)
+  const bakedId = bakedIdFor(modelId);
+  if (bakedId) {
+    const bakedRoot = await loadModel(bakedId);
+    if (bakedRoot && applyBakedModel(group, spec, bakedRoot, bakedId)) return;
+    console.warn('[ships] 烘焙版不可用,改用平塗版', bakedId);
+  }
+
   const root = await loadModel(modelId);
   if (!root) return;                       // 載入失敗 → 程序化 fallback 留著
   const box = boxOf(root);
@@ -623,30 +764,9 @@ async function upgradeShipModel(group, spec) {
   if (list.length) group.userData.turrets = list;
 
   // 依 glb 真實剪影重建索具與旗桿位置(程序化版的常數是照程序化艦體算的)
-  const topY = box.max.y * s;
-  const beam = (box.max.x - box.min.x) * s;
-  const L = spec.length;
-  const mastTop = new THREE.Vector3(0, topY * 0.92, -L * 0.05);
-  const rig = makeRigging([
-    mastTop.clone(), new THREE.Vector3(0, topY * 0.16, -L * 0.47),
-    mastTop.clone(), new THREE.Vector3(0, topY * 0.16, L * 0.46),
-    mastTop.clone(), new THREE.Vector3(beam * 0.42, topY * 0.34, -L * 0.05),
-    mastTop.clone(), new THREE.Vector3(-beam * 0.42, topY * 0.34, -L * 0.05),
-  ]);
-  rig.userData.proc = 'rigging';
-  group.add(rig);
-
-  // 旗幟移到新桅頂(保留:規格要求換模後旗幟、識別環、尾流掛點都要在)
-  group.traverse((o) => {
-    if (o.userData.isFlag) o.position.set(beam * 0.22, topY * 0.96, -L * 0.05);
+  finishShipSwap(group, spec, {
+    modelId, scale: s, topY: box.max.y * s, beam: (box.max.x - box.min.x) * s,
   });
-
-  group.userData.beam = beam;
-  group.userData.length = L;
-  group.userData.modelId = modelId;
-  group.userData.modelScale = s;
-  // main.js 的沉沒淡出會快取材質清單,換模後必須重掃(否則淡出的是已經被丟掉的舊材質)
-  group.userData.matsVersion = (group.userData.matsVersion ?? 0) + 1;
 }
 
 // ── 主砲塔指向(對空時轉向來襲方向、砲管抬高) ───────────
@@ -684,13 +804,22 @@ export function aimTurrets(group, target, dt) {
   }
 }
 
-export function createShip(spec) {
+/**
+ * @param {object} spec battle.js 的單位
+ * @param {object} [opts]
+ * @param {(group: THREE.Group) => void} [opts.onModelReady]
+ *        換模完成後呼叫 —— main.js 用它做 §R6 的 CSM 註冊(`environment.registerObject`)。
+ *        沒註冊的 Standard 材質會被三盞 cascade 燈各照一次、亮度變三倍。
+ */
+export function createShip(spec, { onModelReady = null } = {}) {
   const g =
     spec.kind === 'carrier' ? createCarrier(spec)
       : spec.kind === 'flagship' ? createYamato(spec)
         : createEscort(spec);
   // 非同步抽換真實模型:這裡刻意不 await,場景第一幀就有船
-  upgradeShipModel(g, spec).catch((e) => console.warn('[ships] 換模失敗,保留程序化', spec.id, e));
+  upgradeShipModel(g, spec)
+    .then(() => { if (g.userData.modelId) onModelReady?.(g); })
+    .catch((e) => console.warn('[ships] 換模失敗,保留程序化', spec.id, e));
   return g;
 }
 

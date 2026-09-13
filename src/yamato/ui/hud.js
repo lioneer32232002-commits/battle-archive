@@ -92,6 +92,8 @@ export function createHUD(callbacks) {
         <button id="btn-panel-red" class="hud-btn panel-toggle"><i class="dot red"></i>日軍</button>
         <button id="btn-panel-blue" class="hud-btn panel-toggle"><i class="dot blue"></i>美軍</button>
         <button id="btn-mode" class="hud-btn active">🎬 導演模式</button>
+        <!-- R5 畫質分級:高 → 中 → 低 循環(寫 localStorage 後重載,見 scene/quality.js) -->
+        <button id="btn-quality" class="hud-btn quality hidden" title="切換畫質（高／中／低）；重載後生效">畫質：高</button>
       </div>
     </div>
 
@@ -256,6 +258,12 @@ export function createHUD(callbacks) {
     btnMode.textContent = free ? '🎬 導演模式' : '🔓 自由視角';
     callbacks.onModeToggle(free ? 'director' : 'free');
   });
+  // 畫質按鈕:只有桌機(有傳 onQualityCycle)才出現
+  const btnQuality = document.getElementById('btn-quality');
+  if (callbacks.onQualityCycle) {
+    btnQuality.classList.remove('hidden');
+    btnQuality.addEventListener('click', () => callbacks.onQualityCycle());
+  }
   slider.addEventListener('input', () => {
     const t = parseFloat(slider.value);
     callbacks.onScrub(t);
@@ -470,6 +478,9 @@ export function createHUD(callbacks) {
   return {
     setPlaying(playing) {
       btnPlay.textContent = playing ? '❚❚' : '▶';
+    },
+    setQualityLabel(label) {
+      btnQuality.textContent = `畫質：${label}`;
     },
     setTime(t) {
       document.getElementById('clock').textContent = formatClock(t);

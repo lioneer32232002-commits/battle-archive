@@ -62,10 +62,11 @@ function makeSurfaceAtlas() {
 }
 
 export class SurfaceSystem {
-  constructor(scene, { mobile = false } = {}) {
-    this.perShip = mobile ? 16 : 40;
-    this.maxDecals = mobile ? 90 : 260;
-    const max = mobile ? 380 : 900;
+  // R5 畫質分級:每艘船留幾片白沫、貼花池與整批的容量全部吃參數(scene/quality.js)
+  constructor(scene, { mobile = false, perShip, decals, max: maxIn } = {}) {
+    this.perShip = perShip ?? (mobile ? 16 : 40);
+    this.maxDecals = decals ?? (mobile ? 90 : 260);
+    const max = maxIn ?? (mobile ? 380 : 900);
     this.field = new FlatField(makeSurfaceAtlas(), max, { renderOrder: 2 });
     scene.add(this.field.mesh);
     this.ships = new Map();
